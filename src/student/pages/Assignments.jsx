@@ -4,7 +4,7 @@ import { IconUpload, IconLink, IconFile } from '@tabler/icons-react'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../shared/auth'
 import { Loading, EmptyState, StatusPill, useToast } from '../../shared/ui'
-import { pad2, fmtBytes, fmtDate, extOf, getSettings, uploadFile } from '../../lib/helpers'
+import { pad2, fmtBytes, fmtDate, extOf, getSettings, uploadFile, storageSafeName } from '../../lib/helpers'
 
 export default function Assignments() {
   const { profile } = useAuth()
@@ -69,7 +69,7 @@ export default function Assignments() {
       if (mode === 'file') {
         if (!file) { toast('파일을 선택해 주세요.', 'error'); setBusy(false); return }
         if (!validateFile(file)) { setBusy(false); return }
-        const path = `${profile.id}/${course.id}/${Date.now()}_${file.name}`
+        const path = `${profile.id}/${course.id}/${storageSafeName(file.name)}`
         await uploadFile('submissions', path, file)
         payload = { type: 'file', file_path: path, original_filename: file.name, file_size: file.size, url: null }
       } else {

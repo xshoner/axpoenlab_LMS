@@ -5,7 +5,7 @@ import { useAuth } from '../../shared/auth'
 import { useCohort } from '../cohortContext'
 import RichEditor from '../../shared/RichEditor'
 import { ConfirmDialog, EmptyState, Loading, StatusPill, useToast } from '../../shared/ui'
-import { fmtDate, fmtBytes, uploadFile } from '../../lib/helpers'
+import { fmtDate, fmtBytes, uploadFile, storageSafeName } from '../../lib/helpers'
 
 export default function NoticesAdmin() {
   const { profile } = useAuth()
@@ -90,6 +90,7 @@ function NoticeEditor({ notice, cohorts, authorId, onDone }) {
     pinned: notice?.pinned || false,
   })
   const [attachments, setAttachments] = useState(notice?.notice_attachments || [])
+  const [pending, setPending] = useState([]) // 저장 시 함께 업로드
   const [busy, setBusy] = useState(false)
   const fileInput = useRef(null)
 
@@ -101,31 +102,34 @@ function NoticeEditor({ notice, cohorts, authorId, onDone }) {
         title: form.title.trim(), body: form.body,
         cohort_id: form.cohort_id || null, pinned: form.pinned,
       }
-      if (notice?.id) {
-        const { error } = await supabase.from('notices').update(payload).eq('id', notice.id)
+      let noticeId = notice?.id
+      if (noticeId) {
+        const { error } = await supabase.from('notices').update(payload).eq('id', noticeId)
         if (error) throw error
       } else {
-        const { error } = await supabase.from('notices').insert({ ...payload, created_by: authorId })
+        const { data, error } = await supabase.from('notices').insert({ ...payload, created_by: authorId }).select('id').single()
+        if (error) throw error
+        noticeId = data.id
+      }
+      // 대기 중인 첨부파일 업로드 (한글 파일명은 안전한 경로명으로 저장)
+      for (const file of pending) {
+        const path = `notices/${noticeId}/${storageSafeName(file.name)}`
+        await uploadFile('notice-files', path, file)
+        const { error } = await supabase.from('notice_attachments')
+          .insert({ notice_id: noticeId, file_path: path, filename: file.name, file_size: file.size })
         if (error) throw error
       }
       toast('공지가 저장되었습니다.')
       onDone()
-    } catch {
-      toast('저장에 실패했습니다.', 'error')
+    } catch (e) {
+      toast(`저장에 실패했습니다. ${e?.message || ''}`, 'error')
     } finally { setBusy(false) }
   }
 
-  async function addAttachment(file) {
-    if (!file || !notice?.id) return
-    try {
-      const path = `notices/${notice.id}/${Date.now()}_${file.name}`
-      await uploadFile('notice-files', path, file)
-      const { data, error } = await supabase.from('notice_attachments')
-        .insert({ notice_id: notice.id, file_path: path, filename: file.name, file_size: file.size })
-        .select('*').single()
-      if (error) throw error
-      setAttachments((a) => [...a, data])
-    } catch { toast('업로드 실패', 'error') }
+  function addPending(file) {
+    if (!file) return
+    if (file.size > 50 * 1024 * 1024) { toast('첨부는 파일당 최대 50MB입니다.', 'error'); return }
+    setPending((p) => [...p, file])
   }
 
   return (
@@ -166,14 +170,16 @@ function NoticeEditor({ notice, cohorts, authorId, onDone }) {
       <div className="card-panel">
         <div className="row-between mb-16">
           <h3 className="t-h3">첨부파일</h3>
-          <button className="btn btn-white btn-sm" disabled={!notice?.id} onClick={() => fileInput.current?.click()}>
+          <button className="btn btn-white btn-sm" onClick={() => fileInput.current?.click()}>
             <IconPlus size={14} stroke={1.75} /> 파일 추가
           </button>
-          <input ref={fileInput} type="file" hidden onChange={(e) => { addAttachment(e.target.files?.[0]); e.target.value = '' }} />
+          <input ref={fileInput} type="file" hidden onChange={(e) => { addPending(e.target.files?.[0]); e.target.value = '' }} />
         </div>
-        {!notice?.id ? <p className="t-muted-sm">공지를 먼저 저장한 뒤 첨부할 수 있습니다.</p>
-          : attachments.length === 0 ? <p className="t-muted-sm">첨부파일이 없습니다.</p>
-            : attachments.map((a) => (
+        {attachments.length === 0 && pending.length === 0 ? (
+          <p className="t-muted-sm">첨부파일이 없습니다. 파일을 추가하면 저장 시 함께 업로드됩니다.</p>
+        ) : (
+          <>
+            {attachments.map((a) => (
               <div key={a.id} className="attachment-row">
                 <IconFile size={18} stroke={1.75} color="var(--muted)" />
                 <span>{a.filename}</span>
@@ -186,6 +192,19 @@ function NoticeEditor({ notice, cohorts, authorId, onDone }) {
                 </button>
               </div>
             ))}
+            {pending.map((f, i) => (
+              <div key={`p-${i}`} className="attachment-row" style={{ background: 'var(--primary-tint)' }}>
+                <IconFile size={18} stroke={1.75} color="var(--primary)" />
+                <span>{f.name}</span>
+                <span className="pill pill-neutral">저장 시 업로드</span>
+                <span className="size">{fmtBytes(f.size)}</span>
+                <button className="icon-btn danger" onClick={() => setPending((p) => p.filter((_, x) => x !== i))}>
+                  <IconTrash size={16} stroke={1.75} />
+                </button>
+              </div>
+            ))}
+          </>
+        )}
       </div>
     </div>
   )

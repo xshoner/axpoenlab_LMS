@@ -29,6 +29,11 @@ export function AuthProvider({ children }) {
       setSession(s ?? null)
       if (event === 'SIGNED_IN' || event === 'USER_UPDATED') loadProfile(s?.user?.id)
       if (event === 'SIGNED_OUT') { setProfile(null); setCohort(null) }
+      if (event === 'PASSWORD_RECOVERY') {
+        // 재설정 메일 링크로 진입 — 대시보드 대신 비밀번호 변경 화면 유지
+        sessionStorage.setItem('ax-recovery', '1')
+        window.location.hash = '#/reset'
+      }
     })
     return () => sub.subscription.unsubscribe()
   }, [loadProfile])

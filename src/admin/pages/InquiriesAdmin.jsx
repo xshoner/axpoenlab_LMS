@@ -4,7 +4,7 @@ import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../shared/auth'
 import { useCohort } from '../cohortContext'
 import { EmptyState, Loading, StatusPill, useToast } from '../../shared/ui'
-import { fmtDate, downloadFile, pad2 } from '../../lib/helpers'
+import { fmtDate, downloadFile, pad2, asOne } from '../../lib/helpers'
 
 export default function InquiriesAdmin() {
   const { profile } = useAuth()
@@ -26,7 +26,7 @@ export default function InquiriesAdmin() {
   if (!rows) return <Loading />
 
   const filtered = rows
-    .filter((r) => !selectedId || r.profiles?.cohort_members?.[0]?.cohort_id === selectedId)
+    .filter((r) => !selectedId || asOne(r.profiles?.cohort_members)?.cohort_id === selectedId)
     .sort((a, b) => (a.status === b.status ? 0 : a.status === 'open' ? -1 : 1))
 
   const current = filtered.find((r) => r.id === openId)
@@ -61,7 +61,7 @@ export default function InquiriesAdmin() {
             {current.status === 'answered' ? <StatusPill kind="done">답변 완료</StatusPill> : <StatusPill kind="open">답변 대기</StatusPill>}
           </div>
           <div className="t-caption muted-soft tnum mb-16">
-            {current.profiles?.name} ({current.profiles?.org}) · {current.profiles?.cohort_members?.[0]?.cohorts?.name || '미배정'} · {fmtDate(current.created_at, true)}
+            {current.profiles?.name} ({current.profiles?.org}) · {asOne(current.profiles?.cohort_members)?.cohorts?.name || '미배정'} · {fmtDate(current.created_at, true)}
             {current.cohort_courses && ` · 관련 강좌: ${pad2(current.cohort_courses.course_no)}. ${current.cohort_courses.title}`}
           </div>
           <p className="t-body" style={{ whiteSpace: 'pre-wrap' }}>{current.body}</p>
@@ -109,7 +109,7 @@ export default function InquiriesAdmin() {
                 <tr key={r.id} style={{ cursor: 'pointer' }} onClick={() => setOpenId(r.id)}>
                   <td className="t-emph">{r.title}</td>
                   <td>{r.profiles?.name} <span className="t-caption muted-soft">({r.profiles?.org})</span></td>
-                  <td className="t-muted-sm">{r.profiles?.cohort_members?.[0]?.cohorts?.name || '미배정'}</td>
+                  <td className="t-muted-sm">{asOne(r.profiles?.cohort_members)?.cohorts?.name || '미배정'}</td>
                   <td className="tnum">{fmtDate(r.created_at, true)}</td>
                   <td>{r.status === 'answered' ? <StatusPill kind="done">답변 완료</StatusPill> : <StatusPill kind="open">답변 대기</StatusPill>}</td>
                 </tr>

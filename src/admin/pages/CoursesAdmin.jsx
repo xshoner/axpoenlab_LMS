@@ -4,7 +4,7 @@ import { supabase } from '../../lib/supabase'
 import { useCohort } from '../cohortContext'
 import RichEditor from '../../shared/RichEditor'
 import { ConfirmDialog, EmptyState, Loading, StatusPill, useToast } from '../../shared/ui'
-import { fmtBytes, pad2, downloadFile, uploadFile } from '../../lib/helpers'
+import { fmtBytes, pad2, downloadFile, uploadFile, storageSafeName } from '../../lib/helpers'
 
 export default function CoursesAdmin() {
   const [tab, setTab] = useState('cohort') // cohort | master
@@ -135,6 +135,7 @@ function CohortCourses() {
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 20 }}>
           {rows.map((c) => (
             <div key={c.id} className="card-course" onClick={() => setEditing(c)}>
+              <span className="card-course-watermark" aria-hidden="true">{pad2(c.course_no)}</span>
               <div className="row-between mb-8">
                 <span className="badge-course-no">{pad2(c.course_no)}</span>
                 <div className="row" style={{ gap: 4 }}>
@@ -176,6 +177,7 @@ function CourseEditor({ isMaster, cohortId, nextNo, course, onDone }) {
   const [attachments, setAttachments] = useState(
     course ? (isMaster ? course.master_attachments : course.cohort_attachments) || [] : [],
   )
+  const [pending, setPending] = useState([]) // 저장 시 함께 업로드할 파일들
   const [busy, setBusy] = useState(false)
   const fileInput = useRef(null)
   const attTable = isMaster ? 'master_attachments' : 'cohort_attachments'
@@ -214,28 +216,25 @@ function CourseEditor({ isMaster, cohortId, nextNo, course, onDone }) {
           courseId = data.id
         }
       }
+      // 대기 중인 첨부파일 업로드 (한글 파일명은 안전한 경로명으로 저장)
+      for (const file of pending) {
+        const path = `${isMaster ? 'master' : cohortId}/${courseId}/${storageSafeName(file.name)}`
+        await uploadFile('course-files', path, file)
+        const { error } = await supabase.from(attTable)
+          .insert({ [fkCol]: courseId, file_path: path, filename: file.name, file_size: file.size })
+        if (error) throw error
+      }
       toast('저장되었습니다.')
       onDone()
-    } catch {
-      toast('저장에 실패했습니다.', 'error')
+    } catch (e) {
+      toast(`저장에 실패했습니다. ${e?.message || ''}`, 'error')
     } finally { setBusy(false) }
   }
 
-  async function addAttachment(file) {
-    if (!file || !course?.id) return
+  function addPending(file) {
+    if (!file) return
     if (file.size > 50 * 1024 * 1024) { toast('첨부는 파일당 최대 50MB입니다.', 'error'); return }
-    try {
-      const path = `${isMaster ? 'master' : cohortId}/${course.id}/${Date.now()}_${file.name}`
-      await uploadFile('course-files', path, file)
-      const { data, error } = await supabase.from(attTable)
-        .insert({ [fkCol]: course.id, file_path: path, filename: file.name, file_size: file.size })
-        .select('*').single()
-      if (error) throw error
-      setAttachments((a) => [...a, data])
-      toast('첨부파일이 등록되었습니다.')
-    } catch {
-      toast('업로드에 실패했습니다.', 'error')
-    }
+    setPending((p) => [...p, file])
   }
 
   async function removeAttachment(att) {
@@ -311,29 +310,40 @@ function CourseEditor({ isMaster, cohortId, nextNo, course, onDone }) {
       <div className="card-panel">
         <div className="row-between mb-16">
           <h3 className="t-h3">첨부파일 <span className="t-caption muted-soft">(파일당 최대 50MB)</span></h3>
-          <button className="btn btn-white btn-sm" disabled={!course?.id} onClick={() => fileInput.current?.click()}>
+          <button className="btn btn-white btn-sm" onClick={() => fileInput.current?.click()}>
             <IconPlus size={14} stroke={1.75} /> 파일 추가
           </button>
-          <input ref={fileInput} type="file" hidden onChange={(e) => { addAttachment(e.target.files?.[0]); e.target.value = '' }} />
+          <input ref={fileInput} type="file" hidden onChange={(e) => { addPending(e.target.files?.[0]); e.target.value = '' }} />
         </div>
-        {!course?.id ? (
-          <p className="t-muted-sm">강좌를 먼저 저장한 뒤 첨부파일을 등록할 수 있습니다.</p>
-        ) : attachments.length === 0 ? (
-          <p className="t-muted-sm">첨부파일이 없습니다.</p>
+        {attachments.length === 0 && pending.length === 0 ? (
+          <p className="t-muted-sm">첨부파일이 없습니다. 파일을 추가하면 저장 시 함께 업로드됩니다.</p>
         ) : (
-          attachments.map((a) => (
-            <div key={a.id} className="attachment-row">
-              <IconFile size={18} stroke={1.75} color="var(--muted)" />
-              <span>{a.filename}</span>
-              <span className="size">{fmtBytes(a.file_size)}</span>
-              <button className="icon-btn" onClick={() => downloadFile('course-files', a.file_path, a.filename)}>
-                <IconDownload size={16} stroke={1.75} />
-              </button>
-              <button className="icon-btn danger" onClick={() => removeAttachment(a)}>
-                <IconTrash size={16} stroke={1.75} />
-              </button>
-            </div>
-          ))
+          <>
+            {attachments.map((a) => (
+              <div key={a.id} className="attachment-row">
+                <IconFile size={18} stroke={1.75} color="var(--muted)" />
+                <span>{a.filename}</span>
+                <span className="size">{fmtBytes(a.file_size)}</span>
+                <button className="icon-btn" onClick={() => downloadFile('course-files', a.file_path, a.filename)}>
+                  <IconDownload size={16} stroke={1.75} />
+                </button>
+                <button className="icon-btn danger" onClick={() => removeAttachment(a)}>
+                  <IconTrash size={16} stroke={1.75} />
+                </button>
+              </div>
+            ))}
+            {pending.map((f, i) => (
+              <div key={`p-${i}`} className="attachment-row" style={{ background: 'var(--primary-tint)' }}>
+                <IconFile size={18} stroke={1.75} color="var(--primary)" />
+                <span>{f.name}</span>
+                <span className="pill pill-neutral">저장 시 업로드</span>
+                <span className="size">{fmtBytes(f.size)}</span>
+                <button className="icon-btn danger" onClick={() => setPending((p) => p.filter((_, x) => x !== i))}>
+                  <IconTrash size={16} stroke={1.75} />
+                </button>
+              </div>
+            ))}
+          </>
         )}
       </div>
     </div>

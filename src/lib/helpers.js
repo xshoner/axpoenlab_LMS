@@ -32,6 +32,20 @@ export function extOf(name) {
   return i < 0 ? '' : name.slice(i + 1).toLowerCase()
 }
 
+// Supabase Storage 객체 키는 한글 등 비ASCII 문자를 허용하지 않는다 —
+// 경로는 안전한 임의 이름으로 만들고 원본 파일명은 DB 컬럼에 보관한다.
+export function storageSafeName(filename) {
+  const ext = extOf(filename).replace(/[^a-z0-9]/g, '')
+  const rand = Math.random().toString(36).slice(2, 10)
+  return `${Date.now()}_${rand}${ext ? '.' + ext : ''}`
+}
+
+// cohort_members.user_id가 UNIQUE라 PostgREST가 단건 객체로 반환할 수 있다 —
+// 배열/객체 어느 쪽이든 첫 멤버십 하나로 정규화한다.
+export function asOne(rel) {
+  return Array.isArray(rel) ? rel[0] : rel || null
+}
+
 export async function getSettings() {
   const { data } = await supabase.from('system_settings').select('*')
   const map = {}

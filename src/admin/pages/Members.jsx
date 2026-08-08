@@ -4,7 +4,7 @@ import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../shared/auth'
 import { useCohort } from '../cohortContext'
 import { ConfirmDialog, Dialog, EmptyState, Loading, StatusPill, useToast } from '../../shared/ui'
-import { fmtDate, downloadCsv, ROLE_LABEL } from '../../lib/helpers'
+import { fmtDate, downloadCsv, asOne } from '../../lib/helpers'
 import { FUNCTIONS_URL } from '../../lib/supabase'
 
 export default function Members() {
@@ -30,7 +30,7 @@ export default function Members() {
   if (!rows) return <Loading />
 
   const filtered = rows.filter((r) => {
-    if (selectedId && r.cohort_members?.[0]?.cohort_id !== selectedId) return false
+    if (selectedId && asOne(r.cohort_members)?.cohort_id !== selectedId) return false
     if (search && !`${r.name}${r.email}${r.org}`.toLowerCase().includes(search.toLowerCase())) return false
     return true
   })
@@ -50,7 +50,7 @@ export default function Members() {
   }
 
   function requestAssign() {
-    const current = assignTarget.cohort_members?.[0]
+    const current = asOne(assignTarget.cohort_members)
     const currentName = current?.cohorts?.name
     const nextName = cohorts.find((c) => c.id === assignCohort)?.name || '미배정'
     if (current && assignCohort && current.cohort_id !== assignCohort) {
@@ -92,7 +92,7 @@ export default function Members() {
   function exportCsv() {
     const header = ['소속', '성명', '메일', '기수', '가입일', '최근 접속일', '상태']
     const data = filtered.map((r) => [
-      r.org, r.name, r.email, r.cohort_members?.[0]?.cohorts?.name || '미배정',
+      r.org, r.name, r.email, asOne(r.cohort_members)?.cohorts?.name || '미배정',
       fmtDate(r.created_at), fmtDate(r.last_login_at, true), r.status === 'active' ? '활성' : '비활성',
     ])
     downloadCsv('회원목록.csv', [header, ...data])
@@ -126,8 +126,8 @@ export default function Members() {
                   <td className="t-emph">{r.name}</td>
                   <td className="t-muted-sm">{r.org}</td>
                   <td className="t-muted-sm">{r.email}</td>
-                  <td>{r.cohort_members?.[0]?.cohorts?.name
-                    ? <StatusPill kind="neutral">{r.cohort_members[0].cohorts.name}</StatusPill>
+                  <td>{asOne(r.cohort_members)?.cohorts?.name
+                    ? <StatusPill kind="neutral">{asOne(r.cohort_members).cohorts.name}</StatusPill>
                     : <StatusPill kind="open">미배정</StatusPill>}</td>
                   <td className="tnum">{fmtDate(r.created_at)}</td>
                   <td className="tnum">{fmtDate(r.last_login_at)}</td>
@@ -136,7 +136,7 @@ export default function Members() {
                     : <StatusPill kind="closed">비활성</StatusPill>}</td>
                   <td>
                     <div className="row" style={{ gap: 4 }}>
-                      <button className="btn btn-white btn-sm" onClick={() => { setAssignTarget(r); setAssignCohort(r.cohort_members?.[0]?.cohort_id || '') }}>기수 배정</button>
+                      <button className="btn btn-white btn-sm" onClick={() => { setAssignTarget(r); setAssignCohort(asOne(r.cohort_members)?.cohort_id || '') }}>기수 배정</button>
                       <button className="btn btn-white btn-sm" onClick={() => toggleActive(r)}>{r.status === 'active' ? '비활성화' : '활성화'}</button>
                       <button className="btn btn-white btn-sm" onClick={() => setResetTarget(r)}>비번 초기화</button>
                     </div>

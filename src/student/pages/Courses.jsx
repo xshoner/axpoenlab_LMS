@@ -37,6 +37,7 @@ export default function Courses() {
         const quizCount = (c.quizzes || []).filter((q) => q.status !== 'draft').length
         return (
           <Link key={c.id} to={`/courses/${c.id}`} className={`card-course ${c.viewed ? 'viewed' : ''}`}>
+            <span className="card-course-watermark" aria-hidden="true">{pad2(c.course_no)}</span>
             <div className="row-between mb-8">
               <span className="badge-course-no">{pad2(c.course_no)}</span>
               {c.viewed ? <StatusPill kind="done">열람</StatusPill> : <StatusPill kind="neutral">미열람</StatusPill>}

@@ -17,7 +17,9 @@ export default function Reset() {
     const { data: sub } = supabase.auth.onAuthStateChange((event) => {
       if (event === 'PASSWORD_RECOVERY') setRecoveryMode(true)
     })
-    if (window.location.href.includes('type=recovery')) setRecoveryMode(true)
+    if (window.location.href.includes('type=recovery') || sessionStorage.getItem('ax-recovery') === '1') {
+      setRecoveryMode(true)
+    }
     return () => sub.subscription.unsubscribe()
   }, [])
 
@@ -45,7 +47,10 @@ export default function Reset() {
     const { error: err } = await supabase.auth.updateUser({ password: newPw })
     setBusy(false)
     if (err) setError('비밀번호 변경에 실패했습니다.')
-    else setDone(true)
+    else {
+      sessionStorage.removeItem('ax-recovery')
+      setDone(true)
+    }
   }
 
   return (
@@ -57,7 +62,9 @@ export default function Reset() {
           done ? (
             <>
               <div className="auth-banner ok">비밀번호가 변경되었습니다.</div>
-              <Link to="/login" className="btn btn-primary btn-block">로그인으로 이동</Link>
+              <button className="btn btn-primary btn-block" onClick={() => { window.location.hash = '#/'; window.location.reload() }}>
+                시작하기
+              </button>
             </>
           ) : (
             <form onSubmit={updatePassword}>

@@ -4,7 +4,7 @@ import { IconArrowLeft, IconDownload, IconPlus } from '@tabler/icons-react'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../shared/auth'
 import { Loading, EmptyState, StatusPill, useToast } from '../../shared/ui'
-import { fmtDate, fmtBytes, extOf, getSettings, uploadFile, downloadFile, pad2 } from '../../lib/helpers'
+import { fmtDate, fmtBytes, getSettings, uploadFile, downloadFile, pad2, storageSafeName } from '../../lib/helpers'
 
 export default function Inquiries() {
   return (
@@ -95,7 +95,7 @@ function InquiryNew() {
     try {
       let filePath = null
       if (file) {
-        filePath = `${profile.id}/${Date.now()}_${file.name}`
+        filePath = `${profile.id}/${storageSafeName(file.name)}`
         await uploadFile('inquiry-files', filePath, file)
       }
       const { error } = await supabase.from('inquiries').insert({

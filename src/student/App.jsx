@@ -50,6 +50,18 @@ export default function App() {
 
   if (session === undefined) return <Loading label="세션 확인 중…" />
 
+  // 비밀번호 재설정 메일로 진입한 복구 세션 — 변경 완료 전까지 재설정 화면만 노출
+  if (session && sessionStorage.getItem('ax-recovery') === '1') {
+    return (
+      <>
+        <Aurora mode="auth" />
+        <Routes>
+          <Route path="*" element={<Reset />} />
+        </Routes>
+      </>
+    )
+  }
+
   if (!session) {
     if (!isAuthRoute) return <Navigate to="/login" replace />
     return (
