@@ -1,0 +1,82 @@
+import { supabase } from './supabase'
+
+export function fmtBytes(n) {
+  if (n == null) return ''
+  if (n < 1024) return `${n}B`
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)}KB`
+  return `${(n / 1024 / 1024).toFixed(1)}MB`
+}
+
+export function fmtDate(d, withTime = false) {
+  if (!d) return '-'
+  const dt = new Date(d)
+  const y = dt.getFullYear()
+  const m = String(dt.getMonth() + 1).padStart(2, '0')
+  const day = String(dt.getDate()).padStart(2, '0')
+  if (!withTime) return `${y}-${m}-${day}`
+  const hh = String(dt.getHours()).padStart(2, '0')
+  const mm = String(dt.getMinutes()).padStart(2, '0')
+  return `${y}-${m}-${day} ${hh}:${mm}`
+}
+
+export function isNew(d, days = 3) {
+  return Date.now() - new Date(d).getTime() < days * 86400_000
+}
+
+export function pad2(n) {
+  return String(n).padStart(2, '0')
+}
+
+export function extOf(name) {
+  const i = name.lastIndexOf('.')
+  return i < 0 ? '' : name.slice(i + 1).toLowerCase()
+}
+
+export async function getSettings() {
+  const { data } = await supabase.from('system_settings').select('*')
+  const map = {}
+  for (const row of data || []) map[row.key] = row.value
+  return {
+    allowedExtensions: map.allowed_extensions || ['pdf', 'docx', 'pptx', 'xlsx', 'hwp', 'hwpx', 'zip', 'ipynb', 'py', 'txt', 'png', 'jpg'],
+    maxFileSizeMb: Number(map.max_file_size_mb || 5),
+    showVisitorCounter: map.show_visitor_counter !== false,
+  }
+}
+
+export async function downloadFile(bucket, path, filename) {
+  const { data, error } = await supabase.storage.from(bucket).createSignedUrl(path, 3600, {
+    download: filename || true,
+  })
+  if (error) throw error
+  const a = document.createElement('a')
+  a.href = data.signedUrl
+  a.download = filename || ''
+  document.body.appendChild(a)
+  a.click()
+  a.remove()
+}
+
+export async function uploadFile(bucket, path, file) {
+  const { error } = await supabase.storage.from(bucket).upload(path, file, { upsert: true })
+  if (error) throw error
+  return path
+}
+
+export function downloadCsv(filename, rows) {
+  const esc = (v) => {
+    const s = v == null ? '' : String(v)
+    return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s
+  }
+  const csv = '﻿' + rows.map((r) => r.map(esc).join(',')).join('\n')
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = filename
+  a.click()
+  URL.revokeObjectURL(url)
+}
+
+export const ROLE_LABEL = { student: '학습자', admin: '관리자', super_admin: '슈퍼관리자' }
+export const COHORT_STATUS = { preparing: '준비중', active: '진행중', closed: '종료' }
+export const CONTENT_STATUS = { draft: '초안', open: '공개', closed: '마감' }

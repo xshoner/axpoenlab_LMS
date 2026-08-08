@@ -1,0 +1,8 @@
+node_modules
+dist
+.env
+.env.*
+.vercel
+.bkit
+*.local
+AX오픈랩_LMS_PRD_v1.1.md
