@@ -17,7 +17,7 @@ export default function InquiriesAdmin() {
 
   async function load() {
     const { data } = await supabase.from('inquiries')
-      .select('*, profiles(id, name, org, cohort_members(cohort_id, cohorts(name))), cohort_courses(course_no, title), inquiry_replies(*, profiles(name, role))')
+      .select('*, profiles(id, name, org, cohort_members(cohort_id, cohorts(name))), cohort_courses(course_no, title), inquiry_replies(*, profiles(name, nickname, role))')
       .order('created_at', { ascending: false })
     setRows(data || [])
   }
@@ -75,7 +75,9 @@ export default function InquiriesAdmin() {
         {replies.map((r) => (
           <div key={r.id} className="card-panel" style={{ background: r.profiles?.role !== 'student' ? 'var(--primary-tint)' : 'var(--background)' }}>
             <div className="row mb-8" style={{ gap: 8 }}>
-              <span className="t-label">{r.profiles?.name}</span>
+              <span className="t-label">
+                {r.profiles?.role !== 'student' && r.profiles?.nickname ? `${r.profiles.nickname} (${r.profiles.name})` : r.profiles?.name}
+              </span>
               {r.profiles?.role !== 'student' && <span className="badge-role-soft">운영진</span>}
               <span className="t-caption muted-soft tnum" style={{ marginLeft: 'auto' }}>{fmtDate(r.created_at, true)}</span>
             </div>

@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { Routes, Route, NavLink, Navigate, useLocation } from 'react-router-dom'
 import {
   IconLayoutDashboard, IconBook2, IconClipboardText, IconSpeakerphone,
-  IconMessageCircleQuestion, IconUserCircle, IconLogout, IconMenu2,
+  IconMessageCircleQuestion, IconMessages, IconUserCircle, IconLogout, IconMenu2,
 } from '@tabler/icons-react'
 import { useAuth, signOut } from '../shared/auth'
 import { Aurora, FooterBar, Loading, StatusPill, VisitorCounter } from '../shared/ui'
@@ -18,6 +18,7 @@ import QuizPage from './pages/QuizPage'
 import Notices from './pages/Notices'
 import NoticeDetail from './pages/NoticeDetail'
 import Inquiries from './pages/Inquiries'
+import Board from './pages/Board'
 import Profile from './pages/Profile'
 
 const MENU = [
@@ -26,6 +27,7 @@ const MENU = [
   { to: '/assignments', label: '과제 제출', icon: IconClipboardText },
   { to: '/notices', label: '공지사항', icon: IconSpeakerphone },
   { to: '/inquiries', label: '문의하기', icon: IconMessageCircleQuestion },
+  { to: '/board', label: '공개게시판', icon: IconMessages },
 ]
 
 const PAGE_TITLES = [
@@ -33,6 +35,7 @@ const PAGE_TITLES = [
   ['/assignments', '과제 제출'],
   ['/notices', '공지사항'],
   ['/inquiries', '문의하기'],
+  ['/board', '공개게시판'],
   ['/profile', '내 정보'],
   ['/surveys', '설문 응답'],
   ['/quizzes', '퀴즈'],
@@ -156,6 +159,7 @@ export default function App() {
               <Route path="/notices" element={<Notices />} />
               <Route path="/notices/:id" element={<NoticeDetail />} />
               <Route path="/inquiries/*" element={<Inquiries />} />
+              <Route path="/board/*" element={<Board />} />
               <Route path="/profile" element={<Profile />} />
               <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>

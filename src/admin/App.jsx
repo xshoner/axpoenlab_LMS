@@ -3,10 +3,11 @@ import { Routes, Route, NavLink, Navigate, useLocation } from 'react-router-dom'
 import {
   IconLayoutDashboard, IconUsersGroup, IconBook2, IconClipboardText, IconChecklist,
   IconPencilQuestion, IconSpeakerphone, IconUsers, IconMessageCircleQuestion,
-  IconShieldLock, IconSettings, IconLogout, IconMenu2,
+  IconShieldLock, IconSettings, IconLogout, IconMenu2, IconMessages,
 } from '@tabler/icons-react'
+import { supabase } from '../lib/supabase'
 import { useAuth, signOut } from '../shared/auth'
-import { Aurora, FooterBar, Loading, StatusPill, VisitorCounter } from '../shared/ui'
+import { Aurora, Dialog, FooterBar, Loading, StatusPill, VisitorCounter, useToast } from '../shared/ui'
 import { CohortProvider, useCohort } from './cohortContext'
 import { COHORT_STATUS } from '../lib/helpers'
 import AdminDashboard from './pages/AdminDashboard'
@@ -18,6 +19,7 @@ import QuizzesAdmin from './pages/QuizzesAdmin'
 import NoticesAdmin from './pages/NoticesAdmin'
 import Members from './pages/Members'
 import InquiriesAdmin from './pages/InquiriesAdmin'
+import BoardAdmin from './pages/BoardAdmin'
 import AdminAccounts from './pages/AdminAccounts'
 import SystemSettings from './pages/SystemSettings'
 
@@ -31,6 +33,7 @@ const MENU = [
   { to: '/notices', label: '공지 관리', icon: IconSpeakerphone },
   { to: '/members', label: '회원 관리', icon: IconUsers },
   { to: '/inquiries', label: '문의 관리', icon: IconMessageCircleQuestion },
+  { to: '/board', label: '게시판 관리', icon: IconMessages },
 ]
 
 export default function AdminApp() {
@@ -56,10 +59,26 @@ export default function AdminApp() {
 
 function AdminShell({ profile }) {
   const location = useLocation()
+  const { refresh } = useAuth()
+  const toast = useToast()
   const { cohorts, selectedId, select } = useCohort()
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [unanswered, setUnanswered] = useState(0)
+  const [nickOpen, setNickOpen] = useState(false)
+  const [nick, setNick] = useState('')
+  const [nickBusy, setNickBusy] = useState(false)
   const isSuper = profile.role === 'super_admin'
+  const displayName = profile.nickname || profile.name
+
+  async function saveNickname() {
+    setNickBusy(true)
+    const { error } = await supabase.from('profiles').update({ nickname: nick.trim() }).eq('id', profile.id)
+    setNickBusy(false)
+    if (error) { toast('닉네임 저장에 실패했습니다.', 'error'); return }
+    toast('닉네임이 저장되었습니다. 학생 문의 답변에 이 이름이 표시됩니다.')
+    setNickOpen(false)
+    refresh()
+  }
 
   useEffect(() => { setDrawerOpen(false) }, [location.pathname])
 
@@ -123,10 +142,29 @@ function AdminShell({ profile }) {
             {selectedId && <StatusPill kind="neutral">{cohorts.find((c) => c.id === selectedId)?.name} 기준으로 표시 중</StatusPill>}
             <div className="topbar-right">
               <VisitorCounter />
-              <span className="avatar">{(profile.name || '?').slice(0, 1)}</span>
-              <span className="t-label">{profile.name}</span>
+              <button className="row" style={{ gap: 8, background: 'transparent', border: 'none', padding: 0 }}
+                title="클릭하여 닉네임 설정" onClick={() => { setNick(profile.nickname || ''); setNickOpen(true) }}>
+                <span className="avatar">{(displayName || '?').slice(0, 1)}</span>
+                <span className="t-label">{displayName}</span>
+              </button>
             </div>
           </header>
+          <Dialog open={nickOpen} title="닉네임 설정" onClose={() => setNickOpen(false)}
+            actions={
+              <>
+                <button className="btn btn-white btn-sm" onClick={() => setNickOpen(false)} disabled={nickBusy}>취소</button>
+                <button className="btn btn-primary btn-sm" onClick={saveNickname} disabled={nickBusy}>
+                  {nickBusy ? '저장 중…' : '저장'}
+                </button>
+              </>
+            }>
+            <div className="field" style={{ marginBottom: 0 }}>
+              <label>닉네임</label>
+              <input className="input" value={nick} maxLength={20} placeholder="예: AX운영팀"
+                onChange={(e) => setNick(e.target.value)} />
+              <span className="hint">학생 화면의 문의 답변·게시판에 실명 대신 이 닉네임이 표시됩니다. 비워 두면 이름이 표시됩니다.</span>
+            </div>
+          </Dialog>
           <main className="content wide" style={{ maxWidth: 1440 }}>
             <Routes>
               <Route path="/" element={<AdminDashboard />} />
@@ -138,6 +176,7 @@ function AdminShell({ profile }) {
               <Route path="/notices" element={<NoticesAdmin />} />
               <Route path="/members" element={<Members />} />
               <Route path="/inquiries" element={<InquiriesAdmin />} />
+              <Route path="/board" element={<BoardAdmin />} />
               {isSuper && <Route path="/admins" element={<AdminAccounts />} />}
               {isSuper && <Route path="/settings" element={<SystemSettings />} />}
               <Route path="*" element={<Navigate to="/" replace />} />

@@ -154,12 +154,20 @@ function InquiryDetail() {
   const nav = useNavigate()
   const toast = useToast()
   const [inquiry, setInquiry] = useState(null)
+  const [staff, setStaff] = useState({})
 
   useEffect(() => {
     supabase.from('inquiries')
       .select('*, inquiry_replies(*, profiles(name, role)), cohort_courses(course_no, title)')
       .eq('id', id).single()
       .then(({ data }) => setInquiry(data || false))
+    // RLS로 학생은 운영진 프로필을 직접 못 읽으므로, 공개 뷰(staff_directory)에서 표시명을 가져온다.
+    supabase.from('staff_directory').select('id, name, nickname')
+      .then(({ data }) => {
+        const map = {}
+        for (const s of data || []) map[s.id] = s.nickname || s.name
+        setStaff(map)
+      })
   }, [id])
 
   if (inquiry === null) return <Loading />
@@ -192,17 +200,21 @@ function InquiryDetail() {
           </div>
         )}
       </div>
-      {replies.map((r) => (
-        <div key={r.id} className="card-panel" style={{ background: r.profiles?.role !== 'student' ? 'var(--primary-tint)' : 'var(--background)' }}>
-          <div className="row mb-8" style={{ gap: 8 }}>
-            <span className="avatar">{(r.profiles?.name || '?').slice(0, 1)}</span>
-            <span className="t-label">{r.profiles?.name}</span>
-            {r.profiles?.role !== 'student' && <span className="badge-role-soft">운영진</span>}
-            <span className="t-caption muted-soft tnum" style={{ marginLeft: 'auto' }}>{fmtDate(r.created_at, true)}</span>
+      {replies.map((r) => {
+        const isStaff = !!staff[r.user_id] || (r.profiles && r.profiles.role !== 'student')
+        const name = r.profiles?.name || staff[r.user_id] || '운영진'
+        return (
+          <div key={r.id} className="card-panel" style={{ background: isStaff ? 'var(--primary-tint)' : 'var(--background)' }}>
+            <div className="row mb-8" style={{ gap: 8 }}>
+              <span className="avatar">{name.slice(0, 1)}</span>
+              <span className="t-label">{name}</span>
+              {isStaff && <span className="badge-role-soft">운영진</span>}
+              <span className="t-caption muted-soft tnum" style={{ marginLeft: 'auto' }}>{fmtDate(r.created_at, true)}</span>
+            </div>
+            <p className="t-body" style={{ whiteSpace: 'pre-wrap' }}>{r.body}</p>
           </div>
-          <p className="t-body" style={{ whiteSpace: 'pre-wrap' }}>{r.body}</p>
-        </div>
-      ))}
+        )
+      })}
     </div>
   )
 }

@@ -40,6 +40,7 @@ export default function Assignments() {
 
   const course = courses.find((c) => c.id === selected)
   const existing = history.find((h) => h.cohort_course_id === selected)
+  const submittedSet = new Set(history.map((h) => h.cohort_course_id))
 
   function validateFile(f) {
     const maxBytes = settings.maxFileSizeMb * 1024 * 1024
@@ -176,27 +177,53 @@ export default function Assignments() {
       </section>
 
       <section className="card-panel">
-        <h2 className="t-h2 mb-16">내 제출 이력</h2>
-        {history.length === 0 ? (
-          <EmptyState title="아직 제출한 과제가 없습니다" />
+        <div className="row-between mb-16">
+          <h2 className="t-h2">내 제출 이력</h2>
+          <span className="t-label tnum">
+            {courses.filter((c) => submittedSet.has(c.id)).length} / {courses.length} 과제 제출
+          </span>
+        </div>
+        {courses.length === 0 ? (
+          <EmptyState title="과제가 있는 강좌가 없습니다" />
         ) : (
-          <div className="table-wrap" style={{ border: 'none' }}>
-            <table className="data-table">
-              <thead>
-                <tr><th>강좌</th><th>유형</th><th>제출 일시</th><th>상태</th></tr>
-              </thead>
-              <tbody>
-                {history.map((h) => (
-                  <tr key={h.id}>
-                    <td>{h.cohort_courses ? `${pad2(h.cohort_courses.course_no)}. ${h.cohort_courses.title}` : '-'}</td>
-                    <td>{h.type === 'file' ? h.original_filename : h.url}</td>
-                    <td className="tnum">{fmtDate(h.submitted_at, true)}</td>
-                    <td><StatusPill kind="done">제출됨</StatusPill></td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <>
+            <div className="heatmap-grid mb-16">
+              {courses.map((c) => {
+                const done = submittedSet.has(c.id)
+                return (
+                  <button
+                    key={c.id}
+                    className={`heatmap-cell ${done ? 'viewed' : ''}`}
+                    aria-label={`${pad2(c.course_no)}강 ${c.title} ${done ? '제출 완료' : '미제출'}`}
+                    title={`${pad2(c.course_no)}. ${c.title} — ${done ? '제출 완료' : '미제출'}`}
+                    onClick={() => { setSelected(c.id); window.scrollTo({ top: 0, behavior: 'smooth' }) }}
+                  >
+                    {pad2(c.course_no)}
+                  </button>
+                )
+              })}
+            </div>
+            <p className="t-caption muted-soft mb-16">색이 칠해진 칸은 제출 완료, 빈 칸은 미제출입니다. 칸을 클릭하면 해당 과제 화면으로 이동합니다.</p>
+            {history.length > 0 && (
+              <div className="table-wrap" style={{ border: 'none' }}>
+                <table className="data-table">
+                  <thead>
+                    <tr><th>강좌</th><th>유형</th><th>제출 일시</th><th>상태</th></tr>
+                  </thead>
+                  <tbody>
+                    {history.map((h) => (
+                      <tr key={h.id}>
+                        <td>{h.cohort_courses ? `${pad2(h.cohort_courses.course_no)}. ${h.cohort_courses.title}` : '-'}</td>
+                        <td>{h.type === 'file' ? h.original_filename : h.url}</td>
+                        <td className="tnum">{fmtDate(h.submitted_at, true)}</td>
+                        <td><StatusPill kind="done">제출됨</StatusPill></td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </>
         )}
       </section>
     </div>
