@@ -49,7 +49,13 @@ Deno.serve(async (req: Request) => {
         user_metadata: { name: String(name ?? "").trim(), org: String(org ?? "").trim() },
       });
       if (error) return json({ ok: false, error: /already|exist/i.test(error.message) ? "email_exists" : error.message }, 400);
-      await admin.from("profiles").update({ role: "admin" }).eq("id", data.user!.id);
+      // role 부여 실패를 조용히 넘기지 않는다 — 실패 시 계정을 되돌리고 에러 반환
+      const { error: roleErr } = await admin.from("profiles")
+        .update({ role: "admin" }).eq("id", data.user!.id);
+      if (roleErr) {
+        await admin.auth.admin.deleteUser(data.user!.id);
+        return json({ ok: false, error: `role_update_failed: ${roleErr.message}` }, 500);
+      }
       return json({ ok: true, user_id: data.user!.id });
     }
 
