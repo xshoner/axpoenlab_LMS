@@ -18,7 +18,7 @@ function linkPreviewHtml(url) {
   const safe = escAttr(url)
   const thumb = escAttr(thumbnailUrl(url))
   return (
-    `<a href="${safe}">${safe}</a>` +
+    `<a href="${safe}" target="_blank" rel="noopener noreferrer">${safe}</a>` +
     `<a class="link-preview" href="${safe}" target="_blank" rel="noopener noreferrer" contenteditable="false">` +
     `<img src="${thumb}" data-thumb="${thumb}" alt="링크 미리보기" loading="lazy" />` +
     `<span class="lp-url">${safe}</span></a><p><br></p>`

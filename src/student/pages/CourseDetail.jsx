@@ -1,11 +1,10 @@
 import { useEffect, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
-import DOMPurify from 'dompurify'
 import { IconDownload, IconExternalLink, IconChevronLeft, IconChevronRight, IconFile } from '@tabler/icons-react'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../shared/auth'
 import { Loading, EmptyState, StatusPill, StarRating, useToast } from '../../shared/ui'
-import { pad2, fmtBytes, fmtDate, downloadFile } from '../../lib/helpers'
+import { pad2, fmtBytes, fmtDate, downloadFile, sanitizeRichBody } from '../../lib/helpers'
 
 export default function CourseDetail() {
   const { id } = useParams()
@@ -101,7 +100,7 @@ export default function CourseDetail() {
       <section className="card-panel">
         <div
           className="rich-body"
-          dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(course.body || '<p class="muted">본문이 없습니다.</p>') }}
+          dangerouslySetInnerHTML={{ __html: sanitizeRichBody(course.body || '<p class="muted">본문이 없습니다.</p>') }}
         />
       </section>
 

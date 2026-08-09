@@ -1,4 +1,17 @@
+import DOMPurify from 'dompurify'
 import { supabase } from './supabase'
+
+// 본문(rich body) 안의 모든 링크는 새 창으로 열리게 강제한다 (학습 화면 이탈 방지)
+DOMPurify.addHook('afterSanitizeAttributes', (node) => {
+  if (node.tagName === 'A' && node.getAttribute('href')) {
+    node.setAttribute('target', '_blank')
+    node.setAttribute('rel', 'noopener noreferrer')
+  }
+})
+
+export function sanitizeRichBody(html) {
+  return DOMPurify.sanitize(html)
+}
 
 export function fmtBytes(n) {
   if (n == null) return ''
