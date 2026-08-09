@@ -4,7 +4,7 @@ import DOMPurify from 'dompurify'
 import { IconDownload, IconExternalLink, IconChevronLeft, IconChevronRight, IconFile } from '@tabler/icons-react'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../shared/auth'
-import { Loading, EmptyState, StatusPill, useToast } from '../../shared/ui'
+import { Loading, EmptyState, StatusPill, StarRating, useToast } from '../../shared/ui'
 import { pad2, fmtBytes, fmtDate, downloadFile } from '../../lib/helpers'
 
 export default function CourseDetail() {
@@ -16,22 +16,29 @@ export default function CourseDetail() {
   const [siblings, setSiblings] = useState([])
   const [surveyStates, setSurveyStates] = useState([])
   const [quizStates, setQuizStates] = useState([])
+  const [myRating, setMyRating] = useState(0)
+  const [ratingStats, setRatingStats] = useState(null)
+  const [ratingBusy, setRatingBusy] = useState(false)
 
   useEffect(() => {
     let alive = true
     ;(async () => {
       // 열람 판정: 페이지 진입 즉시 (Q6)
       supabase.rpc('record_course_view', { p_course_id: id }).then(() => {})
-      const [cQ, allQ] = await Promise.all([
+      const [cQ, allQ, rQ, rsQ] = await Promise.all([
         supabase.from('cohort_courses')
           .select('*, cohort_attachments(*), surveys(id, title, status, allow_edit), quizzes(id, title, status, reveal_answers)')
           .eq('id', id).single(),
         supabase.from('cohort_courses').select('id, course_no').order('course_no'),
+        supabase.from('course_ratings').select('rating').eq('cohort_course_id', id).eq('user_id', profile.id).maybeSingle(),
+        supabase.from('course_rating_stats').select('avg_rating, rating_count').eq('cohort_course_id', id).maybeSingle(),
       ])
       if (!alive) return
       if (!cQ.data) { setCourse(false); return }
       setCourse(cQ.data)
       setSiblings(allQ.data || [])
+      setMyRating(rQ.data?.rating || 0)
+      setRatingStats(rsQ.data || null)
       const openSurveys = (cQ.data.surveys || []).filter((s) => s.status !== 'draft')
       const openQuizzes = (cQ.data.quizzes || []).filter((q) => q.status !== 'draft')
       if (openSurveys.length) {
@@ -63,6 +70,24 @@ export default function CourseDetail() {
     } catch {
       toast('다운로드에 실패했습니다.', 'error')
     }
+  }
+
+  async function handleRate(n) {
+    if (ratingBusy) return
+    setRatingBusy(true)
+    const prev = myRating
+    setMyRating(n)
+    const { data, error } = await supabase.rpc('rate_course', { p_course_id: id, p_rating: n })
+    setRatingBusy(false)
+    if (error || !data?.ok) {
+      setMyRating(prev)
+      toast('별점 저장에 실패했습니다.', 'error')
+      return
+    }
+    toast(prev ? '별점이 수정되었습니다.' : '별점이 등록되었습니다. 소중한 평가 감사합니다!')
+    const { data: rs } = await supabase.from('course_rating_stats')
+      .select('avg_rating, rating_count').eq('cohort_course_id', id).maybeSingle()
+    setRatingStats(rs || null)
   }
 
   return (
@@ -187,6 +212,18 @@ export default function CourseDetail() {
           </div>
         </section>
       )}
+
+      <section className="card-panel" style={{ textAlign: 'center' }}>
+        <h2 className="t-h2 mb-8">이 강좌는 어떠셨나요?</h2>
+        <p className="t-muted-sm mb-16">별점을 눌러 강좌 만족도를 남겨 주세요. 언제든 다시 수정할 수 있습니다.</p>
+        <StarRating value={myRating} onChange={handleRate} size={32} />
+        <div className="t-caption muted-soft mt-8">
+          {myRating > 0 ? `내 평가: ${myRating}점` : '아직 평가하지 않았습니다'}
+          {ratingStats && ratingStats.rating_count > 0 && (
+            <> · 우리 기수 평균 {Number(ratingStats.avg_rating).toFixed(1)}점 ({ratingStats.rating_count}명 참여)</>
+          )}
+        </div>
+      </section>
 
       <div className="row-between">
         {prev ? (

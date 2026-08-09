@@ -84,23 +84,12 @@ export default function SurveyForm() {
     }
     setBusy(true)
     try {
-      let responseId = existingResponse?.id
-      if (responseId) {
-        await supabase.from('survey_answers').delete().eq('response_id', responseId)
-        await supabase.from('survey_responses').update({ submitted_at: new Date().toISOString() }).eq('id', responseId)
-      } else {
-        const { data, error } = await supabase.from('survey_responses')
-          .insert({ survey_id: id, user_id: profile.id }).select('id').single()
-        if (error) throw error
-        responseId = data.id
-      }
+      // 제출은 DB 함수 하나로 원자적 처리 — 수정 시에도 기존 응답이 트랜잭션 안에서 교체된다
       const rows = questions
         .filter((q) => !isEmpty(q, answers[q.id]))
-        .map((q) => ({ response_id: responseId, question_id: q.id, value: answers[q.id] }))
-      if (rows.length) {
-        const { error } = await supabase.from('survey_answers').insert(rows)
-        if (error) throw error
-      }
+        .map((q) => ({ question_id: q.id, value: answers[q.id] }))
+      const { data, error } = await supabase.rpc('submit_survey', { p_survey_id: id, p_answers: rows })
+      if (error || !data?.ok) throw error || new Error(data?.error)
       dirty.current = false
       setSubmitted(true)
     } catch {

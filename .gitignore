@@ -1,8 +1,10 @@
-node_modules
-dist
+node_modules/
+dist/
+.vercel/
 .env
 .env.*
-.vercel
-.bkit
+!.env.example
 *.local
-AX오픈랩_LMS_PRD_v1.1.md
+.DS_Store
+Thumbs.db
+.bkit/

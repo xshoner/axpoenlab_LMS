@@ -206,33 +206,24 @@ function QuizBuilder({ quizId, courses, onDone }) {
     if (!quiz.cohort_course_id) { toast('연결 강좌를 선택해 주세요.', 'error'); return }
     setBusy(true)
     try {
-      let qid = quizId
+      // 메타+문항을 DB 함수 하나로 원자적 저장 — 중간 실패 시 기존 문항이 보존된다
       const meta = {
         title: quiz.title.trim(), description: quiz.description,
         cohort_course_id: quiz.cohort_course_id, reveal_answers: quiz.reveal_answers,
       }
-      if (qid) {
-        const { error } = await supabase.from('quizzes').update(meta).eq('id', qid)
-        if (error) throw error
-        await supabase.from('quiz_questions').delete().eq('quiz_id', qid)
-      } else {
-        const { data, error } = await supabase.from('quizzes').insert({ ...meta, status: 'draft' }).select('id').single()
-        if (error) throw error
-        qid = data.id
-      }
-      if (questions.length) {
-        const rows = questions.map((q, i) => ({
-          quiz_id: qid, order_no: i + 1, type: q.type, text: q.text, points: Number(q.points) || 1,
-          options: q.type === 'choice' ? q.options : [],
-          answer: q.type === 'choice'
-            ? (q.answerChoice.length ? q.answerChoice : null)
-            : q.type === 'short'
-              ? (q.answerShort.trim() ? q.answerShort.split(',').map((s) => s.trim()).filter(Boolean) : null)
-              : (q.answerOx || null),
-        }))
-        const { error } = await supabase.from('quiz_questions').insert(rows)
-        if (error) throw error
-      }
+      const rows = questions.map((q) => ({
+        type: q.type, text: q.text, points: Number(q.points) || 1,
+        options: q.type === 'choice' ? q.options : [],
+        answer: q.type === 'choice'
+          ? (q.answerChoice.length ? q.answerChoice : null)
+          : q.type === 'short'
+            ? (q.answerShort.trim() ? q.answerShort.split(',').map((s) => s.trim()).filter(Boolean) : null)
+            : (q.answerOx || null),
+      }))
+      const { error } = await supabase.rpc('save_quiz', {
+        p_quiz_id: quizId || null, p_meta: meta, p_questions: rows,
+      })
+      if (error) throw error
       toast('퀴즈가 저장되었습니다.')
       onDone()
     } catch {

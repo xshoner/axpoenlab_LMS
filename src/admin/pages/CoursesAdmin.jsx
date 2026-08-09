@@ -3,7 +3,7 @@ import { IconPlus, IconTrash, IconFile, IconDownload, IconPaperclip } from '@tab
 import { supabase } from '../../lib/supabase'
 import { useCohort } from '../cohortContext'
 import RichEditor from '../../shared/RichEditor'
-import { ConfirmDialog, EmptyState, Loading, StatusPill, useToast } from '../../shared/ui'
+import { ConfirmDialog, EmptyState, Loading, StatusPill, StarRating, useToast } from '../../shared/ui'
 import { fmtBytes, pad2, downloadFile, uploadFile, storageSafeName } from '../../lib/helpers'
 
 export default function CoursesAdmin() {
@@ -26,9 +26,27 @@ function MasterCourses() {
   const [editing, setEditing] = useState(null)
   const [deleteTarget, setDeleteTarget] = useState(null)
   const [busy, setBusy] = useState(false)
+  const [ratingMap, setRatingMap] = useState({})
 
   async function load() {
-    const { data } = await supabase.from('master_courses').select('*, master_attachments(*)').order('sort_order')
+    const [{ data }, { data: stats }] = await Promise.all([
+      supabase.from('master_courses').select('*, master_attachments(*)').order('sort_order'),
+      supabase.from('course_rating_stats').select('master_course_id, avg_rating, rating_count')
+        .not('master_course_id', 'is', null),
+    ])
+    // 모든 기수의 별점을 마스터 강좌 기준으로 가중 평균
+    const agg = {}
+    for (const s of stats || []) {
+      const a = agg[s.master_course_id] || { sum: 0, count: 0 }
+      a.sum += Number(s.avg_rating) * s.rating_count
+      a.count += s.rating_count
+      agg[s.master_course_id] = a
+    }
+    const map = {}
+    for (const [mid, a] of Object.entries(agg)) {
+      if (a.count > 0) map[mid] = { avg: a.sum / a.count, count: a.count }
+    }
+    setRatingMap(map)
     setRows(data || [])
   }
   useEffect(() => { load() }, [])
@@ -61,21 +79,34 @@ function MasterCourses() {
           action={<button className="btn btn-primary btn-sm" onClick={() => setEditing('new')}>새 마스터 강좌</button>} />
       ) : (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 20 }}>
-          {rows.map((c) => (
-            <div key={c.id} className="card-course" onClick={() => setEditing(c)}>
-              <div className="row-between mb-8">
-                <span className="badge-role-soft">마스터</span>
-                <button className="icon-btn danger" onClick={(e) => { e.stopPropagation(); setDeleteTarget(c) }}>
-                  <IconTrash size={16} stroke={1.75} />
-                </button>
+          {rows.map((c, idx) => {
+            const stat = ratingMap[c.id]
+            return (
+              <div key={c.id} className={`card-course theme-${idx % 6}`} onClick={() => setEditing(c)}>
+                <div className="row-between mb-8">
+                  <span className="badge-role-soft">마스터</span>
+                  <button className="icon-btn danger" onClick={(e) => { e.stopPropagation(); setDeleteTarget(c) }}>
+                    <IconTrash size={16} stroke={1.75} />
+                  </button>
+                </div>
+                <div className="t-h3 mb-8">{c.title}</div>
+                <div className="t-muted-sm" style={{ minHeight: 40 }}>{c.summary}</div>
+                <div className="card-course-meta">
+                  {(c.master_attachments || []).length > 0 && (
+                    <span className="pill pill-neutral"><IconPaperclip size={12} stroke={1.75} /> 첨부 {c.master_attachments.length}</span>
+                  )}
+                  {stat ? (
+                    <span className="row" style={{ gap: 4 }} title="모든 기수 만족도 평균">
+                      <StarRating value={stat.avg} size={13} showValue count={stat.count} />
+                      <span className="t-caption muted-soft">전 기수 평균</span>
+                    </span>
+                  ) : (
+                    <span className="t-caption muted-soft">아직 만족도 평가 없음</span>
+                  )}
+                </div>
               </div>
-              <div className="t-h3 mb-8">{c.title}</div>
-              <div className="t-muted-sm" style={{ minHeight: 40 }}>{c.summary}</div>
-              {(c.master_attachments || []).length > 0 && (
-                <span className="pill pill-neutral mt-8"><IconPaperclip size={12} stroke={1.75} /> 첨부 {c.master_attachments.length}</span>
-              )}
-            </div>
-          ))}
+            )
+          })}
         </div>
       )}
       <ConfirmDialog open={!!deleteTarget} danger busy={busy} title="마스터 강좌 삭제"
@@ -94,10 +125,19 @@ function CohortCourses() {
   const [deleteTarget, setDeleteTarget] = useState(null)
   const [busy, setBusy] = useState(false)
 
+  const [ratingMap, setRatingMap] = useState({})
+
   async function load() {
     if (!selectedId) { setRows([]); return }
-    const { data } = await supabase.from('cohort_courses').select('*, cohort_attachments(*)')
-      .eq('cohort_id', selectedId).order('course_no')
+    const [{ data }, { data: stats }] = await Promise.all([
+      supabase.from('cohort_courses').select('*, cohort_attachments(*)')
+        .eq('cohort_id', selectedId).order('course_no'),
+      supabase.from('course_rating_stats').select('cohort_course_id, avg_rating, rating_count')
+        .eq('cohort_id', selectedId),
+    ])
+    const map = {}
+    for (const s of stats || []) map[s.cohort_course_id] = s
+    setRatingMap(map)
     setRows(data || [])
   }
   useEffect(() => { load() }, [selectedId])
@@ -133,25 +173,38 @@ function CohortCourses() {
           action={<button className="btn btn-primary btn-sm" onClick={() => setEditing('new')}>새 강좌</button>} />
       ) : (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 20 }}>
-          {rows.map((c) => (
-            <div key={c.id} className="card-course" onClick={() => setEditing(c)}>
-              <span className="card-course-watermark" aria-hidden="true">{pad2(c.course_no)}</span>
-              <div className="row-between mb-8">
-                <span className="badge-course-no">{pad2(c.course_no)}</span>
-                <div className="row" style={{ gap: 4 }}>
-                  {c.assignment_enabled && <StatusPill kind="neutral">과제</StatusPill>}
-                  <button className="icon-btn danger" onClick={(e) => { e.stopPropagation(); setDeleteTarget(c) }}>
-                    <IconTrash size={16} stroke={1.75} />
-                  </button>
+          {rows.map((c, idx) => {
+            const stat = ratingMap[c.id]
+            const theme = ((Number(c.course_no) || idx + 1) - 1) % 6
+            return (
+              <div key={c.id} className={`card-course theme-${theme}`} onClick={() => setEditing(c)}>
+                <span className="card-course-watermark" aria-hidden="true">{pad2(c.course_no)}</span>
+                <div className="row-between mb-8">
+                  <span className="badge-course-no">{pad2(c.course_no)}</span>
+                  <div className="row" style={{ gap: 4 }}>
+                    {c.assignment_enabled && <StatusPill kind="neutral">과제</StatusPill>}
+                    <button className="icon-btn danger" onClick={(e) => { e.stopPropagation(); setDeleteTarget(c) }}>
+                      <IconTrash size={16} stroke={1.75} />
+                    </button>
+                  </div>
+                </div>
+                <div className="t-h3 mb-8">{c.title}</div>
+                <div className="t-muted-sm" style={{ minHeight: 40 }}>{c.summary}</div>
+                <div className="card-course-meta">
+                  {(c.cohort_attachments || []).length > 0 && (
+                    <span className="pill pill-neutral"><IconPaperclip size={12} stroke={1.75} /> 첨부 {c.cohort_attachments.length}</span>
+                  )}
+                  {stat ? (
+                    <span className="row" style={{ gap: 4 }} title="이 기수 학생 만족도 평균">
+                      <StarRating value={stat.avg_rating} size={13} showValue count={stat.rating_count} />
+                    </span>
+                  ) : (
+                    <span className="t-caption muted-soft">만족도 평가 없음</span>
+                  )}
                 </div>
               </div>
-              <div className="t-h3 mb-8">{c.title}</div>
-              <div className="t-muted-sm" style={{ minHeight: 40 }}>{c.summary}</div>
-              {(c.cohort_attachments || []).length > 0 && (
-                <span className="pill pill-neutral mt-8"><IconPaperclip size={12} stroke={1.75} /> 첨부 {c.cohort_attachments.length}</span>
-              )}
-            </div>
-          ))}
+            )
+          })}
         </div>
       )}
       <ConfirmDialog open={!!deleteTarget} danger busy={busy} title="강좌 삭제"

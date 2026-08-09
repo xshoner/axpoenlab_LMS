@@ -136,18 +136,14 @@ export default function QuizPage() {
     if (!confirm('제출 후에는 수정할 수 없습니다. 제출하시겠습니까?')) return
     setBusy(true)
     try {
-      const { data: sub, error } = await supabase.from('quiz_submissions')
-        .insert({ quiz_id: id, user_id: profile.id }).select('id').single()
-      if (error) throw error
+      // 제출은 DB 함수 하나로 원자적 처리 — 중복 제출은 서버에서 멱등 처리된다
       const rows = questions
         .filter((q) => answers[q.id] != null && answers[q.id] !== '')
-        .map((q) => ({ submission_id: sub.id, question_id: q.id, value: answers[q.id] }))
-      if (rows.length) {
-        const { error: e2 } = await supabase.from('quiz_answers').insert(rows)
-        if (e2) throw e2
-      }
+        .map((q) => ({ question_id: q.id, value: answers[q.id] }))
+      const { data, error } = await supabase.rpc('submit_quiz', { p_quiz_id: id, p_answers: rows })
+      if (error || !data?.ok) throw error || new Error(data?.error)
       dirty.current = false
-      toast('답안이 제출되었습니다.')
+      toast(data.already ? '이미 제출된 답안이 있습니다.' : '답안이 제출되었습니다.')
       await load()
     } catch {
       toast('제출에 실패했습니다. 다시 시도해 주세요.', 'error')

@@ -1,11 +1,14 @@
 import { useEffect, useState } from 'react'
+import { Link } from 'react-router-dom'
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   LineChart, Line,
 } from 'recharts'
+import { IconPin, IconNotes, IconSpeakerphone, IconTrash } from '@tabler/icons-react'
 import { supabase } from '../../lib/supabase'
+import { useAuth } from '../../shared/auth'
 import { useCohort } from '../cohortContext'
-import { Loading, StatCard } from '../../shared/ui'
+import { Loading, StatCard, StarRating, useToast } from '../../shared/ui'
 import { fmtDate, pad2 } from '../../lib/helpers'
 
 export default function AdminDashboard() {
@@ -17,13 +20,15 @@ export default function AdminDashboard() {
   useEffect(() => {
     let alive = true
     ;(async () => {
-      const [membersQ, coursesQ, subsQ, inqQ, visitsQ, visitSeriesQ] = await Promise.all([
+      const [membersQ, coursesQ, subsQ, inqQ, visitsQ, visitSeriesQ, noticesQ] = await Promise.all([
         supabase.from('cohort_members').select('cohort_id'),
         supabase.from('cohort_courses').select('id', { count: 'exact', head: true }),
         supabase.from('submissions').select('id', { count: 'exact', head: true }),
         supabase.from('inquiries').select('id', { count: 'exact', head: true }).eq('status', 'open'),
         supabase.rpc('visit_stats'),
         supabase.rpc('visit_series', { p_days: 30 }),
+        supabase.from('notices').select('id, title, pinned, created_at, cohort_id')
+          .order('pinned', { ascending: false }).order('created_at', { ascending: false }).limit(6),
       ])
       if (!alive) return
       const perCohort = cohorts.map((c) => ({
@@ -38,6 +43,7 @@ export default function AdminDashboard() {
         visits: visitsQ.data || { today: 0, total: 0 },
         visitSeries: (visitSeriesQ.data || []).map((v) => ({ date: fmtDate(v.d).slice(5), 방문: Number(v.cnt) })),
         perCohort,
+        notices: noticesQ.data || [],
       })
     })()
     return () => { alive = false }
@@ -56,15 +62,17 @@ export default function AdminDashboard() {
         .select('id, course_no, title, assignment_enabled').eq('cohort_id', selectedId).order('course_no')
       const courseIds = (courses || []).map((c) => c.id)
 
-      let views = [], subs = [], surveys = [], quizzes = [], responses = [], quizSubs = [], inquiries = []
+      let views = [], subs = [], surveys = [], quizzes = [], responses = [], quizSubs = [], inquiries = [], ratings = []
       if (courseIds.length) {
-        const [vQ, sQ, svQ, qzQ] = await Promise.all([
+        const [vQ, sQ, svQ, qzQ, rtQ] = await Promise.all([
           supabase.from('course_views').select('user_id, cohort_course_id').in('cohort_course_id', courseIds),
           supabase.from('submissions').select('user_id, cohort_course_id').in('cohort_course_id', courseIds),
           supabase.from('surveys').select('id, status').in('cohort_course_id', courseIds).neq('status', 'draft'),
           supabase.from('quizzes').select('id, status').in('cohort_course_id', courseIds).neq('status', 'draft'),
+          supabase.from('course_rating_stats').select('cohort_course_id, avg_rating, rating_count').eq('cohort_id', selectedId),
         ])
         views = vQ.data || []; subs = sQ.data || []; surveys = svQ.data || []; quizzes = qzQ.data || []
+        ratings = rtQ.data || []
         if (surveys.length) {
           const { data } = await supabase.from('survey_responses').select('survey_id, user_id').in('survey_id', surveys.map((s) => s.id))
           responses = data || []
@@ -95,12 +103,19 @@ export default function AdminDashboard() {
         ? Math.round((quizSubs.length / (n * quizzes.length)) * 100) : 0
       const gradedScores = quizSubs.filter((s) => s.graded && s.total_score != null).map((s) => Number(s.total_score))
       const avgScore = gradedScores.length ? (gradedScores.reduce((a, b) => a + b, 0) / gradedScores.length).toFixed(1) : '-'
-      const lowViewCourses = [...courseViewRates].sort((a, b) => a.열람률 - b.열람률).slice(0, 5)
+      // 만족도 상위 강좌 TOP 5
+      const courseMap = {}
+      for (const c of courses || []) courseMap[c.id] = c
+      const topRated = ratings
+        .map((r) => ({ ...r, course: courseMap[r.cohort_course_id] }))
+        .filter((r) => r.course)
+        .sort((a, b) => Number(b.avg_rating) - Number(a.avg_rating) || b.rating_count - a.rating_count)
+        .slice(0, 5)
 
       setCohortStats({
         students: n,
         active: (members || []).filter((m) => m.profiles?.status === 'active').length,
-        courseViewRates, lowViewCourses, submitRate, surveyRate, quizRate, avgScore, inquiries,
+        courseViewRates, topRated, submitRate, surveyRate, quizRate, avgScore, inquiries,
       })
     })()
     return () => { alive = false }
@@ -119,36 +134,57 @@ export default function AdminDashboard() {
           <StatCard label="미답변 문의" value={global_.unanswered.toLocaleString()} />
           <StatCard label="방문자 (오늘/누적)" value={`${global_.visits.today} / ${Number(global_.visits.total).toLocaleString()}`} />
         </div>
-        <div className="grid-2">
+        <div className="grid-2 mb-24">
           <div className="chart-panel">
             <h3 className="t-h3 mb-16">기수별 학생 수</h3>
-            <ResponsiveContainer width="100%" height={260}>
+            <ResponsiveContainer width="100%" height={150}>
               <BarChart data={global_.perCohort}>
                 <CartesianGrid vertical={false} stroke="var(--border)" />
                 <XAxis dataKey="name" tick={{ fontSize: 12, fill: 'var(--muted)' }} />
-                <YAxis tick={{ fontSize: 12, fill: 'var(--muted)' }} allowDecimals={false} />
+                <YAxis tick={{ fontSize: 12, fill: 'var(--muted)' }} allowDecimals={false} width={28} />
                 <Tooltip contentStyle={{ borderRadius: 8, border: '1px solid var(--border)', fontSize: 12 }} />
-                <Bar dataKey="학생수" fill="var(--chart-1)" radius={[6, 6, 0, 0]} maxBarSize={28}
-                  label={{ position: 'top', fontSize: 12 }} isAnimationActive={false} />
+                <Bar dataKey="학생수" fill="var(--chart-1)" radius={[6, 6, 0, 0]} maxBarSize={24}
+                  label={{ position: 'top', fontSize: 11 }} isAnimationActive={false} />
               </BarChart>
             </ResponsiveContainer>
           </div>
           <div className="chart-panel">
             <h3 className="t-h3 mb-16">방문 추이 (최근 30일)</h3>
             {global_.visitSeries.length === 0 ? (
-              <div className="empty-state" style={{ padding: 32 }}>아직 방문 기록이 없습니다</div>
+              <div className="empty-state" style={{ padding: 24 }}>아직 방문 기록이 없습니다</div>
             ) : (
-              <ResponsiveContainer width="100%" height={260}>
+              <ResponsiveContainer width="100%" height={150}>
                 <LineChart data={global_.visitSeries}>
                   <CartesianGrid vertical={false} stroke="var(--border)" />
-                  <XAxis dataKey="date" tick={{ fontSize: 12, fill: 'var(--muted)' }} />
-                  <YAxis tick={{ fontSize: 12, fill: 'var(--muted)' }} allowDecimals={false} />
+                  <XAxis dataKey="date" tick={{ fontSize: 11, fill: 'var(--muted)' }} />
+                  <YAxis tick={{ fontSize: 11, fill: 'var(--muted)' }} allowDecimals={false} width={28} />
                   <Tooltip contentStyle={{ borderRadius: 8, border: '1px solid var(--border)', fontSize: 12 }} />
                   <Line type="monotone" dataKey="방문" stroke="var(--chart-1)" strokeWidth={2} dot={false} isAnimationActive={false} />
                 </LineChart>
               </ResponsiveContainer>
             )}
           </div>
+        </div>
+        <div className="grid-2">
+          <div className="chart-panel">
+            <div className="row mb-16" style={{ gap: 8 }}>
+              <IconSpeakerphone size={18} stroke={1.75} color="var(--primary)" />
+              <h3 className="t-h3">공지사항</h3>
+              <Link to="/notices" className="btn btn-text" style={{ marginLeft: 'auto' }}>공지 관리로 이동</Link>
+            </div>
+            {global_.notices.length === 0 ? (
+              <div className="t-muted-sm">등록된 공지가 없습니다.</div>
+            ) : global_.notices.map((nt) => (
+              <div key={nt.id} className="row-between" style={{ padding: '8px 0', borderBottom: '1px solid var(--border)' }}>
+                <span className="t-muted-sm row" style={{ gap: 6, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {nt.pinned && <IconPin size={14} stroke={1.75} color="var(--accent-deep)" />}
+                  {nt.title}
+                </span>
+                <span className="t-caption muted-soft tnum" style={{ flexShrink: 0 }}>{fmtDate(nt.created_at)}</span>
+              </div>
+            ))}
+          </div>
+          <MemoBoard />
         </div>
       </section>
 
@@ -180,11 +216,16 @@ export default function AdminDashboard() {
                 </div>
                 <div className="stack">
                   <div className="chart-panel">
-                    <h3 className="t-h3 mb-16">미열람률 상위 강좌 TOP 5</h3>
-                    {cohortStats.lowViewCourses.map((c) => (
-                      <div key={c.name} className="row-between" style={{ padding: '8px 0', borderBottom: '1px solid var(--border)' }}>
-                        <span className="t-muted-sm">{c.name}</span>
-                        <span className="t-label tnum" style={{ color: c.열람률 < 40 ? 'var(--danger)' : 'var(--foreground)' }}>{c.열람률}%</span>
+                    <h3 className="t-h3 mb-16">만족도 상위 강좌 TOP 5</h3>
+                    {cohortStats.topRated.length === 0 ? (
+                      <div className="t-muted-sm">아직 만족도 평가가 없습니다. 학생이 강좌 상세에서 별점을 남기면 표시됩니다.</div>
+                    ) : cohortStats.topRated.map((r, i) => (
+                      <div key={r.cohort_course_id} className="row-between" style={{ padding: '8px 0', borderBottom: '1px solid var(--border)' }}>
+                        <span className="t-muted-sm" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          <span className="t-label tnum" style={{ color: 'var(--accent-deep)', marginRight: 8 }}>{i + 1}</span>
+                          {pad2(r.course.course_no)}. {r.course.title}
+                        </span>
+                        <StarRating value={r.avg_rating} size={13} showValue count={r.rating_count} />
                       </div>
                     ))}
                   </div>
@@ -209,6 +250,123 @@ export default function AdminDashboard() {
           )}
         </section>
       )}
+    </div>
+  )
+}
+
+/* ============ 관리자 전용 메모 게시판 ============ */
+function MemoBoard() {
+  const { profile } = useAuth()
+  const toast = useToast()
+  const [memos, setMemos] = useState(null)
+  const [composing, setComposing] = useState(false)
+  const [draft, setDraft] = useState('')
+  const [editingId, setEditingId] = useState(null)
+  const [editDraft, setEditDraft] = useState('')
+  const [busy, setBusy] = useState(false)
+
+  async function load() {
+    const { data } = await supabase.from('admin_memos')
+      .select('*, profiles(name, nickname)')
+      .order('created_at', { ascending: false }).limit(30)
+    setMemos(data || [])
+  }
+  useEffect(() => { load() }, [])
+
+  async function create() {
+    const body = draft.trim()
+    if (!body) { setComposing(false); setDraft(''); return }
+    setBusy(true)
+    const { error } = await supabase.from('admin_memos').insert({ author_id: profile.id, body })
+    setBusy(false)
+    if (error) { toast('메모 저장에 실패했습니다.', 'error'); return }
+    setDraft(''); setComposing(false)
+    load()
+  }
+
+  async function saveEdit() {
+    const body = editDraft.trim()
+    if (!body) return
+    setBusy(true)
+    const { error } = await supabase.from('admin_memos')
+      .update({ body, updated_at: new Date().toISOString() }).eq('id', editingId)
+    setBusy(false)
+    if (error) { toast('메모 수정에 실패했습니다.', 'error'); return }
+    setEditingId(null)
+    load()
+  }
+
+  async function remove(id) {
+    setBusy(true)
+    const { error } = await supabase.from('admin_memos').delete().eq('id', id)
+    setBusy(false)
+    if (error) { toast('메모 삭제에 실패했습니다.', 'error'); return }
+    setEditingId(null)
+    load()
+  }
+
+  return (
+    <div className="chart-panel">
+      <div className="row mb-16" style={{ gap: 8 }}>
+        <IconNotes size={18} stroke={1.75} color="var(--accent-deep)" />
+        <h3 className="t-h3">관리자 전용 메모</h3>
+        <span className="t-caption muted-soft" style={{ marginLeft: 'auto' }}>관리자에게만 보입니다</span>
+      </div>
+      <div className="memo-board">
+        {composing ? (
+          <div className="memo-item" style={{ cursor: 'default' }}>
+            <textarea
+              className="textarea" autoFocus
+              style={{ minHeight: 72, background: 'transparent', border: 'none', padding: 0 }}
+              placeholder="메모를 입력하세요…"
+              value={draft} onChange={(e) => setDraft(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) create() }}
+            />
+            <div className="row mt-8" style={{ gap: 6, justifyContent: 'flex-end' }}>
+              <button className="btn btn-white btn-sm" disabled={busy} onClick={() => { setComposing(false); setDraft('') }}>취소</button>
+              <button className="btn btn-primary btn-sm" disabled={busy || !draft.trim()} onClick={create}>
+                {busy ? '저장 중…' : '저장'}
+              </button>
+            </div>
+          </div>
+        ) : (
+          <div className="memo-composer" onClick={() => setComposing(true)}>
+            + 여기를 눌러 바로 메모를 작성하세요
+          </div>
+        )}
+        {memos === null ? <Loading /> : memos.map((m) => (
+          editingId === m.id ? (
+            <div key={m.id} className="memo-item" style={{ cursor: 'default' }}>
+              <textarea
+                className="textarea" autoFocus
+                style={{ minHeight: 72, background: 'transparent', border: 'none', padding: 0 }}
+                value={editDraft} onChange={(e) => setEditDraft(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) saveEdit() }}
+              />
+              <div className="row mt-8" style={{ gap: 6, justifyContent: 'flex-end' }}>
+                <button className="icon-btn danger" title="삭제" disabled={busy} onClick={() => remove(m.id)}>
+                  <IconTrash size={16} stroke={1.75} />
+                </button>
+                <button className="btn btn-white btn-sm" disabled={busy} onClick={() => setEditingId(null)}>취소</button>
+                <button className="btn btn-primary btn-sm" disabled={busy || !editDraft.trim()} onClick={saveEdit}>
+                  {busy ? '저장 중…' : '저장'}
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div key={m.id} className="memo-item" title="클릭하여 수정·삭제"
+              onClick={() => { setEditingId(m.id); setEditDraft(m.body) }}>
+              <div className="memo-body">{m.body}</div>
+              <div className="memo-meta">
+                {m.profiles?.nickname || m.profiles?.name || '관리자'} · {fmtDate(m.updated_at || m.created_at, true)}
+              </div>
+            </div>
+          )
+        ))}
+        {memos && memos.length === 0 && !composing && (
+          <div className="t-caption muted-soft" style={{ textAlign: 'center', padding: 8 }}>아직 메모가 없습니다.</div>
+        )}
+      </div>
     </div>
   )
 }

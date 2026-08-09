@@ -1,5 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react'
-import { IconCheck, IconAlertTriangle, IconInbox, IconX } from '@tabler/icons-react'
+import { IconCheck, IconAlertTriangle, IconInbox, IconX, IconStar, IconStarFilled } from '@tabler/icons-react'
 import { supabase } from '../lib/supabase'
 import { getSettings } from '../lib/helpers'
 
@@ -216,6 +216,34 @@ export function Donut({ value, total, label }) {
         <span className="t-caption muted-soft">{value} / {total}명{label ? ` ${label}` : ''}</span>
       </div>
     </div>
+  )
+}
+
+/* ---------- Star rating (만족도) ---------- */
+export function StarRating({ value = 0, onChange, size = 18, showValue = false, count }) {
+  const editable = !!onChange
+  const rounded = Math.round(Number(value) || 0)
+  return (
+    <span className={`star-rating ${editable ? 'editable' : ''}`}>
+      {[1, 2, 3, 4, 5].map((n) => (
+        <button
+          key={n} type="button"
+          className={`star-btn ${n <= rounded ? 'filled' : ''}`}
+          disabled={!editable}
+          onClick={editable ? () => onChange(n) : undefined}
+          aria-label={`${n}점`}
+          tabIndex={editable ? 0 : -1}
+        >
+          {n <= rounded ? <IconStarFilled size={size} /> : <IconStar size={size} stroke={1.75} />}
+        </button>
+      ))}
+      {showValue && (
+        <span className="star-value" style={{ marginLeft: 4 }}>
+          {Number(value).toFixed(1)}
+          {count != null && <span className="muted-soft t-caption"> ({count})</span>}
+        </span>
+      )}
+    </span>
   )
 }
 

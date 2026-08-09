@@ -158,32 +158,23 @@ function SurveyBuilder({ surveyId, courses, onDone }) {
     if (!survey.cohort_course_id) { toast('연결 강좌를 선택해 주세요.', 'error'); return }
     setBusy(true)
     try {
-      let sid = surveyId
+      // 메타+문항을 DB 함수 하나로 원자적 저장 — 중간 실패 시 기존 문항이 보존된다
       const meta = {
         title: survey.title.trim(), description: survey.description,
         cohort_course_id: survey.cohort_course_id, allow_edit: survey.allow_edit,
       }
-      if (sid) {
-        const { error } = await supabase.from('surveys').update(meta).eq('id', sid)
-        if (error) throw error
-        await supabase.from('survey_questions').delete().eq('survey_id', sid)
-      } else {
-        const { data, error } = await supabase.from('surveys').insert({ ...meta, status: 'draft' }).select('id').single()
-        if (error) throw error
-        sid = data.id
-      }
-      if (questions.length) {
-        const rows = questions.map((q, i) => ({
-          survey_id: sid, order_no: i + 1, type: q.type, required: q.required, text: q.text,
-          options: q.type === 'choice' ? q.options : [],
-          multiple: q.multiple, has_other: q.has_other,
-          grid_rows: q.type === 'grid' ? q.grid_rows : [],
-          grid_cols: q.type === 'grid' ? q.grid_cols : [],
-          max_length: q.max_length || null,
-        }))
-        const { error } = await supabase.from('survey_questions').insert(rows)
-        if (error) throw error
-      }
+      const rows = questions.map((q) => ({
+        type: q.type, required: q.required, text: q.text,
+        options: q.type === 'choice' ? q.options : [],
+        multiple: q.multiple, has_other: q.has_other,
+        grid_rows: q.type === 'grid' ? q.grid_rows : [],
+        grid_cols: q.type === 'grid' ? q.grid_cols : [],
+        max_length: q.max_length || null,
+      }))
+      const { error } = await supabase.rpc('save_survey', {
+        p_survey_id: surveyId || null, p_meta: meta, p_questions: rows,
+      })
+      if (error) throw error
       toast('설문이 저장되었습니다.')
       onDone()
     } catch {
