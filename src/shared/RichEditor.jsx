@@ -16,10 +16,11 @@ function thumbnailUrl(url) {
 
 function linkPreviewHtml(url) {
   const safe = escAttr(url)
+  const thumb = escAttr(thumbnailUrl(url))
   return (
     `<a href="${safe}">${safe}</a>` +
     `<a class="link-preview" href="${safe}" target="_blank" rel="noopener noreferrer" contenteditable="false">` +
-    `<img src="${escAttr(thumbnailUrl(url))}" alt="링크 미리보기" loading="lazy" />` +
+    `<img src="${thumb}" data-thumb="${thumb}" alt="링크 미리보기" loading="lazy" />` +
     `<span class="lp-url">${safe}</span></a><p><br></p>`
   )
 }
@@ -35,6 +36,12 @@ export default function RichEditor({ value, onChange, minHeight = 200 }) {
     if (ref.current && ref.current.innerHTML !== (value || '')) {
       ref.current.innerHTML = value || ''
     }
+    // 이전 세션에서 넣어둔 미리보기가 아직 생성 중이었다면 다시 갱신을 시도한다
+    const thumbs = new Set()
+    for (const img of ref.current?.querySelectorAll('img[data-thumb]') || []) {
+      thumbs.add(img.dataset.thumb)
+    }
+    thumbs.forEach((t) => pollThumbnail(t))
   }, [])
 
   function exec(cmd, arg) {
@@ -51,12 +58,43 @@ export default function RichEditor({ value, onChange, minHeight = 200 }) {
     } catch { return false }
   }
 
+  // mshots는 스냅샷 생성 전까지 로딩 GIF로 307 리다이렉트한다.
+  // CORS 헤더가 없어 내용은 못 읽지만, no-cors + redirect:'manual'로
+  // "아직 리다이렉트 중인지"(opaqueredirect)만은 판별 가능 —
+  // 준비되면 캐시 우회 파라미터로 이미지를 강제 새로고침한다.
+  function pollThumbnail(thumbUrl) {
+    let tries = 0
+    const tick = async () => {
+      tries += 1
+      let ready = false
+      try {
+        const res = await fetch(thumbUrl, { mode: 'no-cors', redirect: 'manual', cache: 'no-store' })
+        ready = res.type !== 'opaqueredirect'
+      } catch { ready = false }
+      if (ready) {
+        const imgs = ref.current?.querySelectorAll('img[data-thumb]') || []
+        for (const img of imgs) {
+          if (img.dataset.thumb === thumbUrl) img.src = `${thumbUrl}&r=${tries}`
+        }
+        if (ref.current) onChange(ref.current.innerHTML)
+        return
+      }
+      if (tries < 20) setTimeout(tick, 3000)
+    }
+    setTimeout(tick, 3000)
+  }
+
+  function insertPreview(url) {
+    exec('insertHTML', linkPreviewHtml(url))
+    pollThumbnail(thumbnailUrl(url))
+  }
+
   function addLink() {
     const url = prompt('링크 URL을 입력하세요 (https://...)\n썸네일 미리보기가 함께 삽입됩니다.')
     if (!url) return
     const trimmed = url.trim()
     if (!isValidUrl(trimmed)) { alert('http:// 또는 https:// 로 시작하는 URL만 넣을 수 있습니다.'); return }
-    exec('insertHTML', linkPreviewHtml(trimmed))
+    insertPreview(trimmed)
   }
 
   // URL만 붙여넣으면 링크 + 썸네일 미리보기 카드로 변환
@@ -64,7 +102,7 @@ export default function RichEditor({ value, onChange, minHeight = 200 }) {
     const text = e.clipboardData?.getData('text/plain')?.trim()
     if (text && isValidUrl(text) && !/\s/.test(text)) {
       e.preventDefault()
-      exec('insertHTML', linkPreviewHtml(text))
+      insertPreview(text)
     }
   }
 
