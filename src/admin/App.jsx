@@ -3,7 +3,7 @@ import { Routes, Route, NavLink, Navigate, useLocation } from 'react-router-dom'
 import {
   IconLayoutDashboard, IconUsersGroup, IconBook2, IconClipboardText, IconChecklist,
   IconPencilQuestion, IconSpeakerphone, IconUsers, IconMessageCircleQuestion,
-  IconShieldLock, IconSettings, IconLogout, IconMenu2, IconMessages,
+  IconShieldLock, IconSettings, IconLogout, IconMenu2, IconMessages, IconRocket,
 } from '@tabler/icons-react'
 import { supabase } from '../lib/supabase'
 import { useAuth, signOut } from '../shared/auth'
@@ -20,6 +20,7 @@ import NoticesAdmin from './pages/NoticesAdmin'
 import Members from './pages/Members'
 import InquiriesAdmin from './pages/InquiriesAdmin'
 import BoardAdmin from './pages/BoardAdmin'
+import HackathonAdmin from './pages/HackathonAdmin'
 import AdminAccounts from './pages/AdminAccounts'
 import SystemSettings from './pages/SystemSettings'
 
@@ -28,6 +29,7 @@ const MENU = [
   { to: '/cohorts', label: '기수 관리', icon: IconUsersGroup },
   { to: '/courses', label: '강좌 관리', icon: IconBook2 },
   { to: '/assignments', label: '과제 관리', icon: IconClipboardText },
+  { to: '/hackathon', label: '해커톤 관리', icon: IconRocket },
   { to: '/surveys', label: '설문 관리', icon: IconChecklist },
   { to: '/quizzes', label: '퀴즈 관리', icon: IconPencilQuestion },
   { to: '/notices', label: '공지 관리', icon: IconSpeakerphone },
@@ -171,6 +173,7 @@ function AdminShell({ profile }) {
               <Route path="/cohorts" element={<Cohorts />} />
               <Route path="/courses/*" element={<CoursesAdmin />} />
               <Route path="/assignments" element={<AssignmentMatrix />} />
+              <Route path="/hackathon" element={<HackathonAdmin />} />
               <Route path="/surveys/*" element={<SurveysAdmin />} />
               <Route path="/quizzes/*" element={<QuizzesAdmin />} />
               <Route path="/notices" element={<NoticesAdmin />} />

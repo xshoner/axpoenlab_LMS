@@ -9,8 +9,20 @@ DOMPurify.addHook('afterSanitizeAttributes', (node) => {
   }
 })
 
+// iframe은 유튜브 임베드 도메인만 허용 — 그 외 출처의 iframe은 통째로 제거한다
+const YT_EMBED_RE = /^https:\/\/(www\.)?(youtube\.com|youtube-nocookie\.com)\/embed\/[A-Za-z0-9_-]{11}([/?#].*)?$/
+DOMPurify.addHook('uponSanitizeElement', (node, data) => {
+  if (data.tagName === 'iframe') {
+    const src = node.getAttribute?.('src') || ''
+    if (!YT_EMBED_RE.test(src)) node.remove()
+  }
+})
+
 export function sanitizeRichBody(html) {
-  return DOMPurify.sanitize(html)
+  return DOMPurify.sanitize(html, {
+    ADD_TAGS: ['iframe'],
+    ADD_ATTR: ['allow', 'allowfullscreen', 'frameborder'],
+  })
 }
 
 export function fmtBytes(n) {

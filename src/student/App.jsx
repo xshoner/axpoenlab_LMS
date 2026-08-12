@@ -3,6 +3,7 @@ import { Routes, Route, NavLink, Navigate, useLocation } from 'react-router-dom'
 import {
   IconLayoutDashboard, IconBook2, IconClipboardText, IconSpeakerphone,
   IconMessageCircleQuestion, IconMessages, IconUserCircle, IconLogout, IconMenu2,
+  IconRocket, IconTrophy,
 } from '@tabler/icons-react'
 import { useAuth, signOut } from '../shared/auth'
 import { Aurora, FooterBar, Loading, StatusPill, VisitorCounter } from '../shared/ui'
@@ -20,23 +21,29 @@ import NoticeDetail from './pages/NoticeDetail'
 import Inquiries from './pages/Inquiries'
 import Board from './pages/Board'
 import GuestBoard from './pages/GuestBoard'
+import Hackathon from './pages/Hackathon'
+import HallOfFame from './pages/HallOfFame'
 import Profile from './pages/Profile'
 
 const MENU = [
   { to: '/', label: '대시보드', icon: IconLayoutDashboard, end: true },
   { to: '/courses', label: '내 교육과정', icon: IconBook2 },
   { to: '/assignments', label: '과제 제출', icon: IconClipboardText },
+  { to: '/hackathon', label: '바이브 해커톤', icon: IconRocket },
   { to: '/notices', label: '공지사항', icon: IconSpeakerphone },
   { to: '/inquiries', label: '문의하기', icon: IconMessageCircleQuestion },
   { to: '/board', label: '공개게시판', icon: IconMessages },
+  { to: '/hall-of-fame', label: '명예의 전당', icon: IconTrophy },
 ]
 
 const PAGE_TITLES = [
   ['/courses', '내 교육과정'],
   ['/assignments', '과제 제출'],
+  ['/hackathon', '바이브 해커톤'],
   ['/notices', '공지사항'],
   ['/inquiries', '문의하기'],
   ['/board', '공개게시판'],
+  ['/hall-of-fame', '명예의 전당'],
   ['/profile', '내 정보'],
   ['/surveys', '설문 응답'],
   ['/quizzes', '퀴즈'],
@@ -171,6 +178,8 @@ export default function App() {
               <Route path="/notices/:id" element={<NoticeDetail />} />
               <Route path="/inquiries/*" element={<Inquiries />} />
               <Route path="/board/*" element={<Board />} />
+              <Route path="/hackathon/*" element={<Hackathon />} />
+              <Route path="/hall-of-fame/*" element={<HallOfFame />} />
               <Route path="/profile" element={<Profile />} />
               <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>

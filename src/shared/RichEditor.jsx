@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { IconBold, IconItalic, IconList, IconListNumbers, IconLink, IconClearFormatting, IconPhoto } from '@tabler/icons-react'
+import { IconBold, IconItalic, IconList, IconListNumbers, IconLink, IconClearFormatting, IconPhoto, IconBrandYoutube } from '@tabler/icons-react'
 import { supabase } from '../lib/supabase'
 import { storageSafeName } from '../lib/helpers'
 
@@ -12,6 +12,33 @@ function escAttr(s) {
 // 외부 URL 스크린샷 썸네일 (WordPress mshots — 무료 공개 서비스, 400×300)
 function thumbnailUrl(url) {
   return `https://s.wordpress.com/mshots/v1/${encodeURIComponent(url)}?w=400&h=300`
+}
+
+// 유튜브 URL에서 영상 ID 추출 (watch / youtu.be / shorts / live / embed 지원)
+export function youtubeId(url) {
+  try {
+    const u = new URL(url)
+    let id = null
+    if (/(^|\.)youtu\.be$/.test(u.hostname)) {
+      id = u.pathname.slice(1).split('/')[0]
+    } else if (/(^|\.)youtube(-nocookie)?\.com$/.test(u.hostname)) {
+      if (u.pathname === '/watch') id = u.searchParams.get('v')
+      else {
+        const m = u.pathname.match(/^\/(embed|shorts|live)\/([A-Za-z0-9_-]{11})/)
+        if (m) id = m[2]
+      }
+    }
+    return id && /^[A-Za-z0-9_-]{11}$/.test(id) ? id : null
+  } catch { return null }
+}
+
+function videoEmbedHtml(id) {
+  return (
+    `<div class="video-embed" contenteditable="false">` +
+    `<iframe src="https://www.youtube-nocookie.com/embed/${id}" title="YouTube 동영상" ` +
+    `frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" ` +
+    `allowfullscreen></iframe></div><p><br></p>`
+  )
 }
 
 function linkPreviewHtml(url) {
@@ -94,15 +121,27 @@ export default function RichEditor({ value, onChange, minHeight = 200 }) {
     if (!url) return
     const trimmed = url.trim()
     if (!isValidUrl(trimmed)) { alert('http:// 또는 https:// 로 시작하는 URL만 넣을 수 있습니다.'); return }
+    const yt = youtubeId(trimmed)
+    if (yt) { exec('insertHTML', videoEmbedHtml(yt)); return }
     insertPreview(trimmed)
   }
 
-  // URL만 붙여넣으면 링크 + 썸네일 미리보기 카드로 변환
+  function addVideo() {
+    const url = prompt('유튜브 동영상 URL을 입력하세요.\n예: https://www.youtube.com/watch?v=... 또는 https://youtu.be/...')
+    if (!url) return
+    const yt = youtubeId(url.trim())
+    if (!yt) { alert('유튜브 URL을 인식하지 못했습니다. 영상 주소를 다시 확인해 주세요.'); return }
+    exec('insertHTML', videoEmbedHtml(yt))
+  }
+
+  // URL만 붙여넣으면: 유튜브 URL은 동영상 임베드, 그 외는 링크 + 썸네일 미리보기 카드
   function onPaste(e) {
     const text = e.clipboardData?.getData('text/plain')?.trim()
     if (text && isValidUrl(text) && !/\s/.test(text)) {
       e.preventDefault()
-      insertPreview(text)
+      const yt = youtubeId(text)
+      if (yt) exec('insertHTML', videoEmbedHtml(yt))
+      else insertPreview(text)
     }
   }
 
@@ -132,6 +171,7 @@ export default function RichEditor({ value, onChange, minHeight = 200 }) {
     { icon: IconList, cmd: () => exec('insertUnorderedList'), label: '목록' },
     { icon: IconListNumbers, cmd: () => exec('insertOrderedList'), label: '번호 목록' },
     { icon: IconLink, cmd: addLink, label: '링크 + 미리보기' },
+    { icon: IconBrandYoutube, cmd: addVideo, label: '유튜브 동영상 삽입' },
     { icon: IconPhoto, cmd: () => imgInput.current?.click(), label: '이미지 삽입' },
     { icon: IconClearFormatting, cmd: () => exec('removeFormat'), label: '서식 지우기' },
   ]
