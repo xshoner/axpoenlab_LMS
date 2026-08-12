@@ -16,11 +16,14 @@ export default function Dashboard() {
     let alive = true
     ;(async () => {
       const uid = profile.id
-      const [coursesQ, viewsQ, subsQ, noticesQ] = await Promise.all([
+      const [coursesQ, viewsQ, subsQ, noticesQ, boardQ] = await Promise.all([
         supabase.from('cohort_courses').select('id, course_no, title, assignment_enabled, assignment_due').order('course_no'),
         supabase.from('course_views').select('cohort_course_id').eq('user_id', uid),
         supabase.from('submissions').select('cohort_course_id').eq('user_id', uid),
         supabase.from('notices').select('id, title, created_at, pinned').order('pinned', { ascending: false }).order('created_at', { ascending: false }).limit(5),
+        supabase.from('board_posts')
+          .select('id, title, author_name, author_org, created_at, board_comments(count)')
+          .order('created_at', { ascending: false }).limit(5),
       ])
       const courses = coursesQ.data || []
       const courseIds = courses.map((c) => c.id)
@@ -50,6 +53,7 @@ export default function Dashboard() {
         courses,
         viewedSet,
         notices: noticesQ.data || [],
+        boardPosts: boardQ.data || [],
         todo: {
           assignments: courses.filter((c) => c.assignment_enabled && !subSet.has(c.id)).length,
           surveys: surveys.filter((s) => !respSet.has(s.id)).length,
@@ -62,7 +66,7 @@ export default function Dashboard() {
 
   if (!data) return <Loading />
 
-  const { courses, viewedSet, notices, todo } = data
+  const { courses, viewedSet, notices, boardPosts, todo } = data
   const viewed = courses.filter((c) => viewedSet.has(c.id)).length
   const pct = courses.length ? Math.round((viewed / courses.length) * 100) : 0
   const allDone = todo.assignments === 0 && todo.surveys === 0 && todo.quizzes === 0
@@ -138,6 +142,34 @@ export default function Dashboard() {
                 <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{n.title}</span>
                 {isNew(n.created_at) && <span className="badge-new">NEW</span>}
                 <span className="size tnum">{fmtDate(n.created_at)}</span>
+              </Link>
+            ))}
+          </div>
+        )}
+      </section>
+
+      <section className="card-panel">
+        <div className="row-between mb-16">
+          <h2 className="t-h2">공개게시판 최근 글</h2>
+          <Link to="/board" className="btn btn-text">더보기</Link>
+        </div>
+        {boardPosts.length === 0 ? (
+          <EmptyState title="아직 게시글이 없습니다" description="공개게시판에 첫 글을 남겨 보세요." />
+        ) : (
+          <div>
+            {boardPosts.map((p) => (
+              <Link key={p.id} to={`/board/${p.id}`} className="attachment-row" style={{ textDecoration: 'none', color: 'inherit' }}>
+                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                  {p.title}
+                  {(p.board_comments?.[0]?.count || 0) > 0 && (
+                    <span className="t-caption" style={{ color: 'var(--primary)', marginLeft: 6 }}>[{p.board_comments[0].count}]</span>
+                  )}
+                </span>
+                {isNew(p.created_at) && <span className="badge-new">NEW</span>}
+                <span className="t-caption muted-soft" style={{ flexShrink: 0 }}>
+                  {p.author_org ? `${p.author_org} · ` : ''}{p.author_name}
+                </span>
+                <span className="size tnum">{fmtDate(p.created_at)}</span>
               </Link>
             ))}
           </div>

@@ -219,7 +219,7 @@ export default function CourseDetail() {
         <div className="t-caption muted-soft mt-8">
           {myRating > 0 ? `내 평가: ${myRating}점` : '아직 평가하지 않았습니다'}
           {ratingStats && ratingStats.rating_count > 0 && (
-            <> · 우리 기수 평균 {Number(ratingStats.avg_rating).toFixed(1)}점 ({ratingStats.rating_count}명 참여)</>
+            <> · 전체 평균 {Number(ratingStats.avg_rating).toFixed(1)}점 ({ratingStats.rating_count}명 참여)</>
           )}
         </div>
       </section>

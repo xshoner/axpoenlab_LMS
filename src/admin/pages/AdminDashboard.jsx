@@ -4,7 +4,7 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   LineChart, Line,
 } from 'recharts'
-import { IconPin, IconNotes, IconSpeakerphone, IconTrash } from '@tabler/icons-react'
+import { IconPin, IconNotes, IconSpeakerphone, IconTrash, IconMessages } from '@tabler/icons-react'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../shared/auth'
 import { useCohort } from '../cohortContext'
@@ -20,7 +20,7 @@ export default function AdminDashboard() {
   useEffect(() => {
     let alive = true
     ;(async () => {
-      const [membersQ, coursesQ, subsQ, inqQ, visitsQ, visitSeriesQ, noticesQ] = await Promise.all([
+      const [membersQ, coursesQ, subsQ, inqQ, visitsQ, visitSeriesQ, noticesQ, boardQ] = await Promise.all([
         supabase.from('cohort_members').select('cohort_id'),
         supabase.from('cohort_courses').select('id', { count: 'exact', head: true }),
         supabase.from('submissions').select('id', { count: 'exact', head: true }),
@@ -29,6 +29,9 @@ export default function AdminDashboard() {
         supabase.rpc('visit_series', { p_days: 30 }),
         supabase.from('notices').select('id, title, pinned, created_at, cohort_id')
           .order('pinned', { ascending: false }).order('created_at', { ascending: false }).limit(6),
+        supabase.from('board_posts')
+          .select('id, title, author_name, author_org, is_guest, created_at, board_comments(count)')
+          .order('created_at', { ascending: false }).limit(5),
       ])
       if (!alive) return
       const perCohort = cohorts.map((c) => ({
@@ -44,6 +47,7 @@ export default function AdminDashboard() {
         visitSeries: (visitSeriesQ.data || []).map((v) => ({ date: fmtDate(v.d).slice(5), 방문: Number(v.cnt) })),
         perCohort,
         notices: noticesQ.data || [],
+        boardPosts: boardQ.data || [],
       })
     })()
     return () => { alive = false }
@@ -216,7 +220,7 @@ export default function AdminDashboard() {
                 </div>
                 <div className="stack">
                   <div className="chart-panel">
-                    <h3 className="t-h3 mb-16">만족도 상위 강좌 TOP 5</h3>
+                    <h3 className="t-h3 mb-16">만족도 상위 강좌 TOP 5 <span className="t-caption muted-soft">(전 기수 통합 평균)</span></h3>
                     {cohortStats.topRated.length === 0 ? (
                       <div className="t-muted-sm">아직 만족도 평가가 없습니다. 학생이 강좌 상세에서 별점을 남기면 표시됩니다.</div>
                     ) : cohortStats.topRated.map((r, i) => (
@@ -250,6 +254,28 @@ export default function AdminDashboard() {
           )}
         </section>
       )}
+
+      <section className="chart-panel">
+        <div className="row mb-16" style={{ gap: 8 }}>
+          <IconMessages size={18} stroke={1.75} color="var(--primary)" />
+          <h3 className="t-h3">공개게시판 최근 게시글</h3>
+          <Link to="/board" className="btn btn-text" style={{ marginLeft: 'auto' }}>게시판 관리로 이동</Link>
+        </div>
+        {global_.boardPosts.length === 0 ? (
+          <div className="t-muted-sm">아직 게시글이 없습니다.</div>
+        ) : global_.boardPosts.map((p) => (
+          <div key={p.id} className="row-between" style={{ padding: '8px 0', borderBottom: '1px solid var(--border)' }}>
+            <span className="t-muted-sm" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {p.title}
+              {(p.board_comments?.[0]?.count || 0) > 0 && (
+                <span className="t-caption" style={{ color: 'var(--primary)', marginLeft: 6 }}>[{p.board_comments[0].count}]</span>
+              )}
+              <span className="muted-soft"> — {p.author_org ? `${p.author_org} · ` : ''}{p.author_name}{p.is_guest ? ' (게스트)' : ''}</span>
+            </span>
+            <span className="t-caption muted-soft tnum" style={{ flexShrink: 0 }}>{fmtDate(p.created_at)}</span>
+          </div>
+        ))}
+      </section>
     </div>
   )
 }

@@ -22,7 +22,7 @@ function PostList() {
 
   useEffect(() => {
     supabase.from('board_posts')
-      .select('id, title, author_name, created_at, board_comments(count)')
+      .select('id, title, author_name, author_org, is_guest, created_at, board_comments(count)')
       .order('created_at', { ascending: false })
       .then(({ data }) => setRows(data || []))
   }, [])
@@ -42,7 +42,7 @@ function PostList() {
         <div className="table-wrap">
           <table className="data-table">
             <thead>
-              <tr><th>제목</th><th style={{ width: 140 }}>작성자</th><th style={{ width: 130 }}>작성일</th></tr>
+              <tr><th>제목</th><th style={{ width: 140 }}>소속</th><th style={{ width: 140 }}>작성자</th><th style={{ width: 130 }}>작성일</th></tr>
             </thead>
             <tbody>
               {rows.map((r) => {
@@ -56,6 +56,7 @@ function PostList() {
                         {isNew(r.created_at) && <span className="badge-new" style={{ marginLeft: 6 }}>NEW</span>}
                       </Link>
                     </td>
+                    <td className="t-muted-sm">{r.author_org || '-'}</td>
                     <td className="t-muted-sm">{r.author_name}</td>
                     <td className="tnum">{fmtDate(r.created_at)}</td>
                   </tr>
@@ -83,7 +84,7 @@ function PostNew() {
     setBusy(true)
     const { error } = await supabase.from('board_posts').insert({
       user_id: profile.id, author_name: profile.nickname || profile.name,
-      title: title.trim(), body: body.trim(),
+      author_org: profile.org || '', title: title.trim(), body: body.trim(),
     })
     setBusy(false)
     if (error) { toast('등록에 실패했습니다.', 'error'); return }
@@ -143,7 +144,8 @@ function PostDetail() {
     setBusy(true)
     const { error } = await supabase.from('board_comments').insert({
       post_id: id, user_id: profile.id,
-      author_name: profile.nickname || profile.name, body: comment.trim(),
+      author_name: profile.nickname || profile.name,
+      author_org: profile.org || '', body: comment.trim(),
     })
     setBusy(false)
     if (error) { toast('댓글 등록에 실패했습니다.', 'error'); return }
@@ -191,6 +193,8 @@ function PostDetail() {
         <div className="row mb-16" style={{ gap: 8 }}>
           <span className="avatar">{(post.author_name || '?').slice(0, 1)}</span>
           <span className="t-label">{post.author_name}</span>
+          {post.author_org && <span className="t-caption muted-soft">{post.author_org}</span>}
+          {post.is_guest && <span className="pill pill-neutral">게스트</span>}
           <span className="t-caption muted-soft tnum" style={{ marginLeft: 'auto' }}>{fmtDate(post.created_at, true)}</span>
         </div>
         <p className="t-body" style={{ whiteSpace: 'pre-wrap' }}>{post.body}</p>
@@ -207,6 +211,7 @@ function PostDetail() {
             <div style={{ flex: 1, minWidth: 0 }}>
               <div className="row" style={{ gap: 8 }}>
                 <span className="t-label">{c.author_name}</span>
+                {c.author_org && <span className="t-caption muted-soft">{c.author_org}</span>}
                 <span className="t-caption muted-soft tnum">{fmtDate(c.created_at, true)}</span>
               </div>
               <p className="t-body" style={{ whiteSpace: 'pre-wrap' }}>{c.body}</p>

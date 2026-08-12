@@ -34,17 +34,13 @@ function MasterCourses() {
       supabase.from('course_rating_stats').select('master_course_id, avg_rating, rating_count')
         .not('master_course_id', 'is', null),
     ])
-    // 모든 기수의 별점을 마스터 강좌 기준으로 가중 평균
-    const agg = {}
-    for (const s of stats || []) {
-      const a = agg[s.master_course_id] || { sum: 0, count: 0 }
-      a.sum += Number(s.avg_rating) * s.rating_count
-      a.count += s.rating_count
-      agg[s.master_course_id] = a
-    }
+    // course_rating_stats 뷰가 마스터 강좌 단위로 전 기수 통합 평균을 제공한다 —
+    // 같은 마스터의 기수 강좌 행들은 동일한 값이므로 첫 행만 사용
     const map = {}
-    for (const [mid, a] of Object.entries(agg)) {
-      if (a.count > 0) map[mid] = { avg: a.sum / a.count, count: a.count }
+    for (const s of stats || []) {
+      if (s.master_course_id && !map[s.master_course_id]) {
+        map[s.master_course_id] = { avg: Number(s.avg_rating), count: s.rating_count }
+      }
     }
     setRatingMap(map)
     setRows(data || [])
@@ -195,7 +191,7 @@ function CohortCourses() {
                     <span className="pill pill-neutral"><IconPaperclip size={12} stroke={1.75} /> 첨부 {c.cohort_attachments.length}</span>
                   )}
                   {stat ? (
-                    <span className="row" style={{ gap: 4 }} title="이 기수 학생 만족도 평균">
+                    <span className="row" style={{ gap: 4 }} title="전 기수 통합 만족도 평균">
                       <StarRating value={stat.avg_rating} size={13} showValue count={stat.rating_count} />
                     </span>
                   ) : (

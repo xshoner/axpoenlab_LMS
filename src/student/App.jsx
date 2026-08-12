@@ -19,6 +19,7 @@ import Notices from './pages/Notices'
 import NoticeDetail from './pages/NoticeDetail'
 import Inquiries from './pages/Inquiries'
 import Board from './pages/Board'
+import GuestBoard from './pages/GuestBoard'
 import Profile from './pages/Profile'
 
 const MENU = [
@@ -50,6 +51,16 @@ export default function App() {
   const focusMode = /^\/(surveys|quizzes)\//.test(location.pathname)
 
   useEffect(() => { setDrawerOpen(false) }, [location.pathname])
+
+  // QR 게스트 게시판 — 로그인 없이 접근 (토큰은 RPC에서 검증)
+  if (location.pathname === '/guest-board') {
+    return (
+      <>
+        <Aurora mode="work" />
+        <GuestBoard />
+      </>
+    )
+  }
 
   if (session === undefined) return <Loading label="세션 확인 중…" />
 
