@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react'
-import { Link, useSearchParams } from 'react-router-dom'
+import { useEffect, useRef, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { IconArrowLeft, IconPlus, IconMessageCircle, IconMessages } from '@tabler/icons-react'
 import { supabase } from '../../lib/supabase'
 import { Loading, EmptyState, useToast } from '../../shared/ui'
@@ -11,7 +11,8 @@ import { fmtDate, isNew } from '../../lib/helpers'
 export default function GuestBoard() {
   const [params] = useSearchParams()
   const token = params.get('key') || ''
-  const [view, setView] = useState('list') // 'list' | 'new' | { postId }
+  // QR 스캔 직후에는 바로 글쓰기 화면으로 진입한다
+  const [view, setView] = useState('new') // 'list' | 'new' | { postId }
   const [posts, setPosts] = useState(null)
   const [invalid, setInvalid] = useState(!token)
 
@@ -55,9 +56,6 @@ function GuestShell({ children }) {
       <header className="topbar" style={{ position: 'sticky', top: 0 }}>
         <span className="sidebar-logo">AX</span>
         <span className="topbar-title">AX오픈랩 LMS · 공개게시판</span>
-        <div className="topbar-right">
-          <Link to="/login" className="btn btn-text">회원 로그인</Link>
-        </div>
       </header>
       <main className="content" style={{ width: '100%', maxWidth: 860, margin: '0 auto', padding: '32px 16px', flex: 1 }}>
         {children}
@@ -108,11 +106,30 @@ function GuestPostList({ posts, onWrite, onOpen }) {
   )
 }
 
+const EMOJIS = ['😀', '😊', '😂', '🥰', '👍', '👏', '🙏', '🎉', '❤️', '🔥', '💡', '✨', '✅', '🤔', '💪', '🚀']
+
 function GuestPostNew({ token, onDone }) {
   const toast = useToast()
   const [form, setForm] = useState({ org: '', author: '', title: '', body: '' })
   const [busy, setBusy] = useState(false)
+  const bodyRef = useRef(null)
   const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }))
+
+  // 커서 위치에 이모지 삽입 후 포커스 유지
+  function insertEmoji(emoji) {
+    const el = bodyRef.current
+    const start = el?.selectionStart ?? form.body.length
+    const end = el?.selectionEnd ?? form.body.length
+    const next = form.body.slice(0, start) + emoji + form.body.slice(end)
+    if (next.length > 5000) return
+    setForm((f) => ({ ...f, body: next }))
+    requestAnimationFrame(() => {
+      if (!el) return
+      el.focus()
+      const pos = start + emoji.length
+      el.setSelectionRange(pos, pos)
+    })
+  }
 
   async function submit(e) {
     e.preventDefault()
@@ -154,10 +171,21 @@ function GuestPostNew({ token, onDone }) {
         </div>
         <div className="field">
           <label>내용 <span className="req">*</span></label>
-          <textarea className="textarea" maxLength={5000} style={{ minHeight: 140 }} value={form.body} onChange={set('body')} />
+          <textarea ref={bodyRef} className="textarea" maxLength={5000} style={{ minHeight: 140 }} value={form.body} onChange={set('body')} />
+          <div className="row" style={{ gap: 2, flexWrap: 'wrap', marginTop: 6 }} aria-label="이모지 삽입">
+            {EMOJIS.map((em) => (
+              <button key={em} type="button" title={`${em} 삽입`}
+                onClick={() => insertEmoji(em)}
+                style={{ border: 'none', background: 'transparent', cursor: 'pointer', fontSize: 20, lineHeight: 1, padding: '4px 5px', borderRadius: 6 }}
+                onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--surface)' }}
+                onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent' }}>
+                {em}
+              </button>
+            ))}
+          </div>
         </div>
         <div className="row" style={{ gap: 8, justifyContent: 'flex-end' }}>
-          <button type="button" className="btn btn-white" onClick={() => onDone(false)}>취소</button>
+          <button type="button" className="btn btn-white" onClick={() => onDone(false)}>목록 보기</button>
           <button className="btn btn-primary" disabled={busy}>{busy ? '등록 중…' : '등록'}</button>
         </div>
       </form>
