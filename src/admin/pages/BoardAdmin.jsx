@@ -215,6 +215,36 @@ function GuestQrPanel() {
     }
   }
 
+  // QR을 고해상도로 새 창에 크게 표시 (현장 게시·스크린 공유용)
+  async function openLargeQr() {
+    try {
+      const m = await import('qrcode')
+      const bigQr = await (m.default || m).toDataURL(url, { width: 720, margin: 2 })
+      const win = window.open('', '_blank', 'width=720,height=820')
+      if (!win) { toast('팝업이 차단되었습니다. 브라우저에서 팝업을 허용해 주세요.', 'error'); return }
+      win.document.write(`<!doctype html>
+<html lang="ko"><head><meta charset="utf-8"><title>공개게시판 게스트 QR</title>
+<style>
+  body { margin: 0; min-height: 100vh; display: flex; flex-direction: column; align-items: center;
+         justify-content: center; gap: 16px; background: #fff; color: #222;
+         font-family: Pretendard, -apple-system, 'Malgun Gothic', sans-serif; }
+  h1 { font-size: 20px; margin: 0; }
+  img { width: min(80vw, 80vh, 640px); height: auto; }
+  p { font-size: 13px; color: #888; margin: 0; word-break: break-all; max-width: 90vw; text-align: center; }
+  @media print { p.hint { display: none; } }
+</style></head>
+<body>
+  <h1>AX오픈랩 LMS · 공개게시판 게스트 접속</h1>
+  <img src="${bigQr}" alt="게스트 게시판 접속 QR" />
+  <p>${url}</p>
+  <p class="hint">이 창을 그대로 인쇄(Ctrl+P)하거나 화면에 띄워 사용하세요.</p>
+</body></html>`)
+      win.document.close()
+    } catch {
+      toast('QR 확대에 실패했습니다.', 'error')
+    }
+  }
+
   if (token === undefined) return null
 
   return (
@@ -238,8 +268,12 @@ function GuestQrPanel() {
       ) : (
         <div className="row" style={{ gap: 20, alignItems: 'flex-start', flexWrap: 'wrap' }}>
           {qr && (
-            <img src={qr} alt="게스트 게시판 접속 QR" width={140} height={140}
-              style={{ borderRadius: 8, border: '1px solid var(--border)' }} />
+            <button type="button" onClick={openLargeQr} title="클릭하면 새 창에서 크게 보기"
+              style={{ padding: 0, border: 'none', background: 'transparent', cursor: 'zoom-in', textAlign: 'center' }}>
+              <img src={qr} alt="게스트 게시판 접속 QR — 클릭하면 크게 보기" width={140} height={140}
+                style={{ display: 'block', borderRadius: 8, border: '1px solid var(--border)' }} />
+              <span className="t-caption muted-soft">클릭하면 크게 보기</span>
+            </button>
           )}
           <div className="stack" style={{ gap: 8, flex: 1, minWidth: 240 }}>
             <div className="field" style={{ marginBottom: 0 }}>
