@@ -247,6 +247,25 @@ export function StarRating({ value = 0, onChange, size = 18, showValue = false, 
   )
 }
 
+/* ---------- 이모지 팔레트 (텍스트 입력 보조) ---------- */
+const EMOJIS = ['😀', '😊', '😂', '🥰', '👍', '👏', '🙏', '🎉', '❤️', '🔥', '💡', '✨', '✅', '🤔', '💪', '🚀']
+
+export function EmojiBar({ onPick, size = 20 }) {
+  return (
+    <div className="row" style={{ gap: 2, flexWrap: 'wrap', marginTop: 6 }} aria-label="이모지 삽입">
+      {EMOJIS.map((em) => (
+        <button key={em} type="button" title={`${em} 삽입`}
+          onClick={() => onPick(em)}
+          style={{ border: 'none', background: 'transparent', cursor: 'pointer', fontSize: size, lineHeight: 1, padding: '4px 5px', borderRadius: 6 }}
+          onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--surface)' }}
+          onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent' }}>
+          {em}
+        </button>
+      ))}
+    </div>
+  )
+}
+
 /* ---------- KPI stat card ---------- */
 export function StatCard({ label, value, caption, large }) {
   return (

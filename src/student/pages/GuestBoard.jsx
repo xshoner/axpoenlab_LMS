@@ -2,8 +2,8 @@ import { useEffect, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { IconArrowLeft, IconPlus, IconMessageCircle, IconMessages } from '@tabler/icons-react'
 import { supabase } from '../../lib/supabase'
-import { Loading, EmptyState, useToast } from '../../shared/ui'
-import { fmtDate, isNew } from '../../lib/helpers'
+import { Loading, EmptyState, EmojiBar, useToast } from '../../shared/ui'
+import { fmtDate, isNew, insertAtCursor } from '../../lib/helpers'
 
 /* 게스트 공개게시판 — 관리자가 발급한 QR(토큰 링크)로 접속.
    회원가입 없이 열람·글쓰기 가능. 글 작성 시 소속·작성자·제목·내용 필수.
@@ -106,8 +106,6 @@ function GuestPostList({ posts, onWrite, onOpen }) {
   )
 }
 
-const EMOJIS = ['😀', '😊', '😂', '🥰', '👍', '👏', '🙏', '🎉', '❤️', '🔥', '💡', '✨', '✅', '🤔', '💪', '🚀']
-
 function GuestPostNew({ token, onDone }) {
   const toast = useToast()
   const [form, setForm] = useState({ org: '', author: '', title: '', body: '' })
@@ -115,20 +113,9 @@ function GuestPostNew({ token, onDone }) {
   const bodyRef = useRef(null)
   const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }))
 
-  // 커서 위치에 이모지 삽입 후 포커스 유지
-  function insertEmoji(emoji) {
-    const el = bodyRef.current
-    const start = el?.selectionStart ?? form.body.length
-    const end = el?.selectionEnd ?? form.body.length
-    const next = form.body.slice(0, start) + emoji + form.body.slice(end)
-    if (next.length > 5000) return
-    setForm((f) => ({ ...f, body: next }))
-    requestAnimationFrame(() => {
-      if (!el) return
-      el.focus()
-      const pos = start + emoji.length
-      el.setSelectionRange(pos, pos)
-    })
+  function pickEmoji(em) {
+    const next = insertAtCursor(bodyRef.current, em, form.body, 5000)
+    if (next != null) setForm((f) => ({ ...f, body: next }))
   }
 
   async function submit(e) {
@@ -172,17 +159,7 @@ function GuestPostNew({ token, onDone }) {
         <div className="field">
           <label>내용 <span className="req">*</span></label>
           <textarea ref={bodyRef} className="textarea" maxLength={5000} style={{ minHeight: 140 }} value={form.body} onChange={set('body')} />
-          <div className="row" style={{ gap: 2, flexWrap: 'wrap', marginTop: 6 }} aria-label="이모지 삽입">
-            {EMOJIS.map((em) => (
-              <button key={em} type="button" title={`${em} 삽입`}
-                onClick={() => insertEmoji(em)}
-                style={{ border: 'none', background: 'transparent', cursor: 'pointer', fontSize: 20, lineHeight: 1, padding: '4px 5px', borderRadius: 6 }}
-                onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--surface)' }}
-                onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent' }}>
-                {em}
-              </button>
-            ))}
-          </div>
+          <EmojiBar onPick={pickEmoji} />
         </div>
         <div className="row" style={{ gap: 8, justifyContent: 'flex-end' }}>
           <button type="button" className="btn btn-white" onClick={() => onDone(false)}>목록 보기</button>

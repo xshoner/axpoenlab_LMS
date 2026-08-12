@@ -52,6 +52,21 @@ export function pad2(n) {
   return String(n).padStart(2, '0')
 }
 
+// textarea/input의 커서 위치에 텍스트 삽입 — 새 값 반환(초과 시 null), 포커스·커서 유지
+export function insertAtCursor(el, text, value, max = Infinity) {
+  const start = el?.selectionStart ?? value.length
+  const end = el?.selectionEnd ?? value.length
+  const next = value.slice(0, start) + text + value.slice(end)
+  if (next.length > max) return null
+  requestAnimationFrame(() => {
+    if (!el) return
+    el.focus()
+    const pos = start + text.length
+    el.setSelectionRange(pos, pos)
+  })
+  return next
+}
+
 export function extOf(name) {
   const i = name.lastIndexOf('.')
   return i < 0 ? '' : name.slice(i + 1).toLowerCase()

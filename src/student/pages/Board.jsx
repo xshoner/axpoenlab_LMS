@@ -1,10 +1,10 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Link, Route, Routes, useNavigate, useParams } from 'react-router-dom'
 import { IconArrowLeft, IconPlus, IconTrash, IconMessageCircle } from '@tabler/icons-react'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../shared/auth'
-import { Loading, EmptyState, ConfirmDialog, useToast } from '../../shared/ui'
-import { fmtDate, isNew } from '../../lib/helpers'
+import { Loading, EmptyState, ConfirmDialog, EmojiBar, useToast } from '../../shared/ui'
+import { fmtDate, isNew, insertAtCursor } from '../../lib/helpers'
 
 /* 공개게시판 — 누구나 글·댓글 작성 가능, 본인 글은 삭제 가능 */
 export default function Board() {
@@ -77,6 +77,12 @@ function PostNew() {
   const [title, setTitle] = useState('')
   const [body, setBody] = useState('')
   const [busy, setBusy] = useState(false)
+  const bodyRef = useRef(null)
+
+  function pickEmoji(em) {
+    const next = insertAtCursor(bodyRef.current, em, body)
+    if (next != null) setBody(next)
+  }
 
   async function submit(e) {
     e.preventDefault()
@@ -102,7 +108,8 @@ function PostNew() {
         </div>
         <div className="field">
           <label>내용 <span className="req">*</span></label>
-          <textarea className="textarea" value={body} onChange={(e) => setBody(e.target.value)} />
+          <textarea ref={bodyRef} className="textarea" value={body} onChange={(e) => setBody(e.target.value)} />
+          <EmojiBar onPick={pickEmoji} />
         </div>
         <div className="row" style={{ gap: 8, justifyContent: 'flex-end' }}>
           <button type="button" className="btn btn-white" onClick={() => nav('/board')}>취소</button>
@@ -124,6 +131,12 @@ function PostDetail() {
   const [busy, setBusy] = useState(false)
   const [deleteTarget, setDeleteTarget] = useState(null) // 'post' | comment row
   const [deleteBusy, setDeleteBusy] = useState(false)
+  const commentRef = useRef(null)
+
+  function pickEmoji(em) {
+    const next = insertAtCursor(commentRef.current, em, comment)
+    if (next != null) setComment(next)
+  }
 
   async function load() {
     const [pQ, cQ] = await Promise.all([
@@ -223,12 +236,15 @@ function PostDetail() {
             )}
           </div>
         ))}
-        <form onSubmit={addComment} className="row mt-16" style={{ gap: 8, alignItems: 'flex-start' }}>
-          <textarea className="textarea" style={{ minHeight: 60, flex: 1 }} placeholder="댓글을 입력하세요"
-            value={comment} onChange={(e) => setComment(e.target.value)} />
-          <button className="btn btn-primary btn-sm" disabled={busy || !comment.trim()} style={{ marginTop: 4 }}>
-            {busy ? '등록 중…' : '등록'}
-          </button>
+        <form onSubmit={addComment} className="mt-16">
+          <div className="row" style={{ gap: 8, alignItems: 'flex-start' }}>
+            <textarea ref={commentRef} className="textarea" style={{ minHeight: 60, flex: 1 }} placeholder="댓글을 입력하세요"
+              value={comment} onChange={(e) => setComment(e.target.value)} />
+            <button className="btn btn-primary btn-sm" disabled={busy || !comment.trim()} style={{ marginTop: 4 }}>
+              {busy ? '등록 중…' : '등록'}
+            </button>
+          </div>
+          <EmojiBar onPick={pickEmoji} size={18} />
         </form>
       </div>
 
