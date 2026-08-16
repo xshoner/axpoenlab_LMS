@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
@@ -15,6 +15,7 @@ export default function AdminDashboard() {
   const { cohorts, selectedId, selected } = useCohort()
   const [global_, setGlobal] = useState(null)
   const [cohortStats, setCohortStats] = useState(null)
+  const [visitRange, setVisitRange] = useState('month') // 'month': 최근 30일(일별) | 'year': 최근 1년(월별)
 
   // 전역 통계
   useEffect(() => {
@@ -26,7 +27,7 @@ export default function AdminDashboard() {
         supabase.from('submissions').select('id', { count: 'exact', head: true }),
         supabase.from('inquiries').select('id', { count: 'exact', head: true }).eq('status', 'open'),
         supabase.rpc('visit_stats'),
-        supabase.rpc('visit_series', { p_days: 30 }),
+        supabase.rpc('visit_series', { p_days: 365 }),
         supabase.from('notices').select('id, title, pinned, created_at, cohort_id')
           .order('pinned', { ascending: false }).order('created_at', { ascending: false }).limit(6),
         supabase.from('board_posts')
@@ -44,7 +45,7 @@ export default function AdminDashboard() {
         totalSubmissions: subsQ.count || 0,
         unanswered: inqQ.count || 0,
         visits: visitsQ.data || { today: 0, total: 0 },
-        visitSeries: (visitSeriesQ.data || []).map((v) => ({ date: fmtDate(v.d).slice(5), 방문: Number(v.cnt) })),
+        visitSeriesRaw: visitSeriesQ.data || [],
         perCohort,
         notices: noticesQ.data || [],
         boardPosts: boardQ.data || [],
@@ -125,6 +126,23 @@ export default function AdminDashboard() {
     return () => { alive = false }
   }, [selectedId])
 
+  // 방문 추이: 최근 30일은 일별, 최근 1년은 월별로 집계해 표시
+  const visitSeries = useMemo(() => {
+    const raw = global_?.visitSeriesRaw || []
+    if (visitRange === 'month') {
+      const cutoff = fmtDate(new Date(Date.now() - 30 * 86400000))
+      return raw.filter((v) => String(v.d) > cutoff)
+        .map((v) => ({ date: fmtDate(v.d).slice(5), 방문: Number(v.cnt) }))
+    }
+    const byMonth = {}
+    for (const v of raw) {
+      const key = String(v.d).slice(0, 7)
+      byMonth[key] = (byMonth[key] || 0) + Number(v.cnt)
+    }
+    return Object.keys(byMonth).sort()
+      .map((key) => ({ date: key.slice(2).replace('-', '.'), 방문: byMonth[key] }))
+  }, [global_, visitRange])
+
   if (!global_) return <Loading />
 
   return (
@@ -153,17 +171,27 @@ export default function AdminDashboard() {
             </ResponsiveContainer>
           </div>
           <div className="chart-panel">
-            <h3 className="t-h3 mb-16">방문 추이 (최근 30일)</h3>
-            {global_.visitSeries.length === 0 ? (
+            <div className="row mb-16" style={{ gap: 6 }}>
+              <h3 className="t-h3">방문 추이 {visitRange === 'month' ? '(최근 30일)' : '(최근 1년)'}</h3>
+              <div className="row" style={{ gap: 4, marginLeft: 'auto' }}>
+                <button className={`btn btn-sm ${visitRange === 'month' ? 'btn-primary' : 'btn-white'}`}
+                  onClick={() => setVisitRange('month')}>1개월</button>
+                <button className={`btn btn-sm ${visitRange === 'year' ? 'btn-primary' : 'btn-white'}`}
+                  onClick={() => setVisitRange('year')}>연간</button>
+              </div>
+            </div>
+            {visitSeries.length === 0 ? (
               <div className="empty-state" style={{ padding: 24 }}>아직 방문 기록이 없습니다</div>
             ) : (
               <ResponsiveContainer width="100%" height={150}>
-                <LineChart data={global_.visitSeries}>
+                <LineChart data={visitSeries}>
                   <CartesianGrid vertical={false} stroke="var(--border)" />
                   <XAxis dataKey="date" tick={{ fontSize: 11, fill: 'var(--muted)' }} />
                   <YAxis tick={{ fontSize: 11, fill: 'var(--muted)' }} allowDecimals={false} width={28} />
                   <Tooltip contentStyle={{ borderRadius: 8, border: '1px solid var(--border)', fontSize: 12 }} />
-                  <Line type="monotone" dataKey="방문" stroke="var(--chart-1)" strokeWidth={2} dot={false} isAnimationActive={false} />
+                  <Line type="monotone" dataKey="방문" stroke="var(--chart-1)" strokeWidth={2}
+                    dot={visitRange === 'year' ? { r: 3, fill: 'var(--chart-1)', strokeWidth: 0 } : false}
+                    isAnimationActive={false} />
                 </LineChart>
               </ResponsiveContainer>
             )}
