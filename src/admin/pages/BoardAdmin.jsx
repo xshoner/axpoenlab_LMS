@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { IconArrowLeft, IconTrash, IconMessageCircle, IconQrcode, IconCopy, IconRefresh } from '@tabler/icons-react'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../shared/auth'
@@ -9,8 +10,15 @@ import { fmtDate } from '../../lib/helpers'
 export default function BoardAdmin() {
   const { profile } = useAuth()
   const toast = useToast()
+  const [searchParams, setSearchParams] = useSearchParams()
   const [rows, setRows] = useState(null)
-  const [openId, setOpenId] = useState(null)
+  // 대시보드 '공개게시판 최근 게시글'에서 ?post=<id>로 진입하면 해당 글을 바로 연다
+  const [openId, setOpenId] = useState(searchParams.get('post') || null)
+
+  function closePost() {
+    setOpenId(null)
+    if (searchParams.get('post')) setSearchParams({}, { replace: true })
+  }
   const [comments, setComments] = useState([])
   const [reply, setReply] = useState('')
   const [busy, setBusy] = useState(false)
@@ -24,6 +32,11 @@ export default function BoardAdmin() {
     setRows(data || [])
   }
   useEffect(() => { load() }, [])
+
+  useEffect(() => {
+    const p = searchParams.get('post')
+    if (p) setOpenId(p)
+  }, [searchParams])
 
   useEffect(() => {
     if (!openId) { setComments([]); return }
@@ -42,7 +55,7 @@ export default function BoardAdmin() {
         const { error } = await supabase.from('board_posts').delete().eq('id', deleteTarget.row.id)
         if (error) throw error
         toast('게시글이 삭제되었습니다.')
-        if (openId === deleteTarget.row.id) setOpenId(null)
+        if (openId === deleteTarget.row.id) closePost()
         load()
       } else {
         const { error } = await supabase.from('board_comments').delete().eq('id', deleteTarget.row.id)
@@ -77,7 +90,7 @@ export default function BoardAdmin() {
   if (current) {
     return (
       <div className="stack" style={{ gap: 16, maxWidth: 760 }}>
-        <button className="btn btn-text" style={{ alignSelf: 'flex-start' }} onClick={() => setOpenId(null)}>
+        <button className="btn btn-text" style={{ alignSelf: 'flex-start' }} onClick={closePost}>
           <IconArrowLeft size={14} stroke={1.75} /> 목록으로
         </button>
         <div className="card-panel">

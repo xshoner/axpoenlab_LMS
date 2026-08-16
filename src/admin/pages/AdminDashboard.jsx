@@ -263,18 +263,26 @@ export default function AdminDashboard() {
         </div>
         {global_.boardPosts.length === 0 ? (
           <div className="t-muted-sm">아직 게시글이 없습니다.</div>
-        ) : global_.boardPosts.map((p) => (
-          <div key={p.id} className="row-between" style={{ padding: '8px 0', borderBottom: '1px solid var(--border)' }}>
-            <span className="t-muted-sm" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-              {p.title}
-              {(p.board_comments?.[0]?.count || 0) > 0 && (
-                <span className="t-caption" style={{ color: 'var(--primary)', marginLeft: 6 }}>[{p.board_comments[0].count}]</span>
-              )}
-              <span className="muted-soft"> — {p.author_org ? `${p.author_org} · ` : ''}{p.author_name}{p.is_guest ? ' (게스트)' : ''}</span>
-            </span>
-            <span className="t-caption muted-soft tnum" style={{ flexShrink: 0 }}>{fmtDate(p.created_at)}</span>
-          </div>
-        ))}
+        ) : (
+          <>
+            <div className="board-widget-row head t-caption muted-soft">
+              <span>제목</span><span>소속</span><span>작성자</span><span>작성일시</span>
+            </div>
+            {global_.boardPosts.map((p) => (
+              <Link key={p.id} to={`/board?post=${p.id}`} className="board-widget-row" style={{ textDecoration: 'none', color: 'inherit' }}>
+                <span>
+                  {p.title}
+                  {(p.board_comments?.[0]?.count || 0) > 0 && (
+                    <span className="t-caption" style={{ color: 'var(--primary)', marginLeft: 6 }}>[{p.board_comments[0].count}]</span>
+                  )}
+                </span>
+                <span className="t-muted-sm">{p.author_org || '-'}</span>
+                <span className="t-muted-sm">{p.author_name}{p.is_guest ? ' (게스트)' : ''}</span>
+                <span className="t-caption muted-soft tnum">{fmtDate(p.created_at, true)}</span>
+              </Link>
+            ))}
+          </>
+        )}
       </section>
     </div>
   )

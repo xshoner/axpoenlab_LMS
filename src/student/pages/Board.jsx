@@ -54,7 +54,7 @@ function PostList() {
                 const commentCount = r.board_comments?.[0]?.count || 0
                 return (
                   <tr key={r.id}>
-                    <td>
+                    <td className="t-emph">
                       <Link to={r.id} style={{ textDecoration: 'none', color: 'var(--foreground)' }}>
                         {r.title}
                         {commentCount > 0 && <span className="t-caption" style={{ color: 'var(--primary)', marginLeft: 6 }}>[{commentCount}]</span>}

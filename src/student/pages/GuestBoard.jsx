@@ -108,7 +108,7 @@ function GuestPostList({ posts, onWrite, onOpen }) {
             <tbody>
               {pagePosts.map((p) => (
                 <tr key={p.id} style={{ cursor: 'pointer' }} onClick={() => onOpen(p.id)}>
-                  <td>
+                  <td className="t-emph">
                     {p.title}
                     {p.comment_count > 0 && <span className="t-caption" style={{ color: 'var(--primary)', marginLeft: 6 }}>[{p.comment_count}]</span>}
                     {isNew(p.created_at) && <span className="badge-new" style={{ marginLeft: 6 }}>NEW</span>}

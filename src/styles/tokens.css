@@ -259,6 +259,18 @@ input, textarea, select { font-family: inherit; }
 }
 .visitor-counter .vsep { width: 1px; height: 14px; background: var(--border); }
 
+/* 대시보드 공개게시판 최근 글 — 제목/소속/작성자/작성일시 4컬럼 구획 */
+.board-widget-row {
+  display: grid; grid-template-columns: minmax(0, 1fr) 130px 100px 125px;
+  gap: 12px; align-items: center; padding: 8px 0; border-bottom: 1px solid var(--border);
+}
+.board-widget-row > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.board-widget-row.head { padding: 4px 0; }
+@media (max-width: 640px) {
+  .board-widget-row { grid-template-columns: minmax(0, 1fr) 90px; }
+  .board-widget-row > :nth-child(2), .board-widget-row > :nth-child(3) { display: none; }
+}
+
 .pagination { display: flex; justify-content: center; align-items: center; gap: 6px; padding: 8px 0; flex-wrap: wrap; }
 .page-btn {
   min-width: 32px; height: 32px; padding: 0 8px; border-radius: 8px;

@@ -157,19 +157,21 @@ export default function Dashboard() {
           <EmptyState title="아직 게시글이 없습니다" description="공개게시판에 첫 글을 남겨 보세요." />
         ) : (
           <div>
+            <div className="board-widget-row head t-caption muted-soft">
+              <span>제목</span><span>소속</span><span>작성자</span><span>작성일시</span>
+            </div>
             {boardPosts.map((p) => (
-              <Link key={p.id} to={`/board/${p.id}`} className="attachment-row" style={{ textDecoration: 'none', color: 'inherit' }}>
-                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>
+              <Link key={p.id} to={`/board/${p.id}`} className="board-widget-row" style={{ textDecoration: 'none', color: 'inherit' }}>
+                <span>
                   {p.title}
                   {(p.board_comments?.[0]?.count || 0) > 0 && (
                     <span className="t-caption" style={{ color: 'var(--primary)', marginLeft: 6 }}>[{p.board_comments[0].count}]</span>
                   )}
+                  {isNew(p.created_at) && <span className="badge-new" style={{ marginLeft: 6 }}>NEW</span>}
                 </span>
-                {isNew(p.created_at) && <span className="badge-new">NEW</span>}
-                <span className="t-caption muted-soft" style={{ flexShrink: 0 }}>
-                  {p.author_org ? `${p.author_org} · ` : ''}{p.author_name}
-                </span>
-                <span className="size tnum">{fmtDate(p.created_at)}</span>
+                <span className="t-muted-sm">{p.author_org || '-'}</span>
+                <span className="t-muted-sm">{p.author_name}</span>
+                <span className="t-caption muted-soft tnum">{fmtDate(p.created_at, true)}</span>
               </Link>
             ))}
           </div>
