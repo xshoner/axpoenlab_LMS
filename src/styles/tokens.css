@@ -377,7 +377,9 @@ input, textarea, select { font-family: inherit; }
   display: flex; align-items: center; gap: 12px; background: var(--background);
   border: 1px solid var(--border); border-radius: 8px; padding: 14px 16px; min-height: 52px;
   cursor: pointer; transition: background 0.2s ease, border-color 0.2s ease; font-size: 16px;
+  min-width: 0; overflow-wrap: anywhere; word-break: keep-all;
 }
+.choice-row > span { flex: 1; min-width: 0; }
 .choice-row:hover { background: var(--primary-tint); border-color: var(--primary-light); }
 .choice-row.selected {
   background: var(--primary-tint); border: 2px solid var(--primary); padding: 13px 15px;
