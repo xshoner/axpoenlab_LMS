@@ -3,7 +3,7 @@ import { Link, Route, Routes, useNavigate, useParams } from 'react-router-dom'
 import { IconArrowLeft, IconPlus, IconTrash, IconMessageCircle } from '@tabler/icons-react'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../shared/auth'
-import { Loading, EmptyState, ConfirmDialog, EmojiBar, useToast } from '../../shared/ui'
+import { Loading, EmptyState, ConfirmDialog, EmojiBar, Pagination, useToast } from '../../shared/ui'
 import { fmtDate, isNew, insertAtCursor } from '../../lib/helpers'
 
 /* 공개게시판 — 누구나 글·댓글 작성 가능, 본인 글은 삭제 가능 */
@@ -17,8 +17,11 @@ export default function Board() {
   )
 }
 
+const PAGE_SIZE = 20
+
 function PostList() {
   const [rows, setRows] = useState(null)
+  const [page, setPage] = useState(1)
 
   useEffect(() => {
     supabase.from('board_posts')
@@ -28,6 +31,8 @@ function PostList() {
   }, [])
 
   if (!rows) return <Loading />
+
+  const pageRows = rows.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE)
 
   return (
     <div className="stack">
@@ -42,10 +47,10 @@ function PostList() {
         <div className="table-wrap">
           <table className="data-table">
             <thead>
-              <tr><th>제목</th><th style={{ width: 140 }}>소속</th><th style={{ width: 140 }}>작성자</th><th style={{ width: 130 }}>작성일</th></tr>
+              <tr><th style={{ width: '44%' }}>제목</th><th style={{ width: '20%' }}>소속</th><th style={{ width: '20%' }}>작성자</th><th style={{ width: '16%' }}>작성일</th></tr>
             </thead>
             <tbody>
-              {rows.map((r) => {
+              {pageRows.map((r) => {
                 const commentCount = r.board_comments?.[0]?.count || 0
                 return (
                   <tr key={r.id}>
@@ -66,6 +71,7 @@ function PostList() {
           </table>
         </div>
       )}
+      <Pagination page={page} total={rows.length} pageSize={PAGE_SIZE} onChange={setPage} />
     </div>
   )
 }

@@ -27,13 +27,13 @@ import Profile from './pages/Profile'
 
 const MENU = [
   { to: '/', label: '대시보드', icon: IconLayoutDashboard, end: true },
+  { to: '/notices', label: '공지사항', icon: IconSpeakerphone },
   { to: '/courses', label: '내 교육과정', icon: IconBook2 },
   { to: '/assignments', label: '과제 제출', icon: IconClipboardText },
   { to: '/hackathon', label: '바이브 해커톤', icon: IconRocket },
-  { to: '/notices', label: '공지사항', icon: IconSpeakerphone },
-  { to: '/inquiries', label: '문의하기', icon: IconMessageCircleQuestion },
-  { to: '/board', label: '공개게시판', icon: IconMessages },
   { to: '/hall-of-fame', label: '명예의 전당', icon: IconTrophy },
+  { to: '/inquiries', label: '1:1 문의하기', icon: IconMessageCircleQuestion },
+  { to: '/board', label: '공개게시판', icon: IconMessages },
 ]
 
 const PAGE_TITLES = [
@@ -41,7 +41,7 @@ const PAGE_TITLES = [
   ['/assignments', '과제 제출'],
   ['/hackathon', '바이브 해커톤'],
   ['/notices', '공지사항'],
-  ['/inquiries', '문의하기'],
+  ['/inquiries', '1:1 문의하기'],
   ['/board', '공개게시판'],
   ['/hall-of-fame', '명예의 전당'],
   ['/profile', '내 정보'],

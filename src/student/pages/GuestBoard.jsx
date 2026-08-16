@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { IconArrowLeft, IconPlus, IconMessageCircle, IconMessages } from '@tabler/icons-react'
 import { supabase } from '../../lib/supabase'
-import { Loading, EmptyState, EmojiBar, useToast } from '../../shared/ui'
+import { Loading, EmptyState, EmojiBar, Pagination, useToast } from '../../shared/ui'
 import { fmtDate, isNew, insertAtCursor } from '../../lib/helpers'
 
 /* 게스트 공개게시판 — 관리자가 발급한 QR(토큰 링크)로 접속.
@@ -22,6 +22,22 @@ export default function GuestBoard() {
     setPosts(data.posts || [])
   }
   useEffect(() => { if (token) loadList() }, [token]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // 방문자 카운팅 — QR 게스트 접속도 회원과 동일하게 하루 1회 집계된다
+  useEffect(() => {
+    if (!token) return
+    try {
+      const key = 'ax-visit-' + new Date().toISOString().slice(0, 10)
+      if (sessionStorage.getItem(key)) return
+      let gid = localStorage.getItem('ax-guest-id')
+      if (!gid) {
+        gid = crypto.randomUUID ? crypto.randomUUID().replace(/-/g, '') : Math.random().toString(36).slice(2) + Date.now().toString(36)
+        localStorage.setItem('ax-guest-id', gid)
+      }
+      supabase.rpc('guest_record_visit', { p_token: token, p_guest_id: gid })
+        .then(({ data }) => { if (data?.ok) sessionStorage.setItem(key, '1') })
+    } catch { /* counting is non-critical */ }
+  }, [token])
 
   if (invalid) {
     return (
@@ -64,7 +80,11 @@ function GuestShell({ children }) {
   )
 }
 
+const PAGE_SIZE = 20
+
 function GuestPostList({ posts, onWrite, onOpen }) {
+  const [page, setPage] = useState(1)
+  const pagePosts = posts.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE)
   return (
     <div className="stack">
       <div className="row-between">
@@ -83,10 +103,10 @@ function GuestPostList({ posts, onWrite, onOpen }) {
         <div className="table-wrap">
           <table className="data-table">
             <thead>
-              <tr><th>제목</th><th style={{ width: 130 }}>소속</th><th style={{ width: 120 }}>작성자</th><th style={{ width: 110 }}>작성일</th></tr>
+              <tr><th style={{ width: '44%' }}>제목</th><th style={{ width: '20%' }}>소속</th><th style={{ width: '20%' }}>작성자</th><th style={{ width: '16%' }}>작성일</th></tr>
             </thead>
             <tbody>
-              {posts.map((p) => (
+              {pagePosts.map((p) => (
                 <tr key={p.id} style={{ cursor: 'pointer' }} onClick={() => onOpen(p.id)}>
                   <td>
                     {p.title}
@@ -102,6 +122,7 @@ function GuestPostList({ posts, onWrite, onOpen }) {
           </table>
         </div>
       )}
+      <Pagination page={page} total={posts.length} pageSize={PAGE_SIZE} onChange={setPage} />
     </div>
   )
 }

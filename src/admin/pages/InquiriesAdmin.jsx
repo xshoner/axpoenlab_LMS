@@ -97,7 +97,7 @@ export default function InquiriesAdmin() {
 
   return (
     <div className="stack" style={{ gap: 16 }}>
-      <h2 className="t-h2">문의 관리 <span className="t-muted-sm tnum">(미답변 {filtered.filter((r) => r.status === 'open').length}건)</span></h2>
+      <h2 className="t-h2">1:1 문의 관리 <span className="t-muted-sm tnum">(미답변 {filtered.filter((r) => r.status === 'open').length}건)</span></h2>
       {filtered.length === 0 ? (
         <EmptyState title="문의가 없습니다" />
       ) : (

@@ -112,6 +112,22 @@ export function StatusPill({ kind = 'neutral', children }) {
   )
 }
 
+/* ---------- Pagination ---------- */
+export function Pagination({ page, total, pageSize = 20, onChange }) {
+  const pages = Math.ceil(total / pageSize)
+  if (pages <= 1) return null
+  return (
+    <nav className="pagination" aria-label="페이지 이동">
+      {Array.from({ length: pages }, (_, i) => i + 1).map((n) => (
+        <button key={n} type="button" className={`page-btn${n === page ? ' active' : ''}`}
+          aria-current={n === page ? 'page' : undefined} onClick={() => onChange(n)}>
+          {n}
+        </button>
+      ))}
+    </nav>
+  )
+}
+
 /* ---------- Visitor counter ---------- */
 export function VisitorCounter() {
   const [stats, setStats] = useState(null)

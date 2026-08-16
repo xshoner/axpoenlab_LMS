@@ -34,7 +34,7 @@ const MENU = [
   { to: '/quizzes', label: '퀴즈 관리', icon: IconPencilQuestion },
   { to: '/notices', label: '공지 관리', icon: IconSpeakerphone },
   { to: '/members', label: '회원 관리', icon: IconUsers },
-  { to: '/inquiries', label: '문의 관리', icon: IconMessageCircleQuestion },
+  { to: '/inquiries', label: '1:1 문의 관리', icon: IconMessageCircleQuestion },
   { to: '/board', label: '게시판 관리', icon: IconMessages },
 ]
 

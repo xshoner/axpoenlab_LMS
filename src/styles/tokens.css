@@ -259,6 +259,15 @@ input, textarea, select { font-family: inherit; }
 }
 .visitor-counter .vsep { width: 1px; height: 14px; background: var(--border); }
 
+.pagination { display: flex; justify-content: center; align-items: center; gap: 6px; padding: 8px 0; flex-wrap: wrap; }
+.page-btn {
+  min-width: 32px; height: 32px; padding: 0 8px; border-radius: 8px;
+  border: 1px solid var(--border); background: var(--background); color: var(--foreground);
+  font-size: 13px; font-variant-numeric: tabular-nums; cursor: pointer;
+}
+.page-btn:hover { border-color: var(--primary); color: var(--primary); }
+.page-btn.active { background: var(--primary); border-color: var(--primary); color: var(--on-primary); cursor: default; }
+
 .avatar {
   width: 32px; height: 32px; border-radius: 9999px; background: var(--primary-light);
   color: var(--primary); display: inline-flex; align-items: center; justify-content: center;
