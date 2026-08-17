@@ -193,7 +193,15 @@ function SnapshotDialog({ cohort, onClose }) {
       {!masters ? <Loading /> : masters.length === 0 ? (
         <div className="t-muted-sm">마스터 강좌가 없습니다. 강좌 관리에서 먼저 만들어 주세요.</div>
       ) : (
-        <div className="stack" style={{ gap: 8, maxHeight: 320, overflowY: 'auto' }}>
+        <>
+          <div className="row-between mb-8">
+            <span className="t-caption muted-soft tnum">전체 {masters.length}개 중 {checked.length}개 선택</span>
+            <button className="btn btn-white btn-sm"
+              onClick={() => setChecked(checked.length === masters.length ? [] : masters.map((m) => m.id))}>
+              {checked.length === masters.length ? '전체 해제' : '전체 선택'}
+            </button>
+          </div>
+          <div className="stack" style={{ gap: 8, maxHeight: 320, overflowY: 'auto' }}>
           {masters.map((m) => (
             <label key={m.id} className={`choice-row ${checked.includes(m.id) ? 'selected' : ''}`}>
               <input type="checkbox" checked={checked.includes(m.id)}
@@ -201,7 +209,8 @@ function SnapshotDialog({ cohort, onClose }) {
               <span>{m.title}<br /><span className="t-caption muted-soft">{m.summary}</span></span>
             </label>
           ))}
-        </div>
+          </div>
+        </>
       )}
     </Dialog>
   )
