@@ -120,6 +120,7 @@ function CohortCourses() {
   const [editing, setEditing] = useState(null)
   const [deleteTarget, setDeleteTarget] = useState(null)
   const [busy, setBusy] = useState(false)
+  const dragIdx = useRef(null)
 
   const [ratingMap, setRatingMap] = useState({})
 
@@ -138,12 +139,35 @@ function CohortCourses() {
   }
   useEffect(() => { load() }, [selectedId])
 
+  // 현재 나열 순서대로 course_no를 1부터 다시 부여 (변경된 행만 갱신)
+  async function persistOrder(list) {
+    const updates = list
+      .map((c, i) => ({ id: c.id, no: i + 1, changed: c.course_no !== i + 1 }))
+      .filter((u) => u.changed)
+    if (updates.length === 0) return
+    await Promise.all(updates.map((u) =>
+      supabase.from('cohort_courses').update({ course_no: u.no }).eq('id', u.id)))
+  }
+
   async function remove() {
     setBusy(true)
     const { error } = await supabase.from('cohort_courses').delete().eq('id', deleteTarget.id)
+    if (!error) await persistOrder(rows.filter((r) => r.id !== deleteTarget.id))
     setBusy(false)
     if (error) toast('삭제 실패', 'error')
-    else { toast('강좌가 삭제되었습니다. 다른 기수에는 영향이 없습니다.'); setDeleteTarget(null); load() }
+    else { toast('강좌가 삭제되었습니다. 남은 강좌 번호가 순서대로 재정렬되었습니다.'); setDeleteTarget(null); load() }
+  }
+
+  async function dropAt(to) {
+    const from = dragIdx.current
+    dragIdx.current = null
+    if (from == null || from === to) return
+    const list = [...rows]
+    const [moved] = list.splice(from, 1)
+    list.splice(to, 0, moved)
+    setRows(list.map((c, i) => ({ ...c, course_no: i + 1 }))) // 낙관적 반영
+    await persistOrder(list)
+    load()
   }
 
   if (!selectedId) return <EmptyState title="기수를 선택해 주세요" description="상단의 기수 선택 드롭다운에서 기수를 선택하면 해당 기수의 강좌가 표시됩니다." />
@@ -161,7 +185,7 @@ function CohortCourses() {
   return (
     <>
       <div className="row-between">
-        <p className="t-muted-sm">{selected?.name}의 강좌입니다. 여기서의 수정·삭제는 다른 기수와 마스터에 영향을 주지 않습니다.</p>
+        <p className="t-muted-sm">{selected?.name}의 강좌입니다. 여기서의 수정·삭제는 다른 기수와 마스터에 영향을 주지 않습니다. 카드를 드래그하면 순서가 바뀌고 강좌 번호가 자동으로 재부여됩니다.</p>
         <button className="btn btn-primary btn-sm" onClick={() => setEditing('new')}><IconPlus size={14} stroke={1.75} /> 새 강좌</button>
       </div>
       {rows.length === 0 ? (
@@ -173,7 +197,11 @@ function CohortCourses() {
             const stat = ratingMap[c.id]
             const theme = ((Number(c.course_no) || idx + 1) - 1) % 6
             return (
-              <div key={c.id} className={`card-course theme-${theme}`} onClick={() => setEditing(c)}>
+              <div key={c.id} className={`card-course theme-${theme}`} onClick={() => setEditing(c)}
+                draggable title="드래그하여 순서 변경"
+                onDragStart={() => { dragIdx.current = idx }}
+                onDragOver={(e) => e.preventDefault()}
+                onDrop={() => dropAt(idx)}>
                 <span className="card-course-watermark" aria-hidden="true">{pad2(c.course_no)}</span>
                 <div className="row-between mb-8">
                   <span className="badge-course-no">{pad2(c.course_no)}</span>
