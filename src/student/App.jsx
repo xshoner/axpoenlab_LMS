@@ -168,7 +168,7 @@ export default function App() {
               <span className="t-label" style={{ color: 'var(--foreground)' }}>{profile.name}</span>
             </div>
           </header>
-          <main className="content">
+          <main className="content" style={{ maxWidth: 1440 }}>
             <Routes>
               <Route path="/" element={<Dashboard />} />
               <Route path="/courses" element={<Courses />} />

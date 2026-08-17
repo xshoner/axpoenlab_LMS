@@ -27,6 +27,7 @@ function MasterCourses() {
   const [deleteTarget, setDeleteTarget] = useState(null)
   const [busy, setBusy] = useState(false)
   const [ratingMap, setRatingMap] = useState({})
+  const dragIdx = useRef(null)
 
   async function load() {
     const [{ data }, { data: stats }] = await Promise.all([
@@ -55,6 +56,28 @@ function MasterCourses() {
     else { toast('마스터 강좌가 삭제되었습니다. 기존 기수 강좌는 유지됩니다.'); setDeleteTarget(null); load() }
   }
 
+  // 현재 나열 순서대로 sort_order를 다시 부여 (변경된 행만 갱신 — 번호는 표시하지 않음)
+  async function persistOrder(list) {
+    const updates = list
+      .map((c, i) => ({ id: c.id, so: i + 1, changed: c.sort_order !== i + 1 }))
+      .filter((u) => u.changed)
+    if (updates.length === 0) return
+    await Promise.all(updates.map((u) =>
+      supabase.from('master_courses').update({ sort_order: u.so }).eq('id', u.id)))
+  }
+
+  async function dropAt(to) {
+    const from = dragIdx.current
+    dragIdx.current = null
+    if (from == null || from === to) return
+    const list = [...rows]
+    const [moved] = list.splice(from, 1)
+    list.splice(to, 0, moved)
+    setRows(list.map((c, i) => ({ ...c, sort_order: i + 1 }))) // 낙관적 반영
+    await persistOrder(list)
+    load()
+  }
+
   if (!rows) return <Loading />
 
   if (editing) {
@@ -67,7 +90,7 @@ function MasterCourses() {
   return (
     <>
       <div className="row-between">
-        <p className="t-muted-sm">재사용 가능한 강좌 라이브러리입니다. 기수 배정 시 스냅샷으로 복제되며, 마스터 수정은 기배포 기수에 반영되지 않습니다.</p>
+        <p className="t-muted-sm">재사용 가능한 강좌 라이브러리입니다. 기수 배정 시 과제·설문·퀴즈 구성과 함께 스냅샷으로 복제되며, 마스터 수정은 기배포 기수에 반영되지 않습니다. 카드를 드래그하면 배정 시 기본 순서가 바뀝니다.</p>
         <button className="btn btn-primary btn-sm" onClick={() => setEditing('new')}><IconPlus size={14} stroke={1.75} /> 새 마스터 강좌</button>
       </div>
       {rows.length === 0 ? (
@@ -78,12 +101,19 @@ function MasterCourses() {
           {rows.map((c, idx) => {
             const stat = ratingMap[c.id]
             return (
-              <div key={c.id} className={`card-course theme-${idx % 6}`} onClick={() => setEditing(c)}>
+              <div key={c.id} className={`card-course theme-${idx % 6}`} onClick={() => setEditing(c)}
+                draggable title="드래그하여 순서 변경"
+                onDragStart={() => { dragIdx.current = idx }}
+                onDragOver={(e) => e.preventDefault()}
+                onDrop={() => dropAt(idx)}>
                 <div className="row-between mb-8">
                   <span className="badge-role-soft">마스터</span>
-                  <button className="icon-btn danger" onClick={(e) => { e.stopPropagation(); setDeleteTarget(c) }}>
-                    <IconTrash size={16} stroke={1.75} />
-                  </button>
+                  <div className="row" style={{ gap: 4 }}>
+                    {c.assignment_enabled && <StatusPill kind="neutral">과제</StatusPill>}
+                    <button className="icon-btn danger" onClick={(e) => { e.stopPropagation(); setDeleteTarget(c) }}>
+                      <IconTrash size={16} stroke={1.75} />
+                    </button>
+                  </div>
                 </div>
                 <div className="t-h3 mb-8">{c.title}</div>
                 <div className="t-muted-sm" style={{ minHeight: 40 }}>{c.summary}</div>
@@ -264,7 +294,12 @@ function CourseEditor({ isMaster, cohortId, nextNo, course, onDone }) {
     if (!form.title.trim()) { toast('강좌명을 입력해 주세요.', 'error'); return }
     setBusy(true)
     try {
-      const base = { title: form.title.trim(), summary: form.summary.trim(), body: form.body }
+      const base = {
+        title: form.title.trim(), summary: form.summary.trim(), body: form.body,
+        assignment_enabled: form.assignment_enabled,
+        assignment_text: form.assignment_text,
+        assignment_due: form.assignment_due ? new Date(form.assignment_due).toISOString() : null,
+      }
       let courseId = course?.id
       if (isMaster) {
         if (courseId) {
@@ -280,9 +315,6 @@ function CourseEditor({ isMaster, cohortId, nextNo, course, onDone }) {
           ...base,
           external_url: form.external_url.trim() || null,
           course_no: Number(form.course_no) || 1,
-          assignment_enabled: form.assignment_enabled,
-          assignment_text: form.assignment_text,
-          assignment_due: form.assignment_due ? new Date(form.assignment_due).toISOString() : null,
         }
         if (courseId) {
           const { error } = await supabase.from('cohort_courses').update(extended).eq('id', courseId)
@@ -359,13 +391,13 @@ function CourseEditor({ isMaster, cohortId, nextNo, course, onDone }) {
         )}
       </div>
 
-      {!isMaster && (
-        <div className="card-panel">
-          <div className="checkbox-row mb-16">
-            <input id="assign" type="checkbox" checked={form.assignment_enabled}
-              onChange={(e) => setForm({ ...form, assignment_enabled: e.target.checked })} />
-            <label htmlFor="assign" className="t-h3" style={{ color: 'var(--foreground)' }}>과제 사용</label>
-          </div>
+      <div className="card-panel">
+        <div className="checkbox-row mb-16">
+          <input id="assign" type="checkbox" checked={form.assignment_enabled}
+            onChange={(e) => setForm({ ...form, assignment_enabled: e.target.checked })} />
+          <label htmlFor="assign" className="t-h3" style={{ color: 'var(--foreground)' }}>과제 사용</label>
+          {isMaster && <span className="t-caption muted-soft">기수 배정 시 과제 설정이 함께 복제됩니다</span>}
+        </div>
           {form.assignment_enabled && (
             <>
               <div className="field">
@@ -381,8 +413,7 @@ function CourseEditor({ isMaster, cohortId, nextNo, course, onDone }) {
               </div>
             </>
           )}
-        </div>
-      )}
+      </div>
 
       <div className="card-panel">
         <div className="row-between mb-16">

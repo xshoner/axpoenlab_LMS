@@ -189,7 +189,7 @@ function SnapshotDialog({ cohort, onClose }) {
           </button>
         </>
       }>
-      <p className="t-muted-sm mb-16">선택한 마스터 강좌가 본문·첨부·설문·퀴즈 구성과 함께 이 기수 전용 복사본으로 생성됩니다. 이후 수정해도 다른 기수와 마스터에 영향을 주지 않습니다.</p>
+      <p className="t-muted-sm mb-16">선택한 마스터 강좌가 본문·첨부·과제·설문·퀴즈 구성과 함께 이 기수 전용 복사본으로 생성됩니다. 이후 수정해도 다른 기수와 마스터에 영향을 주지 않습니다.</p>
       {!masters ? <Loading /> : masters.length === 0 ? (
         <div className="t-muted-sm">마스터 강좌가 없습니다. 강좌 관리에서 먼저 만들어 주세요.</div>
       ) : (

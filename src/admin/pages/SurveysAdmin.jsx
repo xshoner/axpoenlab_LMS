@@ -14,12 +14,25 @@ const HEAT = ['var(--heat-0)', 'var(--heat-1)', 'var(--heat-2)', 'var(--heat-3)'
 export default function SurveysAdmin() {
   const { selectedId, selected } = useCohort()
   const toast = useToast()
+  const [scope, setScope] = useState('cohort') // cohort | master
   const [view, setView] = useState({ mode: 'list' }) // list | builder | stats
   const [rows, setRows] = useState(null)
   const [courses, setCourses] = useState([])
   const [deleteTarget, setDeleteTarget] = useState(null)
+  const isMaster = scope === 'master'
 
   async function load() {
+    if (isMaster) {
+      const { data: cs } = await supabase.from('master_courses').select('id, title').order('sort_order')
+      setCourses(cs || [])
+      const ids = (cs || []).map((c) => c.id)
+      if (!ids.length) { setRows([]); return }
+      const { data } = await supabase.from('surveys')
+        .select('*, master_courses(title), survey_questions(id), survey_responses(id)')
+        .in('master_course_id', ids).order('created_at', { ascending: false })
+      setRows(data || [])
+      return
+    }
     if (!selectedId) { setRows([]); setCourses([]); return }
     const { data: cs } = await supabase.from('cohort_courses').select('id, course_no, title')
       .eq('cohort_id', selectedId).order('course_no')
@@ -31,7 +44,7 @@ export default function SurveysAdmin() {
       .in('cohort_course_id', ids).order('created_at', { ascending: false })
     setRows(data || [])
   }
-  useEffect(() => { load(); setView({ mode: 'list' }) }, [selectedId])
+  useEffect(() => { load(); setView({ mode: 'list' }) }, [selectedId, scope])
 
   async function setStatus(survey, status) {
     if (status === 'open' && (survey.survey_questions || []).length === 0) {
@@ -49,26 +62,43 @@ export default function SurveysAdmin() {
     else { toast('설문이 삭제되었습니다.'); setDeleteTarget(null); load() }
   }
 
-  if (!selectedId) return <EmptyState title="기수를 선택해 주세요" description="상단에서 기수를 선택하면 해당 기수의 설문이 표시됩니다." />
-  if (!rows) return <Loading />
-
   if (view.mode === 'builder') {
-    return <SurveyBuilder surveyId={view.id} courses={courses} onDone={() => { setView({ mode: 'list' }); load() }} />
+    return <SurveyBuilder surveyId={view.id} courses={courses} isMaster={isMaster} onDone={() => { setView({ mode: 'list' }); load() }} />
   }
   if (view.mode === 'stats') {
     return <SurveyStats surveyId={view.id} cohortId={selectedId} onBack={() => setView({ mode: 'list' })} />
   }
 
+  const scopeTabs = (
+    <div className="row" style={{ gap: 8 }}>
+      <button className={`btn btn-sm ${!isMaster ? 'btn-primary' : 'btn-white'}`} onClick={() => setScope('cohort')}>기수별 설문</button>
+      <button className={`btn btn-sm ${isMaster ? 'btn-primary' : 'btn-white'}`} onClick={() => setScope('master')}>마스터 강좌 설문</button>
+    </div>
+  )
+
+  if (!isMaster && !selectedId) {
+    return (
+      <div className="stack" style={{ gap: 16 }}>
+        {scopeTabs}
+        <EmptyState title="기수를 선택해 주세요" description="상단에서 기수를 선택하면 해당 기수의 설문이 표시됩니다." />
+      </div>
+    )
+  }
+  if (!rows) return <Loading />
+
   return (
     <div className="stack" style={{ gap: 16 }}>
+      {scopeTabs}
       <div className="row-between">
-        <h2 className="t-h2">설문 관리 <span className="t-muted-sm">— {selected?.name}</span></h2>
+        <h2 className="t-h2">설문 관리 <span className="t-muted-sm">— {isMaster ? '마스터 강좌 라이브러리' : selected?.name}</span></h2>
         <button className="btn btn-primary btn-sm" onClick={() => setView({ mode: 'builder', id: null })} disabled={courses.length === 0}>
           <IconPlus size={14} stroke={1.75} /> 새 설문
         </button>
       </div>
+      {isMaster && <p className="t-muted-sm">마스터 강좌에 연결한 설문 템플릿입니다. 기수 배정 시 문항 구성이 함께 복제되며, 복제본은 기수별 설문에서 따로 관리합니다.</p>}
       {rows.length === 0 ? (
-        <EmptyState title="아직 등록된 설문이 없습니다" description="강좌에 연결할 설문을 만들어 보세요."
+        <EmptyState title="아직 등록된 설문이 없습니다"
+          description={isMaster ? '마스터 강좌에 연결할 설문 템플릿을 만들어 보세요.' : '강좌에 연결할 설문을 만들어 보세요.'}
           action={courses.length > 0 && <button className="btn btn-primary btn-sm" onClick={() => setView({ mode: 'builder', id: null })}>설문 만들기</button>} />
       ) : (
         <div className="table-wrap">
@@ -80,17 +110,23 @@ export default function SurveysAdmin() {
               {rows.map((s) => (
                 <tr key={s.id}>
                   <td className="t-emph">{s.title}</td>
-                  <td className="t-muted-sm">{s.cohort_courses ? `${pad2(s.cohort_courses.course_no)}. ${s.cohort_courses.title}` : '-'}</td>
+                  <td className="t-muted-sm">
+                    {s.cohort_courses ? `${pad2(s.cohort_courses.course_no)}. ${s.cohort_courses.title}` : s.master_courses?.title || '-'}
+                  </td>
                   <td className="tnum">{(s.survey_questions || []).length}</td>
-                  <td className="tnum">{(s.survey_responses || []).length}</td>
-                  <td><StatusPill kind={s.status === 'open' ? 'open' : s.status === 'closed' ? 'closed' : 'neutral'}>{CONTENT_STATUS[s.status]}</StatusPill></td>
+                  <td className="tnum">{isMaster ? '-' : (s.survey_responses || []).length}</td>
+                  <td>
+                    {isMaster
+                      ? <StatusPill kind="neutral">템플릿</StatusPill>
+                      : <StatusPill kind={s.status === 'open' ? 'open' : s.status === 'closed' ? 'closed' : 'neutral'}>{CONTENT_STATUS[s.status]}</StatusPill>}
+                  </td>
                   <td>
                     <div className="row" style={{ gap: 4 }}>
                       <button className="btn btn-white btn-sm" onClick={() => setView({ mode: 'builder', id: s.id })}><IconPencil size={14} stroke={1.75} /> 편집</button>
-                      <button className="btn btn-white btn-sm" onClick={() => setView({ mode: 'stats', id: s.id })}><IconChartBar size={14} stroke={1.75} /> 통계</button>
-                      {s.status === 'draft' && <button className="btn btn-primary btn-sm" onClick={() => setStatus(s, 'open')}>공개</button>}
-                      {s.status === 'open' && <button className="btn btn-danger btn-sm" onClick={() => setStatus(s, 'closed')}>마감</button>}
-                      {s.status === 'closed' && <button className="btn btn-white btn-sm" onClick={() => setStatus(s, 'open')}>재공개</button>}
+                      {!isMaster && <button className="btn btn-white btn-sm" onClick={() => setView({ mode: 'stats', id: s.id })}><IconChartBar size={14} stroke={1.75} /> 통계</button>}
+                      {!isMaster && s.status === 'draft' && <button className="btn btn-primary btn-sm" onClick={() => setStatus(s, 'open')}>공개</button>}
+                      {!isMaster && s.status === 'open' && <button className="btn btn-danger btn-sm" onClick={() => setStatus(s, 'closed')}>마감</button>}
+                      {!isMaster && s.status === 'closed' && <button className="btn btn-white btn-sm" onClick={() => setStatus(s, 'open')}>재공개</button>}
                       <button className="icon-btn danger" onClick={() => setDeleteTarget(s)}><IconTrash size={16} stroke={1.75} /></button>
                     </div>
                   </td>
@@ -108,10 +144,11 @@ export default function SurveysAdmin() {
 }
 
 /* ============ 설문 빌더 ============ */
-function SurveyBuilder({ surveyId, courses, onDone }) {
+function SurveyBuilder({ surveyId, courses, isMaster, onDone }) {
   const toast = useToast()
+  const linkKey = isMaster ? 'master_course_id' : 'cohort_course_id'
   const [survey, setSurvey] = useState(surveyId ? null : {
-    title: '', description: '', cohort_course_id: courses[0]?.id || '', status: 'draft', allow_edit: false,
+    title: '', description: '', [linkKey]: courses[0]?.id || '', status: 'draft', allow_edit: false,
   })
   const [questions, setQuestions] = useState(surveyId ? null : [])
   const [busy, setBusy] = useState(false)
@@ -155,13 +192,13 @@ function SurveyBuilder({ surveyId, courses, onDone }) {
 
   async function save() {
     if (!survey.title.trim()) { toast('설문 제목을 입력해 주세요.', 'error'); return }
-    if (!survey.cohort_course_id) { toast('연결 강좌를 선택해 주세요.', 'error'); return }
+    if (!survey[linkKey]) { toast('연결 강좌를 선택해 주세요.', 'error'); return }
     setBusy(true)
     try {
       // 메타+문항을 DB 함수 하나로 원자적 저장 — 중간 실패 시 기존 문항이 보존된다
       const meta = {
         title: survey.title.trim(), description: survey.description,
-        cohort_course_id: survey.cohort_course_id, allow_edit: survey.allow_edit,
+        [linkKey]: survey[linkKey], allow_edit: survey.allow_edit,
       }
       const rows = questions.map((q) => ({
         type: q.type, required: q.required, text: q.text,
@@ -206,9 +243,11 @@ function SurveyBuilder({ surveyId, courses, onDone }) {
         <div className="grid-2">
           <div className="field">
             <label>연결 강좌 <span className="req">*</span></label>
-            <select className="select" value={survey.cohort_course_id || ''}
-              onChange={(e) => setSurvey({ ...survey, cohort_course_id: e.target.value })}>
-              {courses.map((c) => <option key={c.id} value={c.id}>{pad2(c.course_no)}. {c.title}</option>)}
+            <select className="select" value={survey[linkKey] || ''}
+              onChange={(e) => setSurvey({ ...survey, [linkKey]: e.target.value })}>
+              {courses.map((c) => (
+                <option key={c.id} value={c.id}>{isMaster ? c.title : `${pad2(c.course_no)}. ${c.title}`}</option>
+              ))}
             </select>
           </div>
           <div className="field">
