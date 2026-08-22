@@ -203,12 +203,14 @@ export function Aurora({ mode = 'work' }) {
 export function HBar({ label, count, total, color = 'var(--chart-1)', suffix }) {
   const pct = total > 0 ? Math.round((count / total) * 100) : 0
   return (
-    <div className="hbar-row">
-      <div className="hbar-label" title={label}>{label}</div>
-      <div className="hbar-track">
-        <div className="hbar-fill" style={{ width: `${pct}%`, background: color }} />
+    <div className="hbar-stack">
+      <div className="hbar-label">{label}</div>
+      <div className="hbar-bar-line">
+        <div className="hbar-track">
+          <div className="hbar-fill" style={{ width: `${pct}%`, '--bar-color': color }} />
+        </div>
+        <div className="hbar-value">{count}명 · {pct}%{suffix || ''}</div>
       </div>
-      <div className="hbar-value">{count}명 · {pct}%{suffix || ''}</div>
     </div>
   )
 }

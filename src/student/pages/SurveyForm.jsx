@@ -216,17 +216,20 @@ function SurveyQuestion({ q, index, value, error, onChange }) {
 
       {q.type === 'grid' && (
         <div style={{ overflowX: 'auto' }}>
-          <table className="data-table" style={{ minWidth: 480 }}>
+          {/* table-layout: fixed — 행 텍스트가 길어도 열(척도) 폭을 침범하지 못하고 줄바꿈된다 */}
+          <table className="data-table" style={{ minWidth: 420, width: '100%', tableLayout: 'fixed' }}>
             <thead>
               <tr>
-                <th style={{ position: 'sticky', left: 0 }}></th>
-                {cols.map((c, ci) => <th key={ci} style={{ textAlign: 'center' }}>{c}</th>)}
+                <th style={{ width: '34%' }}></th>
+                {cols.map((c, ci) => (
+                  <th key={ci} style={{ textAlign: 'center', whiteSpace: 'normal', wordBreak: 'keep-all', verticalAlign: 'middle' }}>{c}</th>
+                ))}
               </tr>
             </thead>
             <tbody>
               {rows.map((r, ri) => (
                 <tr key={ri}>
-                  <td className="t-label" style={{ position: 'sticky', left: 0, background: 'var(--background)' }}>{r}</td>
+                  <td className="t-label" style={{ whiteSpace: 'normal', overflowWrap: 'anywhere' }}>{r}</td>
                   {cols.map((c, ci) => (
                     <td key={ci} style={{ textAlign: 'center' }}>
                       <input

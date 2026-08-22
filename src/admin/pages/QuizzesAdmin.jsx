@@ -531,7 +531,7 @@ function QuizStats({ quizId, cohortId, onBack, onRegrade }) {
               <div className="hbar-row">
                 <div className="hbar-label" title={q.text}>Q{i + 1}. {q.text}</div>
                 <div className="hbar-track">
-                  <div className="hbar-fill" style={{ width: `${rate}%`, background: low ? 'var(--danger)' : 'var(--chart-1)' }} />
+                  <div className="hbar-fill" style={{ width: `${rate}%`, '--bar-color': low ? 'var(--danger)' : 'var(--chart-1)' }} />
                 </div>
                 <div className="hbar-value">
                   {rate}%

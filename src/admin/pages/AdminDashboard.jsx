@@ -161,11 +161,18 @@ export default function AdminDashboard() {
             <h3 className="t-h3 mb-16">기수별 학생 수</h3>
             <ResponsiveContainer width="100%" height={150}>
               <BarChart data={global_.perCohort}>
+                <defs>
+                  <linearGradient id="barGradCohort" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor="#3d6db3" />
+                    <stop offset="55%" stopColor="#1a3356" />
+                    <stop offset="100%" stopColor="#152945" />
+                  </linearGradient>
+                </defs>
                 <CartesianGrid vertical={false} stroke="var(--border)" />
                 <XAxis dataKey="name" tick={{ fontSize: 12, fill: 'var(--muted)' }} />
                 <YAxis tick={{ fontSize: 12, fill: 'var(--muted)' }} allowDecimals={false} width={28} />
                 <Tooltip contentStyle={{ borderRadius: 8, border: '1px solid var(--border)', fontSize: 12 }} />
-                <Bar dataKey="학생수" fill="var(--chart-1)" radius={[6, 6, 0, 0]} maxBarSize={24}
+                <Bar dataKey="학생수" fill="url(#barGradCohort)" radius={[6, 6, 0, 0]} maxBarSize={24}
                   label={{ position: 'top', fontSize: 11 }} isAnimationActive={false} />
               </BarChart>
             </ResponsiveContainer>
@@ -237,11 +244,19 @@ export default function AdminDashboard() {
                   <h3 className="t-h3 mb-16">강좌별 열람률</h3>
                   <ResponsiveContainer width="100%" height={Math.max(200, cohortStats.courseViewRates.length * 34)}>
                     <BarChart data={cohortStats.courseViewRates} layout="vertical">
+                      <defs>
+                        {/* 가로 막대 — 두께 방향(위→아래) 그라디언트로 원통형 입체감 */}
+                        <linearGradient id="barGradView" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="0%" stopColor="#3d6db3" />
+                          <stop offset="55%" stopColor="#1a3356" />
+                          <stop offset="100%" stopColor="#152945" />
+                        </linearGradient>
+                      </defs>
                       <CartesianGrid horizontal={false} stroke="var(--border)" />
                       <XAxis type="number" domain={[0, 100]} tick={{ fontSize: 12, fill: 'var(--muted)' }} />
                       <YAxis type="category" dataKey="name" width={150} tick={{ fontSize: 11, fill: 'var(--muted)' }} />
                       <Tooltip contentStyle={{ borderRadius: 8, border: '1px solid var(--border)', fontSize: 12 }} />
-                      <Bar dataKey="열람률" fill="var(--chart-1)" radius={[0, 6, 6, 0]} maxBarSize={20}
+                      <Bar dataKey="열람률" fill="url(#barGradView)" radius={[0, 6, 6, 0]} maxBarSize={20}
                         label={{ position: 'right', fontSize: 11, formatter: (v) => `${v}%` }} isAnimationActive={false} />
                     </BarChart>
                   </ResponsiveContainer>

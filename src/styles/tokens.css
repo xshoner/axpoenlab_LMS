@@ -457,8 +457,21 @@ input, textarea, select { font-family: inherit; }
 .hbar-row { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; }
 .hbar-label { width: 160px; flex-shrink: 0; font-size: 14px; text-align: right; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .hbar-track { flex: 1; background: var(--surface); border-radius: 6px; height: 24px; position: relative; overflow: hidden; }
-.hbar-fill { height: 100%; border-radius: 6px 6px 6px 6px; background: var(--chart-1); transition: width 0.4s ease; }
+.hbar-fill {
+  height: 100%; border-radius: 6px; transition: width 0.4s ease;
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--bar-color, var(--chart-1)) 68%, #fff) 0%,
+    var(--bar-color, var(--chart-1)) 55%,
+    color-mix(in srgb, var(--bar-color, var(--chart-1)) 80%, #000) 100%
+  );
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.28);
+}
 .hbar-value { font-size: 12px; color: var(--foreground); white-space: nowrap; min-width: 72px; font-variant-numeric: tabular-nums; }
+/* 설문 통계용 스택형 — 라벨 전체 표시(줄바꿈), 막대는 아래 줄 */
+.hbar-stack { margin-bottom: 12px; }
+.hbar-stack .hbar-label { width: auto; text-align: left; white-space: normal; overflow: visible; text-overflow: clip; overflow-wrap: anywhere; margin-bottom: 4px; }
+.hbar-bar-line { display: flex; align-items: center; gap: 12px; }
 .grid-heat-cell { height: 40px; text-align: center; font-size: 12px; vertical-align: middle; }
 
 /* ============ 빌더 ============ */

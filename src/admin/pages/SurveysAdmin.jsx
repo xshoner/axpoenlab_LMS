@@ -3,6 +3,7 @@ import {
   IconPlus, IconTrash, IconCopy, IconArrowUp, IconArrowDown, IconChartBar,
   IconPencil, IconFileSpreadsheet, IconEye,
 } from '@tabler/icons-react'
+import { PieChart, Pie, Cell, Tooltip as RTooltip, ResponsiveContainer } from 'recharts'
 import { supabase } from '../../lib/supabase'
 import { useCohort } from '../cohortContext'
 import { ConfirmDialog, Dialog, Donut, EmptyState, HBar, Loading, StatusPill, useToast } from '../../shared/ui'
@@ -10,6 +11,8 @@ import { pad2, downloadCsv, CONTENT_STATUS } from '../../lib/helpers'
 
 const Q_TYPES = { choice: '선다형', short: '단답형', long: '장문형', grid: '그리드형' }
 const HEAT = ['var(--heat-0)', 'var(--heat-1)', 'var(--heat-2)', 'var(--heat-3)', 'var(--heat-4)']
+// 원형 그래프 팔레트 — 흰 배경 기준 색각 이상(CVD) 분리도 검증 통과 순서, 순서 고정
+const PIE_COLORS = ['#2a78d6', '#eb6834', '#1baf7a', '#eda100', '#e87ba4', '#008300', '#4a3aa7', '#e34948']
 
 export default function SurveysAdmin() {
   const { selectedId, selected } = useCohort()
@@ -287,7 +290,13 @@ function SurveyBuilder({ surveyId, courses, isMaster, onDone }) {
             <div className="stack" style={{ gap: 8 }}>
               {q.options.map((opt, oi) => (
                 <div key={oi} className="row">
-                  <input className="input" style={{ height: 40 }} value={opt}
+                  <input className="input" style={{ height: 40 }} value={opt} placeholder={`보기 ${oi + 1}`}
+                    onFocus={(e) => {
+                      if (/^보기 \d+$/.test(e.target.value.trim())) updateQ(i, { options: q.options.map((o, x) => (x === oi ? '' : o)) })
+                    }}
+                    onBlur={(e) => {
+                      if (!e.target.value.trim()) updateQ(i, { options: q.options.map((o, x) => (x === oi ? `보기 ${oi + 1}` : o)) })
+                    }}
                     onChange={(e) => updateQ(i, { options: q.options.map((o, x) => (x === oi ? e.target.value : o)) })} />
                   <button className="icon-btn danger" disabled={q.options.length <= 2}
                     onClick={() => updateQ(i, { options: q.options.filter((_, x) => x !== oi) })}>
@@ -317,7 +326,13 @@ function SurveyBuilder({ surveyId, courses, isMaster, onDone }) {
                 <div className="t-label muted mb-8">행 (평가 항목)</div>
                 {q.grid_rows.map((r, ri) => (
                   <div key={ri} className="row mb-8">
-                    <input className="input" style={{ height: 36 }} value={r}
+                    <input className="input" style={{ height: 36 }} value={r} placeholder={`항목 ${ri + 1}`}
+                      onFocus={(e) => {
+                        if (/^항목 \d+$/.test(e.target.value.trim())) updateQ(i, { grid_rows: q.grid_rows.map((x, y) => (y === ri ? '' : x)) })
+                      }}
+                      onBlur={(e) => {
+                        if (!e.target.value.trim()) updateQ(i, { grid_rows: q.grid_rows.map((x, y) => (y === ri ? `항목 ${ri + 1}` : x)) })
+                      }}
                       onChange={(e) => updateQ(i, { grid_rows: q.grid_rows.map((x, y) => (y === ri ? e.target.value : x)) })} />
                     <button className="icon-btn danger" disabled={q.grid_rows.length <= 1}
                       onClick={() => updateQ(i, { grid_rows: q.grid_rows.filter((_, y) => y !== ri) })}>
@@ -458,27 +473,36 @@ function SurveyStats({ surveyId, cohortId, onBack }) {
             <div className="t-micro muted mb-8">Q{i + 1} · {Q_TYPES[q.type]} · 응답 {answers.length}건</div>
             <h3 className="t-h3 mb-16">{q.text}</h3>
 
-            {q.type === 'choice' && (
-              <div>
-                {(q.options || []).map((opt, oi) => {
-                  const count = answers.filter((a) => (a.value.sel || []).includes(oi)).length
-                  return <HBar key={oi} label={opt} count={count} total={answers.length || 1} />
-                })}
-                {q.has_other && (() => {
-                  const others = answers.filter((a) => (a.value.sel || []).includes(-1))
-                  return (
-                    <>
-                      <HBar label="기타" count={others.length} total={answers.length || 1} color="var(--chart-2)" />
-                      {others.length > 0 && (
-                        <div className="t-caption muted-soft" style={{ marginLeft: 172 }}>
-                          {others.map((o, x) => <div key={x}>· {o.value.other}</div>)}
-                        </div>
-                      )}
-                    </>
-                  )
-                })()}
-              </div>
-            )}
+            {q.type === 'choice' && (() => {
+              // 항목별 응답 수 집계 후 높은 순으로 정렬 — 색은 정렬과 무관하게 원래 보기 순서에 고정
+              const others = q.has_other ? answers.filter((a) => (a.value.sel || []).includes(-1)) : []
+              const items = (q.options || []).map((opt, oi) => ({
+                label: opt,
+                count: answers.filter((a) => (a.value.sel || []).includes(oi)).length,
+                color: PIE_COLORS[oi % PIE_COLORS.length],
+              }))
+              if (q.has_other) items.push({ label: '기타', count: others.length, color: PIE_COLORS[(q.options || []).length % PIE_COLORS.length], isOther: true })
+              items.sort((a, b) => b.count - a.count)
+              // 단일 선택(중복 미허용)만 원형 그래프 — 조각이 팔레트보다 많으면 막대로 대체
+              const usePie = !q.multiple && answers.length > 0 && items.length <= PIE_COLORS.length
+              return (
+                <div>
+                  {usePie ? (
+                    <ChoicePie items={items} total={answers.length} />
+                  ) : (
+                    items.map((it, x) => (
+                      <HBar key={x} label={it.label} count={it.count} total={answers.length || 1}
+                        color={it.isOther ? 'var(--chart-2)' : undefined} />
+                    ))
+                  )}
+                  {others.length > 0 && (
+                    <div className="t-caption muted-soft mt-8">
+                      {others.map((o, x) => <div key={x}>· 기타: {o.value.other}</div>)}
+                    </div>
+                  )}
+                </div>
+              )
+            })()}
 
             {(q.type === 'short' || q.type === 'long') && (
               <div>
@@ -506,12 +530,15 @@ function SurveyStats({ surveyId, cohortId, onBack }) {
               const maxCount = Math.max(1, ...counts.flat())
               return (
                 <div style={{ overflowX: 'auto' }}>
-                  <table className="data-table" style={{ minWidth: 480 }}>
+                  {/* table-layout: fixed — 행 텍스트가 길어도 열(척도) 폭을 침범하지 못하고 줄바꿈된다 */}
+                  <table className="data-table" style={{ minWidth: 480, width: '100%', tableLayout: 'fixed' }}>
                     <thead>
                       <tr>
-                        <th></th>
-                        {cols.map((c, ci) => <th key={ci} style={{ textAlign: 'center' }}>{c}</th>)}
-                        <th style={{ textAlign: 'center' }}>평균</th>
+                        <th style={{ width: '30%' }}></th>
+                        {cols.map((c, ci) => (
+                          <th key={ci} style={{ textAlign: 'center', whiteSpace: 'normal', wordBreak: 'keep-all', verticalAlign: 'middle' }}>{c}</th>
+                        ))}
+                        <th style={{ textAlign: 'center', width: 64 }}>평균</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -520,7 +547,7 @@ function SurveyStats({ surveyId, cohortId, onBack }) {
                         const avg = rowTotal ? (counts[ri].reduce((s, c, ci) => s + c * (ci + 1), 0) / rowTotal).toFixed(1) : '-'
                         return (
                           <tr key={ri}>
-                            <td className="t-label">{r}</td>
+                            <td className="t-label" style={{ whiteSpace: 'normal', overflowWrap: 'anywhere' }}>{r}</td>
                             {cols.map((_, ci) => {
                               const cnt = counts[ri][ci]
                               const level = Math.min(4, Math.round((cnt / maxCount) * 4))
@@ -544,6 +571,61 @@ function SurveyStats({ surveyId, cohortId, onBack }) {
           </div>
         )
       })}
+    </div>
+  )
+}
+
+/* ============ 단일 선택 선다형 원형 그래프 ============ */
+const RAD = Math.PI / 180
+
+// 조각 밝기에 따라 안쪽 % 라벨 잉크 색 선택
+function sliceInk(hex) {
+  const n = parseInt(hex.slice(1), 16)
+  const yiq = (((n >> 16) & 255) * 299 + (((n >> 8) & 255)) * 587 + (n & 255) * 114) / 1000
+  return yiq >= 150 ? '#0f1419' : '#ffffff'
+}
+
+function ChoicePie({ items, total }) {
+  const data = items.filter((it) => it.count > 0)
+  const renderLabel = ({ cx, cy, midAngle, innerRadius, outerRadius, percent, index }) => {
+    if (percent < 0.05) return null // 좁은 조각은 라벨 생략 — 범례·툴팁이 대신한다
+    const r = innerRadius + (outerRadius - innerRadius) * 0.6
+    const x = cx + r * Math.cos(-midAngle * RAD)
+    const y = cy + r * Math.sin(-midAngle * RAD)
+    return (
+      <text x={x} y={y} fill={sliceInk(data[index].color)} textAnchor="middle" dominantBaseline="central"
+        style={{ fontSize: 13, fontWeight: 700 }}>
+        {Math.round(percent * 100)}%
+      </text>
+    )
+  }
+  return (
+    <div className="row" style={{ gap: 24, flexWrap: 'wrap', alignItems: 'center' }}>
+      <div style={{ width: 240, height: 240, flexShrink: 0 }}>
+        <ResponsiveContainer width="100%" height="100%">
+          <PieChart>
+            <Pie data={data} dataKey="count" nameKey="label" cx="50%" cy="50%" outerRadius={112}
+              labelLine={false} label={renderLabel} isAnimationActive={false}
+              stroke="var(--background)" strokeWidth={2}>
+              {data.map((it, x) => <Cell key={x} fill={it.color} />)}
+            </Pie>
+            <RTooltip
+              formatter={(v, name) => [`${v}명 (${total ? Math.round((v / total) * 100) : 0}%)`, name]}
+              contentStyle={{ borderRadius: 8, border: '1px solid var(--border)', fontSize: 12, maxWidth: 320, whiteSpace: 'normal' }} />
+          </PieChart>
+        </ResponsiveContainer>
+      </div>
+      <div className="stack" style={{ gap: 8, flex: 1, minWidth: 240 }}>
+        {items.map((it, x) => (
+          <div key={x} className="row" style={{ gap: 8, alignItems: 'flex-start' }}>
+            <span style={{ width: 12, height: 12, borderRadius: 3, background: it.color, flexShrink: 0, marginTop: 4 }} />
+            <span className="t-muted-sm" style={{ flex: 1, overflowWrap: 'anywhere' }}>{it.label}</span>
+            <span className="t-label tnum" style={{ flexShrink: 0 }}>
+              {it.count}명 · {total ? Math.round((it.count / total) * 100) : 0}%
+            </span>
+          </div>
+        ))}
+      </div>
     </div>
   )
 }
