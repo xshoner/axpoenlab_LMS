@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react'
-import { IconArrowLeft, IconDownload } from '@tabler/icons-react'
+import { IconArrowLeft, IconDownload, IconTrash } from '@tabler/icons-react'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../shared/auth'
 import { useCohort } from '../cohortContext'
-import { EmptyState, Loading, StatusPill, useToast } from '../../shared/ui'
+import { ConfirmDialog, EmptyState, Loading, StatusPill, useToast } from '../../shared/ui'
 import { fmtDate, downloadFile, pad2, asOne } from '../../lib/helpers'
 
 export default function InquiriesAdmin() {
@@ -14,6 +14,7 @@ export default function InquiriesAdmin() {
   const [openId, setOpenId] = useState(null)
   const [reply, setReply] = useState('')
   const [busy, setBusy] = useState(false)
+  const [deleteTarget, setDeleteTarget] = useState(null)
 
   async function load() {
     const { data } = await supabase.from('inquiries')
@@ -48,13 +49,42 @@ export default function InquiriesAdmin() {
     } finally { setBusy(false) }
   }
 
+  async function deleteInquiry() {
+    if (!deleteTarget) return
+    setBusy(true)
+    try {
+      if (deleteTarget.file_path) {
+        await supabase.storage.from('inquiry-files').remove([deleteTarget.file_path])
+      }
+      const { error } = await supabase.from('inquiries').delete().eq('id', deleteTarget.id)
+      if (error) throw error
+      toast('문의가 삭제되었습니다.')
+      if (openId === deleteTarget.id) setOpenId(null)
+      setDeleteTarget(null)
+      load()
+    } catch {
+      toast('문의 삭제 실패', 'error')
+    } finally { setBusy(false) }
+  }
+
+  const confirmDialog = (
+    <ConfirmDialog open={!!deleteTarget} danger busy={busy} title="1:1 문의 삭제"
+      message={`'${deleteTarget?.title}' 문의와 모든 답변을 영구 삭제합니다. 계속하시겠습니까?`}
+      confirmLabel="삭제" onConfirm={deleteInquiry} onClose={() => setDeleteTarget(null)} />
+  )
+
   if (current) {
     const replies = (current.inquiry_replies || []).sort((a, b) => new Date(a.created_at) - new Date(b.created_at))
     return (
       <div className="stack" style={{ gap: 16, maxWidth: 760 }}>
-        <button className="btn btn-text" style={{ alignSelf: 'flex-start' }} onClick={() => setOpenId(null)}>
-          <IconArrowLeft size={14} stroke={1.75} /> 목록으로
-        </button>
+        <div className="row-between">
+          <button className="btn btn-text" onClick={() => setOpenId(null)}>
+            <IconArrowLeft size={14} stroke={1.75} /> 목록으로
+          </button>
+          <button className="btn btn-danger btn-sm" onClick={() => setDeleteTarget(current)}>
+            <IconTrash size={14} stroke={1.75} /> 문의 삭제
+          </button>
+        </div>
         <div className="card-panel">
           <div className="row-between mb-8">
             <h2 className="t-h2">{current.title}</h2>
@@ -91,6 +121,7 @@ export default function InquiriesAdmin() {
             {busy ? '등록 중…' : '답변 등록'}
           </button>
         </div>
+        {confirmDialog}
       </div>
     )
   }
@@ -104,7 +135,7 @@ export default function InquiriesAdmin() {
         <div className="table-wrap">
           <table className="data-table">
             <thead>
-              <tr><th>제목</th><th>작성자</th><th>기수</th><th>작성일</th><th>상태</th></tr>
+              <tr><th>제목</th><th>작성자</th><th>기수</th><th>작성일</th><th>상태</th><th style={{ width: 48 }}></th></tr>
             </thead>
             <tbody>
               {filtered.map((r) => (
@@ -114,12 +145,18 @@ export default function InquiriesAdmin() {
                   <td className="t-muted-sm">{asOne(r.profiles?.cohort_members)?.cohorts?.name || '미배정'}</td>
                   <td className="tnum">{fmtDate(r.created_at, true)}</td>
                   <td>{r.status === 'answered' ? <StatusPill kind="done">답변 완료</StatusPill> : <StatusPill kind="open">답변 대기</StatusPill>}</td>
+                  <td onClick={(e) => e.stopPropagation()}>
+                    <button className="icon-btn danger" title="문의 삭제" onClick={() => setDeleteTarget(r)}>
+                      <IconTrash size={16} stroke={1.75} />
+                    </button>
+                  </td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
       )}
+      {confirmDialog}
     </div>
   )
 }

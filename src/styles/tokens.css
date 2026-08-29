@@ -357,7 +357,11 @@ input, textarea, select { font-family: inherit; }
 .pill {
   display: inline-flex; align-items: center; gap: 6px; font-size: 12px;
   border-radius: 9999px; padding: 4px 10px; white-space: nowrap;
+  max-width: 100%; box-sizing: border-box;
 }
+.pill > span:not(.dot) { overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+/* 사이드바 기수명: 길면 줄바꿈하여 영역 안에 표시 */
+.sidebar .pill { white-space: normal; word-break: keep-all; overflow-wrap: anywhere; line-height: 1.4; text-align: left; }
 .pill .dot { width: 8px; height: 8px; border-radius: 9999px; background: currentColor; flex-shrink: 0; }
 .pill-neutral { background: var(--neutral-wash); color: var(--primary); }
 .pill-open { background: var(--warning-wash); color: var(--warning); }
