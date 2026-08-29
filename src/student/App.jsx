@@ -24,6 +24,7 @@ import GuestBoard from './pages/GuestBoard'
 import Hackathon from './pages/Hackathon'
 import HallOfFame from './pages/HallOfFame'
 import Profile from './pages/Profile'
+import { useStudentPresenceTrack } from '../shared/presence'
 
 const MENU = [
   { to: '/', label: '대시보드', icon: IconLayoutDashboard, end: true },
@@ -58,6 +59,7 @@ export default function App() {
   const focusMode = /^\/(surveys|quizzes)\//.test(location.pathname)
 
   useEffect(() => { setDrawerOpen(false) }, [location.pathname])
+  useStudentPresenceTrack(session && profile?.role === 'student' ? profile.id : null)
 
   // QR 게스트 게시판 — 로그인 없이 접근 (토큰은 RPC에서 검증)
   if (location.pathname === '/guest-board') {

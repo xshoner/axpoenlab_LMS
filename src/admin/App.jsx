@@ -9,6 +9,7 @@ import { supabase } from '../lib/supabase'
 import { useAuth, signOut } from '../shared/auth'
 import { Aurora, Dialog, FooterBar, Loading, StatusPill, VisitorCounter, useToast } from '../shared/ui'
 import { CohortProvider, useCohort } from './cohortContext'
+import { useOnlineStudentCount, useOpenInquiryCount } from '../shared/presence'
 import { COHORT_STATUS } from '../lib/helpers'
 import AdminDashboard from './pages/AdminDashboard'
 import Cohorts from './pages/Cohorts'
@@ -65,7 +66,8 @@ function AdminShell({ profile }) {
   const toast = useToast()
   const { cohorts, selectedId, select } = useCohort()
   const [drawerOpen, setDrawerOpen] = useState(false)
-  const [unanswered, setUnanswered] = useState(0)
+  const unanswered = useOpenInquiryCount(location.pathname)
+  const online = useOnlineStudentCount()
   const [nickOpen, setNickOpen] = useState(false)
   const [nick, setNick] = useState('')
   const [nickBusy, setNickBusy] = useState(false)
@@ -83,13 +85,6 @@ function AdminShell({ profile }) {
   }
 
   useEffect(() => { setDrawerOpen(false) }, [location.pathname])
-
-  useEffect(() => {
-    import('../lib/supabase').then(({ supabase }) => {
-      supabase.from('inquiries').select('id', { count: 'exact', head: true }).eq('status', 'open')
-        .then(({ count }) => setUnanswered(count || 0))
-    })
-  }, [location.pathname])
 
   return (
     <>
@@ -143,6 +138,14 @@ function AdminShell({ profile }) {
             </select>
             {selectedId && <StatusPill kind="neutral">{cohorts.find((c) => c.id === selectedId)?.name} 기준으로 표시 중</StatusPill>}
             <div className="topbar-right">
+              <span className="live-pill" title="현재 접속 중인 학생 수">
+                <span className="live-dot" />
+                <span className="tnum">접속 {online}명</span>
+              </span>
+              <NavLink to="/inquiries" className={`inq-pill ${unanswered > 0 ? 'hot' : ''}`} title="미답변 1:1 문의">
+                <IconMessageCircleQuestion size={14} stroke={1.75} />
+                <span>질문 <span className="tnum inq-count">{unanswered}건</span></span>
+              </NavLink>
               <VisitorCounter />
               <button className="row" style={{ gap: 8, background: 'transparent', border: 'none', padding: 0 }}
                 title="클릭하여 닉네임 설정" onClick={() => { setNick(profile.nickname || ''); setNickOpen(true) }}>
