@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { Link, Route, Routes, useNavigate, useParams } from 'react-router-dom'
 import {
   IconArrowLeft, IconRocket, IconTrash, IconPencil, IconFile, IconDownload,
-  IconExternalLink, IconPlus, IconLock, IconBrandGithub,
+  IconExternalLink, IconPlus, IconLock, IconBrandGithub, IconFileDescription, IconSparkles, IconTerminal2,
 } from '@tabler/icons-react'
 import { UrlHealthBadge, AI_OPTIONS } from '../../shared/urlcheck'
 import { supabase } from '../../lib/supabase'
@@ -236,41 +236,53 @@ function EntryDetail() {
           <span className="t-caption muted-soft tnum" style={{ marginLeft: 'auto' }}>{fmtDate(entry.created_at, true)}</span>
         </div>
 
-        {entry.url && (
-          <a href={entry.url} target="_blank" rel="noreferrer" className="btn btn-primary mb-16" style={{ alignSelf: 'flex-start' }}>
-            <IconExternalLink size={16} stroke={1.75} /> 웹앱 열어 보기
-          </a>
-        )}
-        {entry.summary && <p className="t-body" style={{ whiteSpace: 'pre-wrap' }}>{entry.summary}</p>}
-
-        {(entry.main_ai || entry.prompt_text || entry.repo_url) && (
-          <div className="mt-16 stack" style={{ gap: 10 }}>
-            {entry.main_ai && (
-              <div className="row" style={{ gap: 8 }}>
-                <span className="t-label" style={{ width: 120, flexShrink: 0 }}>주로 사용한 AI</span>
-                <span className="pill pill-neutral">{entry.main_ai}</span>
-              </div>
-            )}
-            {entry.repo_url && (
-              <div className="row" style={{ gap: 8 }}>
-                <span className="t-label" style={{ width: 120, flexShrink: 0 }}>Github Repo.</span>
-                <a href={entry.repo_url} target="_blank" rel="noreferrer" className="row t-muted-sm" style={{ gap: 4, overflow: 'hidden' }}>
-                  <IconBrandGithub size={14} stroke={1.75} /> <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{entry.repo_url}</span>
+        <div className="hk-sections">
+          <div className="hk-section">
+            <div className="hk-section-head"><IconExternalLink size={15} stroke={1.75} /> 웹앱 URL</div>
+            {entry.url ? (
+              <div className="hk-url-row">
+                <a href={entry.url} target="_blank" rel="noreferrer" className="hk-url" title={entry.url}>{entry.url}</a>
+                <UrlHealthBadge url={entry.url} />
+                <a href={entry.url} target="_blank" rel="noreferrer" className="btn btn-primary btn-sm">
+                  <IconExternalLink size={14} stroke={1.75} /> 열어 보기
                 </a>
               </div>
-            )}
-            {entry.prompt_text && (
-              <div>
-                <div className="t-label mb-8">입력한 프롬프트 내용</div>
-                <pre className="prompt-box">{entry.prompt_text}</pre>
-              </div>
-            )}
+            ) : <span className="t-muted-sm">등록된 URL이 없습니다 (첨부파일 제출)</span>}
           </div>
-        )}
+
+          <div className="hk-section">
+            <div className="hk-section-head"><IconFileDescription size={15} stroke={1.75} /> 주요 내용 요약</div>
+            {entry.summary
+              ? <p className="t-body" style={{ whiteSpace: 'pre-wrap' }}>{entry.summary}</p>
+              : <span className="t-muted-sm">작성된 요약이 없습니다.</span>}
+          </div>
+
+          <div className="hk-grid-2">
+            <div className="hk-section">
+              <div className="hk-section-head"><IconSparkles size={15} stroke={1.75} /> 주로 사용한 AI</div>
+              {entry.main_ai
+                ? <span className="hk-ai-chip">{entry.main_ai}</span>
+                : <span className="t-muted-sm">선택하지 않음</span>}
+            </div>
+            <div className="hk-section">
+              <div className="hk-section-head"><IconBrandGithub size={15} stroke={1.75} /> Github Repo.</div>
+              {entry.repo_url
+                ? <a href={entry.repo_url} target="_blank" rel="noreferrer" className="hk-url" title={entry.repo_url}>{entry.repo_url}</a>
+                : <span className="t-muted-sm">등록되지 않음</span>}
+            </div>
+          </div>
+
+          <div className="hk-section">
+            <div className="hk-section-head"><IconTerminal2 size={15} stroke={1.75} /> 입력한 프롬프트 내용</div>
+            {entry.prompt_text
+              ? <pre className="prompt-box">{entry.prompt_text}</pre>
+              : <span className="t-muted-sm">등록된 프롬프트가 없습니다.</span>}
+          </div>
+        </div>
 
         {(entry.hackathon_attachments || []).length > 0 && (
-          <div className="mt-16">
-            <h3 className="t-h3 mb-8">첨부파일</h3>
+          <div className="hk-section mt-16">
+            <div className="hk-section-head"><IconFile size={15} stroke={1.75} /> 첨부파일</div>
             {entry.hackathon_attachments.map((a) => (
               <div key={a.id} className="attachment-row">
                 <IconFile size={18} stroke={1.75} color="var(--muted)" />
@@ -512,6 +524,13 @@ function EntryForm() {
             ))}
           </>
         )}
+      </div>
+
+      <div className="row" style={{ gap: 8, justifyContent: 'flex-end' }}>
+        <button className="btn btn-white" onClick={() => nav('/hackathon')}>취소</button>
+        <button className="btn btn-primary sheen" onClick={save} disabled={busy}>
+          {busy ? '저장 중…' : id ? '수정 완료' : '등록'}
+        </button>
       </div>
     </div>
   )

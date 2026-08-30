@@ -715,3 +715,28 @@ input, textarea, select { font-family: inherit; }
   white-space: pre-wrap; word-break: break-word; font-family: inherit; font-size: 13px; line-height: 1.6;
   background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 12px 14px; max-height: 320px; overflow-y: auto;
 }
+
+/* ---------- 해커톤 상세: 항목 구획 ---------- */
+.hk-sections { display: flex; flex-direction: column; gap: 12px; }
+.hk-section {
+  background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 14px 16px;
+  min-width: 0;
+}
+.hk-section-head {
+  display: flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 700; letter-spacing: 0.02em;
+  color: var(--primary); text-transform: uppercase; margin-bottom: 8px;
+}
+.hk-grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+@media (max-width: 640px) { .hk-grid-2 { grid-template-columns: 1fr; } }
+.hk-url-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.hk-url {
+  flex: 1; min-width: 160px; font-size: 14px; color: var(--cobalt); text-decoration: underline; text-underline-offset: 3px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; word-break: break-all;
+}
+.hk-url:hover { color: var(--cobalt-bright); }
+.hk-ai-chip {
+  display: inline-flex; align-items: center; height: 30px; padding: 0 14px; border-radius: 9999px;
+  background: var(--primary); color: var(--on-primary); font-size: 13px; font-weight: 700;
+}
+.hk-section .prompt-box { background: var(--background); }
+.hk-section .attachment-row { padding: 8px 4px; min-height: 40px; }
