@@ -18,7 +18,11 @@ function saveSeen(set) {
 
 /* 쪽지 본문은 RichEditor HTML. 예전 텍스트 쪽지(태그 없음)는 줄바꿈을 보존해 HTML로 변환한다. */
 function bodyHtml(body) {
-  const s = String(body || '')
+  let s = String(body || '')
+  // 에디터 오류로 태그가 텍스트로 저장된 과거 쪽지(&lt;a ...&gt;) 복구: 실제 태그가 없고 이스케이프된 태그만 있으면 되돌린다
+  if (!/<[a-z][\s\S]*>/i.test(s) && /&lt;[a-z][^&]*&gt;/i.test(s)) {
+    s = s.replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&')
+  }
   if (/<[a-z][\s\S]*>/i.test(s)) return s
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br>')
 }
