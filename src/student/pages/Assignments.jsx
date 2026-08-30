@@ -6,6 +6,7 @@ import { useAuth } from '../../shared/auth'
 import { Loading, EmptyState, StatusPill, useToast } from '../../shared/ui'
 import { pad2, fmtBytes, fmtDate, extOf, getSettings, uploadFile, storageSafeName } from '../../lib/helpers'
 import { useDraft, DraftBadge } from '../../shared/draft'
+import { UrlHealthBadge } from '../../shared/urlcheck'
 
 export default function Assignments() {
   const { profile } = useAuth()
@@ -13,7 +14,7 @@ export default function Assignments() {
   const [params] = useSearchParams()
   const [courses, setCourses] = useState(null)
   const [selected, setSelected] = useState(params.get('course') || '')
-  const [mode, setMode] = useState('file')
+  const [mode, setMode] = useState('url')
   const [file, setFile] = useState(null)
   const [fileError, setFileError] = useState('')
   const [url, setUrl] = useState('')
@@ -133,11 +134,11 @@ export default function Assignments() {
             )}
 
             <div className="row mb-16" style={{ gap: 8 }}>
-              <button className={`btn btn-sm ${mode === 'file' ? 'btn-primary' : 'btn-white'}`} onClick={() => setMode('file')}>
-                <IconUpload size={14} stroke={1.75} /> 파일 첨부
-              </button>
               <button className={`btn btn-sm ${mode === 'url' ? 'btn-primary' : 'btn-white'}`} onClick={() => setMode('url')}>
                 <IconLink size={14} stroke={1.75} /> URL 제출
+              </button>
+              <button className={`btn btn-sm ${mode === 'file' ? 'btn-primary' : 'btn-white'}`} onClick={() => setMode('file')}>
+                <IconUpload size={14} stroke={1.75} /> 파일 첨부
               </button>
             </div>
 
@@ -170,7 +171,11 @@ export default function Assignments() {
             ) : (
               <div className="field">
                 <label className="row" style={{ gap: 10 }}>제출 URL <DraftBadge savedAt={draft.savedAt} restored={draft.restored} /></label>
-                <input className="input" placeholder="https://..." value={url} onChange={(e) => setUrl(e.target.value)} />
+                <div className="row" style={{ gap: 8 }}>
+                  <input className="input" placeholder="https://..." value={url} style={{ flex: 1 }} onChange={(e) => setUrl(e.target.value)} />
+                  <UrlHealthBadge url={url} />
+                </div>
+                <span className="hint">배포된 웹앱·문서 주소를 입력하면 연결 상태를 자동으로 확인합니다 (정상/이상).</span>
               </div>
             )}
 
