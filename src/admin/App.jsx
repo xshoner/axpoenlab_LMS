@@ -3,7 +3,7 @@ import { Routes, Route, NavLink, Navigate, useLocation } from 'react-router-dom'
 import {
   IconLayoutDashboard, IconUsersGroup, IconBook2, IconClipboardText, IconChecklist,
   IconPencilQuestion, IconSpeakerphone, IconUsers, IconMessageCircleQuestion,
-  IconShieldLock, IconSettings, IconLogout, IconMenu2, IconMessages, IconRocket, IconEye,
+  IconShieldLock, IconSettings, IconLogout, IconMenu2, IconMessages, IconRocket, IconEye, IconHandStop,
 } from '@tabler/icons-react'
 import { supabase } from '../lib/supabase'
 import { useAuth, signOut } from '../shared/auth'
@@ -11,6 +11,7 @@ import { Aurora, Dialog, FooterBar, Loading, StatusPill, VisitorCounter, useToas
 import { CohortProvider, useCohort } from './cohortContext'
 import { useOnlineStudentCount, useOpenInquiryCount } from '../shared/presence'
 import { AdminPushComposer } from '../shared/push'
+import { useHelpQueueCount } from '../shared/help'
 import { COHORT_STATUS } from '../lib/helpers'
 import AdminDashboard from './pages/AdminDashboard'
 import Cohorts from './pages/Cohorts'
@@ -26,6 +27,7 @@ import HackathonAdmin from './pages/HackathonAdmin'
 import AdminAccounts from './pages/AdminAccounts'
 import SystemSettings from './pages/SystemSettings'
 import StudentPreview from './pages/StudentPreview'
+import HelpQueue from './pages/HelpQueue'
 
 const MENU = [
   { to: '/', label: '대시보드', icon: IconLayoutDashboard, end: true },
@@ -38,6 +40,7 @@ const MENU = [
   { to: '/notices', label: '공지 관리', icon: IconSpeakerphone },
   { to: '/members', label: '회원 관리', icon: IconUsers },
   { to: '/inquiries', label: '1:1 문의 관리', icon: IconMessageCircleQuestion },
+  { to: '/help', label: '도움 요청 대기열', icon: IconHandStop },
   { to: '/board', label: '게시판 관리', icon: IconMessages },
 ]
 
@@ -70,6 +73,7 @@ function AdminShell({ profile }) {
   const [drawerOpen, setDrawerOpen] = useState(false)
   const unanswered = useOpenInquiryCount(location.pathname)
   const online = useOnlineStudentCount()
+  const helpCount = useHelpQueueCount()
   const [nickOpen, setNickOpen] = useState(false)
   const [nick, setNick] = useState('')
   const [nickBusy, setNickBusy] = useState(false)
@@ -107,6 +111,7 @@ function AdminShell({ profile }) {
             <NavLink key={to} to={to} end={end} className={({ isActive }) => `sidebar-item ${isActive ? 'active' : ''}`}>
               <Icon size={18} stroke={1.75} /> {label}
               {to === '/inquiries' && unanswered > 0 && <span className="count-pill">{unanswered}</span>}
+              {to === '/help' && helpCount > 0 && <span className="count-pill">{helpCount}</span>}
             </NavLink>
           ))}
           {isSuper && (
@@ -140,6 +145,10 @@ function AdminShell({ profile }) {
             </select>
             {selectedId && <StatusPill kind="neutral">{cohorts.find((c) => c.id === selectedId)?.name} 기준으로 표시 중</StatusPill>}
             <div className="topbar-right">
+              <NavLink to="/help" className={`inq-pill help-pill ${helpCount > 0 ? 'waiting' : ''}`} title="학생 도움 요청 대기열">
+                <IconHandStop size={14} stroke={1.75} />
+                <span>도움 요청 <span className="tnum inq-count">{helpCount}명</span></span>
+              </NavLink>
               <NavLink to="/preview" className={({ isActive }) => `inq-pill ${isActive ? 'hot-primary' : ''}`} title="선택한 기수의 학생에게 보이는 화면을 미리 봅니다">
                 <IconEye size={14} stroke={1.75} />
                 <span>학생 화면 미리보기</span>
@@ -191,6 +200,7 @@ function AdminShell({ profile }) {
               <Route path="/inquiries" element={<InquiriesAdmin />} />
               <Route path="/board" element={<BoardAdmin />} />
               <Route path="/preview" element={<StudentPreview />} />
+              <Route path="/help" element={<HelpQueue />} />
               {isSuper && <Route path="/admins" element={<AdminAccounts />} />}
               {isSuper && <Route path="/settings" element={<SystemSettings />} />}
               <Route path="*" element={<Navigate to="/" replace />} />

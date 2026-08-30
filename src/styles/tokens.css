@@ -854,3 +854,19 @@ input, textarea, select { font-family: inherit; }
 }
 .color-swatch { width: 22px; height: 22px; border-radius: 50%; border: 2px solid #fff; box-shadow: 0 0 0 1px var(--border); cursor: pointer; }
 .color-swatch:hover { transform: scale(1.15); }
+
+/* ---------- 도움 요청 대기열 ---------- */
+.help-pill.waiting { background: var(--danger-wash); color: var(--danger); }
+.help-pill.waiting .inq-count { color: var(--danger); font-weight: 700; }
+.help-pill.progress { background: var(--success-wash); color: var(--success); }
+.help-status {
+  display: flex; align-items: center; gap: 12px; padding: 14px 16px; border-radius: 14px;
+  background: var(--danger-wash); color: var(--danger);
+}
+.help-status.in_progress { background: var(--success-wash); color: var(--success); }
+.help-pos {
+  width: 40px; height: 40px; border-radius: 50%; background: var(--danger); color: #fff; font-weight: 800; font-size: 18px;
+  display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0;
+}
+.help-table tbody tr.help-row-progress td { background: rgba(5, 150, 105, 0.06); }
+@media (max-width: 767px) { .help-pill span:last-child { display: none; } }

@@ -26,6 +26,7 @@ import HallOfFame from './pages/HallOfFame'
 import Profile from './pages/Profile'
 import { useStudentPresenceTrack } from '../shared/presence'
 import { StudentPushInbox } from '../shared/push'
+import { StudentHelpButton } from '../shared/help'
 
 const MENU = [
   { to: '/', label: '대시보드', icon: IconLayoutDashboard, end: true },
@@ -166,6 +167,7 @@ export default function App() {
             </button>
             <span className="topbar-title">{title}</span>
             <div className="topbar-right">
+              <StudentHelpButton cohortId={cohort?.id || null} />
               <StudentPushInbox cohortId={cohort?.id || null} />
               <span className="live-pill" title="현재 접속 중인 학생 수">
                 <span className="live-dot" />

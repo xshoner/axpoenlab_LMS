@@ -42,7 +42,12 @@ function PushBody({ body, small }) {
 
 /* ============ 학생: 쪽지 버튼 + 강제 팝업 + 받은 쪽지함 ============ */
 export function StudentPushInbox({ cohortId }) {
+  const { profile } = useAuth()
+  const toast = useToast()
   const [items, setItems] = useState([])
+  const [hidden, setHidden] = useState(() => new Set())
+  const [deleteTarget, setDeleteTarget] = useState(null) // 쪽지 1건 | 'all'
+  const [busy, setBusy] = useState(false)
   const [popup, setPopup] = useState(null)      // 실시간 수신 시 강제로 뜨는 팝업
   const [inboxOpen, setInboxOpen] = useState(false)
   const [seen, setSeen] = useState(loadSeen)
@@ -50,11 +55,29 @@ export function StudentPushInbox({ cohortId }) {
   cohortRef.current = cohortId
 
   const load = useCallback(async () => {
-    const { data } = await supabase.from('push_deliveries')
-      .select('id, body, sender_name, sent_at, cohort_id, action_url, action_label')
-      .order('sent_at', { ascending: false }).limit(100)
-    setItems(data || [])
+    const [dQ, hQ] = await Promise.all([
+      supabase.from('push_deliveries')
+        .select('id, body, sender_name, sent_at, cohort_id, action_url, action_label')
+        .order('sent_at', { ascending: false }).limit(100),
+      supabase.from('push_hidden').select('delivery_id'),
+    ])
+    setHidden(new Set((hQ.data || []).map((h) => h.delivery_id)))
+    setItems(dQ.data || [])
   }, [])
+
+  // 삭제 = 사용자별 숨김 (발송 기록은 기수 공용이므로 내 화면에서만 사라진다)
+  async function hide(ids) {
+    if (!ids.length) return
+    setBusy(true)
+    const { error } = await supabase.from('push_hidden')
+      .upsert(ids.map((id) => ({ user_id: profile.id, delivery_id: id })), { onConflict: 'user_id,delivery_id' })
+    setBusy(false)
+    setDeleteTarget(null)
+    if (error) { toast('삭제에 실패했습니다.', 'error'); return }
+    setHidden((prev) => new Set([...prev, ...ids]))
+    markSeen(ids)
+    toast(ids.length > 1 ? '쪽지를 모두 삭제했습니다.' : '쪽지를 삭제했습니다.')
+  }
 
   useEffect(() => { load() }, [load])
 
@@ -90,13 +113,14 @@ export function StudentPushInbox({ cohortId }) {
     markSeen(items.map((x) => x.id))
   }
 
-  const unread = items.filter((x) => !seen.has(x.id)).length
+  const visible = items.filter((x) => !hidden.has(x.id))
+  const unread = visible.filter((x) => !seen.has(x.id)).length
 
   return (
     <>
       <button type="button" className={`inq-pill ${unread > 0 ? 'hot' : ''}`} title="관리자가 보낸 쪽지" onClick={openInbox}>
         <IconMail size={14} stroke={1.75} />
-        <span>쪽지 <span className="tnum inq-count">{items.length}건</span></span>
+        <span>쪽지 <span className="tnum inq-count">{visible.length}건</span></span>
         {unread > 0 && <span className="push-unread">{unread}</span>}
       </button>
 
@@ -122,21 +146,37 @@ export function StudentPushInbox({ cohortId }) {
         </div>
       )}
 
-      <Dialog open={inboxOpen} title={`받은 쪽지 (${items.length}건)`} onClose={() => setInboxOpen(false)}>
-        {items.length === 0 ? (
+      <Dialog open={inboxOpen} title={`받은 쪽지 (${visible.length}건)`} onClose={() => setInboxOpen(false)}
+        actions={visible.length > 0 && (
+          <button className="btn btn-white btn-sm" disabled={busy} onClick={() => setDeleteTarget('all')}>
+            <IconTrash size={14} stroke={1.75} /> 전체 삭제
+          </button>
+        )}>
+        {visible.length === 0 ? (
           <p className="t-muted-sm">받은 쪽지가 없습니다.</p>
         ) : (
           <div className="stack" style={{ gap: 8, maxHeight: '60vh', overflowY: 'auto' }}>
-            {items.map((m) => (
+            {visible.map((m) => (
               <div key={m.id} className="push-item">
                 <PushBody body={m.body} />
                 <LegacyAction item={m} />
-                <div className="t-caption muted-soft mt-8">{m.sender_name || '관리자'} · {fmtDate(m.sent_at, true)}</div>
+                <div className="row mt-8" style={{ gap: 6 }}>
+                  <span className="t-caption muted-soft">{m.sender_name || '관리자'} · {fmtDate(m.sent_at, true)}</span>
+                  <button className="icon-btn danger" style={{ marginLeft: 'auto' }} title="이 쪽지 삭제" disabled={busy}
+                    onClick={() => setDeleteTarget(m)}>
+                    <IconTrash size={14} stroke={1.75} />
+                  </button>
+                </div>
               </div>
             ))}
           </div>
         )}
       </Dialog>
+      <ConfirmDialog open={!!deleteTarget} danger busy={busy}
+        title={deleteTarget === 'all' ? '쪽지 전체 삭제' : '쪽지 삭제'}
+        message={deleteTarget === 'all' ? `받은 쪽지 ${visible.length}건을 모두 삭제할까요? 내 쪽지함에서만 사라집니다.` : '이 쪽지를 삭제할까요? 내 쪽지함에서만 사라집니다.'}
+        confirmLabel="삭제" onConfirm={() => hide(deleteTarget === 'all' ? visible.map((x) => x.id) : [deleteTarget.id])}
+        onClose={() => setDeleteTarget(null)} />
     </>
   )
 }
