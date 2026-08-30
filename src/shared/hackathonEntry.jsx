@@ -254,6 +254,10 @@ export function HackathonEntryView({ entry, profile, isAdmin = false, onBack, on
         </div>
       </div>
 
+      <button className="btn btn-white" style={{ alignSelf: 'flex-start' }} onClick={onBack}>
+        <IconArrowLeft size={14} stroke={1.75} /> 목록으로
+      </button>
+
       <ConfirmDialog open={!!deleteComment} danger busy={commentBusy} title="평가 의견 삭제"
         message="내가 작성한 이 평가 의견을 삭제할까요?"
         confirmLabel="삭제" onConfirm={doDeleteComment} onClose={() => setDeleteComment(null)} />
