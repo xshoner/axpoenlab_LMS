@@ -95,6 +95,33 @@ export default function RichEditor({ value, onChange, minHeight = 200, compact =
     onChange(ref.current.innerHTML)
   }
 
+  // HTML 조각 삽입 — execCommand('insertHTML')은 포커스/선택 상태에 따라 태그를 텍스트로 넣는 경우가 있어
+  // Range API로 직접 삽입한다. 커서가 에디터 밖이면 본문 끝에 삽입.
+  function insertHtml(html) {
+    const root = ref.current
+    if (!root) return
+    root.focus()
+    const sel = window.getSelection()
+    let range = sel && sel.rangeCount ? sel.getRangeAt(0) : null
+    if (!range || !root.contains(range.commonAncestorContainer)) {
+      range = document.createRange()
+      range.selectNodeContents(root)
+      range.collapse(false)
+    }
+    range.deleteContents()
+    const frag = range.createContextualFragment(html)
+    const last = frag.lastChild
+    range.insertNode(frag)
+    if (last) {
+      const after = document.createRange()
+      after.setStartAfter(last)
+      after.collapse(true)
+      sel.removeAllRanges()
+      sel.addRange(after)
+    }
+    onChange(root.innerHTML)
+  }
+
   function isValidUrl(url) {
     if (!URL_RE.test(url)) return false
     try {
@@ -130,7 +157,7 @@ export default function RichEditor({ value, onChange, minHeight = 200, compact =
   }
 
   function insertPreview(url) {
-    exec('insertHTML', linkPreviewHtml(url))
+    insertHtml(linkPreviewHtml(url))
     pollThumbnail(thumbnailUrl(url))
   }
 
@@ -140,7 +167,7 @@ export default function RichEditor({ value, onChange, minHeight = 200, compact =
     const trimmed = url.trim()
     if (!isValidUrl(trimmed)) { alert('http:// 또는 https:// 로 시작하는 URL만 넣을 수 있습니다.'); return }
     const yt = youtubeId(trimmed)
-    if (yt) { exec('insertHTML', videoEmbedHtml(yt)); return }
+    if (yt) { insertHtml(videoEmbedHtml(yt)); return }
     insertPreview(trimmed)
   }
 
@@ -154,7 +181,7 @@ export default function RichEditor({ value, onChange, minHeight = 200, compact =
     const label = sel || prompt('링크에 표시할 이름을 입력하세요', '링크 열기')
     if (label == null) return
     const safe = escAttr(trimmed)
-    exec('insertHTML', `<a class="link-btn" href="${safe}" target="_blank" rel="noopener noreferrer">${escAttr(label.trim() || trimmed)}</a>&nbsp;`)
+    insertHtml(`<a class="link-btn" href="${safe}" target="_blank" rel="noopener noreferrer">${escAttr(label.trim() || trimmed)}</a>&nbsp;`)
   }
 
   function addVideo() {
@@ -162,7 +189,7 @@ export default function RichEditor({ value, onChange, minHeight = 200, compact =
     if (!url) return
     const yt = youtubeId(url.trim())
     if (!yt) { alert('유튜브 URL을 인식하지 못했습니다. 영상 주소를 다시 확인해 주세요.'); return }
-    exec('insertHTML', videoEmbedHtml(yt))
+    insertHtml(videoEmbedHtml(yt))
   }
 
   // URL만 붙여넣으면: 유튜브 URL은 동영상 임베드, 그 외는 링크 + 썸네일 미리보기 카드
@@ -171,7 +198,7 @@ export default function RichEditor({ value, onChange, minHeight = 200, compact =
     if (text && isValidUrl(text) && !/\s/.test(text)) {
       e.preventDefault()
       const yt = youtubeId(text)
-      if (yt) exec('insertHTML', videoEmbedHtml(yt))
+      if (yt) insertHtml(videoEmbedHtml(yt))
       else insertPreview(text)
     }
   }
@@ -198,7 +225,7 @@ export default function RichEditor({ value, onChange, minHeight = 200, compact =
 
   function insertCopyBlock() {
     if (!copyDlg?.text.trim()) return
-    exec('insertHTML', copyBlockHtml(copyDlg.kind, copyDlg.text.replace(/\s+$/, ''), copyDlg.label.trim()))
+    insertHtml(copyBlockHtml(copyDlg.kind, copyDlg.text.replace(/\s+$/, ''), copyDlg.label.trim()))
     setCopyDlg(null)
   }
 
