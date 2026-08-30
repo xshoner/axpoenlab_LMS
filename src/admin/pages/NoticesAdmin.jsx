@@ -6,6 +6,7 @@ import { useCohort } from '../cohortContext'
 import RichEditor from '../../shared/RichEditor'
 import { ConfirmDialog, EmptyState, Loading, StatusPill, useToast } from '../../shared/ui'
 import { fmtDate, fmtBytes, uploadFile, storageSafeName } from '../../lib/helpers'
+import { useDraft, DraftBadge } from '../../shared/draft'
 
 export default function NoticesAdmin() {
   const { profile } = useAuth()
@@ -93,6 +94,7 @@ function NoticeEditor({ notice, cohorts, authorId, onDone }) {
   const [pending, setPending] = useState([]) // 저장 시 함께 업로드
   const [busy, setBusy] = useState(false)
   const fileInput = useRef(null)
+  const draft = useDraft(`notice:${notice?.id || 'new'}`, form, setForm, (d) => !notice && !d.title && !d.body)
 
   async function save() {
     if (!form.title.trim()) { toast('제목을 입력해 주세요.', 'error'); return }
@@ -120,6 +122,7 @@ function NoticeEditor({ notice, cohorts, authorId, onDone }) {
         if (error) throw error
       }
       toast('공지가 저장되었습니다.')
+      draft.clear()
       onDone()
     } catch (e) {
       toast(`저장에 실패했습니다. ${e?.message || ''}`, 'error')
@@ -135,9 +138,9 @@ function NoticeEditor({ notice, cohorts, authorId, onDone }) {
   return (
     <div className="stack" style={{ gap: 16, maxWidth: 860 }}>
       <div className="row-between">
-        <h2 className="t-h2">{notice ? '공지 수정' : '새 공지'}</h2>
+        <h2 className="t-h2 row" style={{ gap: 10 }}>{notice ? '공지 수정' : '새 공지'} <DraftBadge savedAt={draft.savedAt} restored={draft.restored} /></h2>
         <div className="row" style={{ gap: 8 }}>
-          <button className="btn btn-white btn-sm" onClick={onDone}>취소</button>
+          <button className="btn btn-white btn-sm" onClick={() => { draft.clear(); onDone() }}>취소</button>
           <button className="btn btn-primary btn-sm" onClick={save} disabled={busy}>{busy ? '저장 중…' : '저장'}</button>
         </div>
       </div>

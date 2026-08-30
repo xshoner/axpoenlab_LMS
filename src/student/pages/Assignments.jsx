@@ -5,6 +5,7 @@ import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../shared/auth'
 import { Loading, EmptyState, StatusPill, useToast } from '../../shared/ui'
 import { pad2, fmtBytes, fmtDate, extOf, getSettings, uploadFile, storageSafeName } from '../../lib/helpers'
+import { useDraft, DraftBadge } from '../../shared/draft'
 
 export default function Assignments() {
   const { profile } = useAuth()
@@ -21,6 +22,9 @@ export default function Assignments() {
   const [history, setHistory] = useState([])
   const [settings, setSettings] = useState({ allowedExtensions: [], maxFileSizeMb: 5 })
   const fileInput = useRef(null)
+  const draft = useDraft(`assignment:${profile.id}`, { selected, url, mode },
+    (d) => { if (d.selected && !params.get('course')) setSelected(d.selected); setUrl(d.url || ''); if (d.mode) setMode(d.mode) },
+    (d) => !d.url)
 
   async function load() {
     const [cQ, sQ, settingsData] = await Promise.all([
@@ -84,6 +88,7 @@ export default function Assignments() {
       )
       if (error) throw error
       toast(existing ? '과제가 다시 제출되었습니다.' : '과제가 제출되었습니다.')
+      draft.clear()
       setFile(null)
       setUrl('')
       await load()
@@ -164,7 +169,7 @@ export default function Assignments() {
               </>
             ) : (
               <div className="field">
-                <label>제출 URL</label>
+                <label className="row" style={{ gap: 10 }}>제출 URL <DraftBadge savedAt={draft.savedAt} restored={draft.restored} /></label>
                 <input className="input" placeholder="https://..." value={url} onChange={(e) => setUrl(e.target.value)} />
               </div>
             )}

@@ -8,6 +8,7 @@ import { supabase } from '../../lib/supabase'
 import { useCohort } from '../cohortContext'
 import { ConfirmDialog, Dialog, Donut, EmptyState, HBar, Loading, StatusPill, useToast } from '../../shared/ui'
 import { pad2, downloadCsv, CONTENT_STATUS } from '../../lib/helpers'
+import { useDraft, DraftBadge } from '../../shared/draft'
 
 const Q_TYPES = { choice: '선다형', short: '단답형', long: '장문형', grid: '그리드형' }
 const HEAT = ['var(--heat-0)', 'var(--heat-1)', 'var(--heat-2)', 'var(--heat-3)', 'var(--heat-4)']
@@ -156,6 +157,10 @@ function SurveyBuilder({ surveyId, courses, isMaster, onDone }) {
   const [questions, setQuestions] = useState(surveyId ? null : [])
   const [busy, setBusy] = useState(false)
   const [preview, setPreview] = useState(false)
+  const draft = useDraft((survey && questions) ? `survey:${isMaster ? 'master' : 'cohort'}:${surveyId || 'new'}` : null,
+    { survey, questions },
+    (d) => { if (d.survey) setSurvey(d.survey); if (Array.isArray(d.questions)) setQuestions(d.questions) },
+    (d) => !surveyId && !d.survey?.title && !d.survey?.description && (d.questions || []).length === 0)
 
   useEffect(() => {
     if (!surveyId) return
@@ -216,6 +221,7 @@ function SurveyBuilder({ surveyId, courses, isMaster, onDone }) {
       })
       if (error) throw error
       toast('설문이 저장되었습니다.')
+      draft.clear()
       onDone()
     } catch {
       toast('저장에 실패했습니다.', 'error')
@@ -225,10 +231,10 @@ function SurveyBuilder({ surveyId, courses, isMaster, onDone }) {
   return (
     <div className="stack" style={{ gap: 0, maxWidth: 860 }}>
       <div className="toolbar-sticky">
-        <span className="t-caption muted">{surveyId ? '설문 편집' : '새 설문'}</span>
+        <span className="t-caption muted row" style={{ gap: 10 }}>{surveyId ? '설문 편집' : '새 설문'} <DraftBadge savedAt={draft.savedAt} restored={draft.restored} /></span>
         <div className="row" style={{ gap: 8, marginLeft: 'auto' }}>
           <button className="btn btn-white btn-sm" onClick={() => setPreview(true)}><IconEye size={14} stroke={1.75} /> 미리보기</button>
-          <button className="btn btn-white btn-sm" onClick={onDone}>취소</button>
+          <button className="btn btn-white btn-sm" onClick={() => { draft.clear(); onDone() }}>취소</button>
           <button className="btn btn-primary btn-sm" onClick={save} disabled={busy}>{busy ? '저장 중…' : '저장'}</button>
         </div>
       </div>

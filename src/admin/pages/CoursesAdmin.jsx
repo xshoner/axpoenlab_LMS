@@ -5,6 +5,7 @@ import { useCohort } from '../cohortContext'
 import RichEditor from '../../shared/RichEditor'
 import { ConfirmDialog, EmptyState, Loading, StatusPill, StarRating, useToast } from '../../shared/ui'
 import { fmtBytes, pad2, downloadFile, uploadFile, storageSafeName } from '../../lib/helpers'
+import { useDraft, DraftBadge } from '../../shared/draft'
 
 export default function CoursesAdmin() {
   const [tab, setTab] = useState('cohort') // cohort | master
@@ -287,6 +288,8 @@ function CourseEditor({ isMaster, cohortId, nextNo, course, onDone }) {
   const [pending, setPending] = useState([]) // 저장 시 함께 업로드할 파일들
   const [busy, setBusy] = useState(false)
   const fileInput = useRef(null)
+  const draft = useDraft(`course:${isMaster ? 'master' : cohortId}:${course?.id || 'new'}`, form, setForm,
+    (d) => !course && !d.title && !d.summary && !d.body && !d.assignment_text)
   const attTable = isMaster ? 'master_attachments' : 'cohort_attachments'
   const fkCol = isMaster ? 'master_course_id' : 'cohort_course_id'
 
@@ -333,6 +336,7 @@ function CourseEditor({ isMaster, cohortId, nextNo, course, onDone }) {
           .insert({ [fkCol]: courseId, file_path: path, filename: file.name, file_size: file.size })
         if (error) throw error
       }
+      draft.clear()
       toast('저장되었습니다.')
       onDone()
     } catch (e) {
@@ -354,9 +358,9 @@ function CourseEditor({ isMaster, cohortId, nextNo, course, onDone }) {
   return (
     <div className="stack" style={{ gap: 16, maxWidth: 860 }}>
       <div className="row-between">
-        <h2 className="t-h2">{course ? '강좌 수정' : isMaster ? '새 마스터 강좌' : '새 강좌'}</h2>
+        <h2 className="t-h2 row" style={{ gap: 10 }}>{course ? '강좌 수정' : isMaster ? '새 마스터 강좌' : '새 강좌'} <DraftBadge savedAt={draft.savedAt} restored={draft.restored} /></h2>
         <div className="row" style={{ gap: 8 }}>
-          <button className="btn btn-white btn-sm" onClick={onDone}>목록으로</button>
+          <button className="btn btn-white btn-sm" onClick={() => { draft.clear(); onDone() }}>목록으로</button>
           <button className="btn btn-primary btn-sm" onClick={save} disabled={busy}>{busy ? '저장 중…' : '저장'}</button>
         </div>
       </div>

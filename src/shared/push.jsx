@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { IconMail, IconSend, IconPencil, IconTrash, IconX, IconRepeat } from '@tabler/icons-react'
+import { IconMail, IconSend, IconPencil, IconTrash, IconX, IconRepeat, IconExternalLink } from '@tabler/icons-react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from './auth'
 import { Dialog, ConfirmDialog, useToast } from './ui'
@@ -25,7 +25,7 @@ export function StudentPushInbox({ cohortId }) {
 
   const load = useCallback(async () => {
     const { data } = await supabase.from('push_deliveries')
-      .select('id, body, sender_name, sent_at, cohort_id')
+      .select('id, body, sender_name, sent_at, cohort_id, action_url, action_label')
       .order('sent_at', { ascending: false }).limit(100)
     setItems(data || [])
   }, [])
@@ -85,6 +85,7 @@ export function StudentPushInbox({ cohortId }) {
               </button>
             </div>
             <div className="push-body">{popup.body}</div>
+            <PushAction item={popup} large />
             <div className="t-caption muted-soft mt-8">
               {popup.sender_name || '관리자'} · {fmtDate(popup.sent_at, true)}
             </div>
@@ -103,6 +104,7 @@ export function StudentPushInbox({ cohortId }) {
             {items.map((m) => (
               <div key={m.id} className="push-item">
                 <div className="push-body">{m.body}</div>
+                <PushAction item={m} />
                 <div className="t-caption muted-soft mt-8">{m.sender_name || '관리자'} · {fmtDate(m.sent_at, true)}</div>
               </div>
             ))}
@@ -113,12 +115,28 @@ export function StudentPushInbox({ cohortId }) {
   )
 }
 
+/* 쪽지의 링크 버튼 (action_url) */
+function PushAction({ item, large, small }) {
+  if (!item?.action_url) return null
+  return (
+    <div style={{ marginTop: small ? 6 : 12 }}>
+      <a href={item.action_url} target="_blank" rel="noopener noreferrer"
+        className={`btn btn-primary ${large ? '' : 'btn-sm'} sheen`} style={{ display: 'inline-flex' }}
+        title={item.action_url}>
+        <IconExternalLink size={large ? 16 : 13} stroke={1.75} /> {item.action_label || '링크 열기'}
+      </a>
+    </div>
+  )
+}
+
 /* ============ 관리자: 쪽지 작성·발송·이력(재발송/수정/삭제) ============ */
 export function AdminPushComposer({ cohortId, cohortName }) {
   const { profile } = useAuth()
   const toast = useToast()
   const [open, setOpen] = useState(false)
   const [body, setBody] = useState('')
+  const [actionUrl, setActionUrl] = useState('')
+  const [actionLabel, setActionLabel] = useState('')
   const [editing, setEditing] = useState(null)   // 수정 중인 push_messages 행
   const [history, setHistory] = useState(null)
   const [busy, setBusy] = useState(false)
@@ -135,9 +153,16 @@ export function AdminPushComposer({ cohortId, cohortName }) {
   const senderName = profile?.nickname || profile?.name || '관리자'
   const target = cohortId ? `${cohortName} 학생` : '전체 기수 학생'
 
-  async function deliver(messageId, text) {
+  function normalizeAction() {
+    let url = actionUrl.trim()
+    if (url && !/^https?:\/\//i.test(url)) url = 'https://' + url
+    return { action_url: url || null, action_label: url ? (actionLabel.trim() || '링크 열기') : '' }
+  }
+
+  async function deliver(messageId, text, action) {
     const { error } = await supabase.from('push_deliveries').insert({
       message_id: messageId, cohort_id: cohortId || null, body: text, sender_name: senderName,
+      action_url: action?.action_url || null, action_label: action?.action_label || '',
     })
     if (error) throw error
     const row = history?.find((h) => h.id === messageId)
@@ -149,22 +174,24 @@ export function AdminPushComposer({ cohortId, cohortName }) {
   async function send() {
     const text = body.trim()
     if (!text) { toast('쪽지 내용을 입력해 주세요.', 'error'); return }
+    const action = normalizeAction()
+    if (action.action_url) { try { new URL(action.action_url) } catch { toast('링크 URL 형식을 확인해 주세요.', 'error'); return } }
     setBusy(true)
     try {
       let id = editing?.id
       if (id) {
         const { error } = await supabase.from('push_messages')
-          .update({ body: text, updated_at: new Date().toISOString() }).eq('id', id)
+          .update({ body: text, ...action, updated_at: new Date().toISOString() }).eq('id', id)
         if (error) throw error
       } else {
         const { data, error } = await supabase.from('push_messages')
-          .insert({ sender_id: profile.id, body: text }).select('id').single()
+          .insert({ sender_id: profile.id, body: text, ...action }).select('id').single()
         if (error) throw error
         id = data.id
       }
-      await deliver(id, text)
+      await deliver(id, text, action)
       toast(`${target}에게 쪽지를 보냈습니다.`)
-      setBody(''); setEditing(null)
+      setBody(''); setActionUrl(''); setActionLabel(''); setEditing(null)
       load()
     } catch (e) {
       toast(`발송에 실패했습니다. ${e?.message || ''}`, 'error')
@@ -175,19 +202,20 @@ export function AdminPushComposer({ cohortId, cohortName }) {
     const text = body.trim()
     if (!editing || !text) return
     setBusy(true)
+    const action = normalizeAction()
     const { error } = await supabase.from('push_messages')
-      .update({ body: text, updated_at: new Date().toISOString() }).eq('id', editing.id)
+      .update({ body: text, ...action, updated_at: new Date().toISOString() }).eq('id', editing.id)
     setBusy(false)
     if (error) { toast('수정에 실패했습니다.', 'error'); return }
     toast('쪽지가 수정되었습니다. (발송되지 않음)')
-    setBody(''); setEditing(null)
+    setBody(''); setActionUrl(''); setActionLabel(''); setEditing(null)
     load()
   }
 
   async function resend(m) {
     setBusy(true)
     try {
-      await deliver(m.id, m.body)
+      await deliver(m.id, m.body, { action_url: m.action_url, action_label: m.action_label })
       toast(`${target}에게 다시 보냈습니다.`)
       load()
     } catch (e) {
@@ -201,7 +229,7 @@ export function AdminPushComposer({ cohortId, cohortName }) {
     setBusy(false)
     setDeleteTarget(null)
     if (error) { toast('삭제에 실패했습니다.', 'error'); return }
-    if (editing?.id === deleteTarget.id) { setEditing(null); setBody('') }
+    if (editing?.id === deleteTarget.id) { setEditing(null); setBody(''); setActionUrl(''); setActionLabel('') }
     toast('쪽지 이력이 삭제되었습니다.')
     load()
   }
@@ -219,13 +247,28 @@ export function AdminPushComposer({ cohortId, cohortName }) {
             대상: {target} (현재 접속 중인 학생 화면에 팝업이 즉시 표시됩니다)
           </div>
           <textarea className="textarea" style={{ minHeight: 110 }} maxLength={1000}
-            placeholder="전달할 내용을 입력하세요…" value={body}
+            placeholder="전달할 내용을 입력하세요…  예) 아래 사이트에 접속하세요." value={body}
             onChange={(e) => setBody(e.target.value)} />
+          <div className="push-action-fields">
+            <div className="field" style={{ marginBottom: 0, flex: 1 }}>
+              <label className="t-caption">링크 URL <span className="muted-soft">(선택)</span></label>
+              <input className="input" placeholder="https://gemini.google.com" value={actionUrl}
+                onChange={(e) => setActionUrl(e.target.value)} />
+            </div>
+            <div className="field" style={{ marginBottom: 0, width: 160 }}>
+              <label className="t-caption">버튼 이름</label>
+              <input className="input" placeholder="Gemini 열기" maxLength={30} value={actionLabel}
+                onChange={(e) => setActionLabel(e.target.value)} />
+            </div>
+          </div>
+          {actionUrl.trim() && (
+            <div className="t-caption muted-soft">학생 팝업에 <span className="btn btn-primary btn-sm" style={{ pointerEvents: 'none', display: 'inline-flex' }}><IconExternalLink size={12} stroke={1.75} /> {actionLabel.trim() || '링크 열기'}</span> 버튼이 함께 표시됩니다.</div>
+          )}
           <div className="row" style={{ gap: 6, justifyContent: 'flex-end' }}>
             {editing && (
               <>
                 <span className="t-caption muted-soft" style={{ marginRight: 'auto' }}>이력 항목 수정 중</span>
-                <button className="btn btn-white btn-sm" disabled={busy} onClick={() => { setEditing(null); setBody('') }}>취소</button>
+                <button className="btn btn-white btn-sm" disabled={busy} onClick={() => { setEditing(null); setBody(''); setActionUrl(''); setActionLabel('') }}>취소</button>
                 <button className="btn btn-white btn-sm" disabled={busy || !body.trim()} onClick={saveEditOnly}>수정만 저장</button>
               </>
             )}
@@ -245,6 +288,7 @@ export function AdminPushComposer({ cohortId, cohortName }) {
                 {history.map((m) => (
                   <div key={m.id} className={`push-item ${editing?.id === m.id ? 'editing' : ''}`}>
                     <div className="push-body" style={{ fontSize: 13 }}>{m.body}</div>
+                    <PushAction item={m} small />
                     <div className="row mt-8" style={{ gap: 4 }}>
                       <span className="t-caption muted-soft tnum">
                         {m.send_count}회 발송{m.last_sent_at ? ` · 최근 ${fmtDate(m.last_sent_at, true)}` : ''}
@@ -253,7 +297,8 @@ export function AdminPushComposer({ cohortId, cohortName }) {
                       <button className="icon-btn" title="다시 보내기" disabled={busy} onClick={() => resend(m)}>
                         <IconRepeat size={15} stroke={1.75} />
                       </button>
-                      <button className="icon-btn" title="수정" disabled={busy} onClick={() => { setEditing(m); setBody(m.body) }}>
+                      <button className="icon-btn" title="수정" disabled={busy}
+                        onClick={() => { setEditing(m); setBody(m.body); setActionUrl(m.action_url || ''); setActionLabel(m.action_label || '') }}>
                         <IconPencil size={15} stroke={1.75} />
                       </button>
                       <button className="icon-btn danger" title="삭제" disabled={busy} onClick={() => setDeleteTarget(m)}>

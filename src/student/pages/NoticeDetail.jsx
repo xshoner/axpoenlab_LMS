@@ -3,7 +3,8 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { IconArrowLeft, IconDownload, IconFile } from '@tabler/icons-react'
 import { supabase } from '../../lib/supabase'
 import { Loading, EmptyState, useToast } from '../../shared/ui'
-import { fmtDate, fmtBytes, downloadFile, sanitizeRichBody } from '../../lib/helpers'
+import { fmtDate, fmtBytes, downloadFile } from '../../lib/helpers'
+import RichBody from '../../shared/RichBody'
 
 export default function NoticeDetail() {
   const { id } = useParams()
@@ -28,7 +29,7 @@ export default function NoticeDetail() {
       <div className="card-panel">
         <h1 className="t-h1 mb-8">{notice.title}</h1>
         <div className="t-caption muted-soft tnum mb-24">{fmtDate(notice.created_at, true)} · 조회 {notice.view_count}</div>
-        <div className="rich-body" dangerouslySetInnerHTML={{ __html: sanitizeRichBody(notice.body || '') }} />
+        <RichBody html={notice.body || ''} />
         {(notice.notice_attachments || []).length > 0 && (
           <div className="mt-24" style={{ borderTop: '1px solid var(--border)', paddingTop: 16 }}>
             {notice.notice_attachments.map((a) => (

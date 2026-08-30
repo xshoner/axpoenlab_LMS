@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
-import { IconBold, IconItalic, IconList, IconListNumbers, IconLink, IconClearFormatting, IconPhoto, IconBrandYoutube } from '@tabler/icons-react'
+import { IconBold, IconItalic, IconList, IconListNumbers, IconLink, IconClearFormatting, IconPhoto, IconBrandYoutube, IconTerminal2, IconSparkles } from '@tabler/icons-react'
+import { Dialog } from './ui'
 import { supabase } from '../lib/supabase'
 import { storageSafeName } from '../lib/helpers'
 
@@ -41,6 +42,22 @@ function videoEmbedHtml(id) {
   )
 }
 
+// 복사 블록 — 명령어(code) / 실습 프롬프트(prompt). 학생 화면(RichBody)에서 [복사] 버튼이 동작한다.
+const COPY_KINDS = {
+  code: { label: '명령어', btn: '복사', title: '명령어 블록 (복사 버튼 포함)', placeholder: 'npm install -g @anthropic-ai/claude-code' },
+  prompt: { label: '실습 프롬프트', btn: '프롬프트 복사', title: '프롬프트 블록 (복사 버튼 포함)', placeholder: '다음 웹앱을 만들어라...' },
+}
+function copyBlockHtml(kind, text, label) {
+  const k = COPY_KINDS[kind] || COPY_KINDS.code
+  const safeText = String(text).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+  return (
+    `<div class="copy-block" data-kind="${kind}" contenteditable="false">` +
+    `<div class="cb-head"><span class="cb-label">${escAttr(label || k.label)}</span>` +
+    `<button type="button" class="cb-copy">${escAttr(k.btn)}</button></div>` +
+    `<pre class="cb-body" contenteditable="true">${safeText}</pre></div><p><br></p>`
+  )
+}
+
 function linkPreviewHtml(url) {
   const safe = escAttr(url)
   const thumb = escAttr(thumbnailUrl(url))
@@ -58,6 +75,7 @@ export default function RichEditor({ value, onChange, minHeight = 200 }) {
   const ref = useRef(null)
   const imgInput = useRef(null)
   const [uploading, setUploading] = useState(false)
+  const [copyDlg, setCopyDlg] = useState(null) // { kind, text, label }
 
   useEffect(() => {
     if (ref.current && ref.current.innerHTML !== (value || '')) {
@@ -165,6 +183,12 @@ export default function RichEditor({ value, onChange, minHeight = 200 }) {
     }
   }
 
+  function insertCopyBlock() {
+    if (!copyDlg?.text.trim()) return
+    exec('insertHTML', copyBlockHtml(copyDlg.kind, copyDlg.text.replace(/\s+$/, ''), copyDlg.label.trim()))
+    setCopyDlg(null)
+  }
+
   const tools = [
     { icon: IconBold, cmd: () => exec('bold'), label: '굵게' },
     { icon: IconItalic, cmd: () => exec('italic'), label: '기울임' },
@@ -173,6 +197,8 @@ export default function RichEditor({ value, onChange, minHeight = 200 }) {
     { icon: IconLink, cmd: addLink, label: '링크 + 미리보기' },
     { icon: IconBrandYoutube, cmd: addVideo, label: '유튜브 동영상 삽입' },
     { icon: IconPhoto, cmd: () => imgInput.current?.click(), label: '이미지 삽입' },
+    { icon: IconTerminal2, cmd: () => setCopyDlg({ kind: 'code', text: '', label: '' }), label: '명령어 블록 (복사 버튼)' },
+    { icon: IconSparkles, cmd: () => setCopyDlg({ kind: 'prompt', text: '', label: '' }), label: '프롬프트 블록 (복사 버튼)' },
     { icon: IconClearFormatting, cmd: () => exec('removeFormat'), label: '서식 지우기' },
   ]
 
@@ -198,6 +224,36 @@ export default function RichEditor({ value, onChange, minHeight = 200 }) {
         onPaste={onPaste}
         suppressContentEditableWarning
       />
+      <Dialog open={!!copyDlg} title={copyDlg ? COPY_KINDS[copyDlg.kind].title : ''} onClose={() => setCopyDlg(null)}
+        actions={
+          <>
+            <button type="button" className="btn btn-white btn-sm" onClick={() => setCopyDlg(null)}>취소</button>
+            <button type="button" className="btn btn-primary btn-sm" disabled={!copyDlg?.text.trim()} onClick={insertCopyBlock}>삽입</button>
+          </>
+        }>
+        {copyDlg && (
+          <div className="stack" style={{ gap: 10 }}>
+            <div className="row" style={{ gap: 6 }}>
+              {Object.entries(COPY_KINDS).map(([k, v]) => (
+                <button key={k} type="button" className={`btn btn-sm ${copyDlg.kind === k ? 'btn-primary' : 'btn-white'}`}
+                  onClick={() => setCopyDlg({ ...copyDlg, kind: k })}>{v.label}</button>
+              ))}
+            </div>
+            <div className="field" style={{ marginBottom: 0 }}>
+              <label>블록 제목 <span className="t-caption muted-soft">(선택 — 비우면 "{COPY_KINDS[copyDlg.kind].label}")</span></label>
+              <input className="input" maxLength={40} value={copyDlg.label} placeholder="예: Claude Code 설치, 실습 1 프롬프트"
+                onChange={(e) => setCopyDlg({ ...copyDlg, label: e.target.value })} />
+            </div>
+            <div className="field" style={{ marginBottom: 0 }}>
+              <label>복사될 내용</label>
+              <textarea className="textarea" autoFocus style={{ minHeight: 140, fontFamily: copyDlg.kind === 'code' ? 'ui-monospace, Consolas, monospace' : 'inherit', fontSize: 13 }}
+                placeholder={COPY_KINDS[copyDlg.kind].placeholder} value={copyDlg.text}
+                onChange={(e) => setCopyDlg({ ...copyDlg, text: e.target.value })} />
+              <span className="hint">학생 화면에서 블록 오른쪽 위 [{COPY_KINDS[copyDlg.kind].btn}] 버튼으로 한 번에 복사됩니다. 삽입 후에도 블록 안의 글자는 직접 수정할 수 있습니다.</span>
+            </div>
+          </div>
+        )}
+      </Dialog>
     </div>
   )
 }

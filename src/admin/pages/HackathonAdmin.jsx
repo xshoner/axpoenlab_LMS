@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
-import { IconTrash, IconTrophy, IconFlagCheck, IconListNumbers, IconLockOpen } from '@tabler/icons-react'
+import { IconTrash, IconTrophy, IconFlagCheck, IconListNumbers, IconLockOpen, IconRefresh } from '@tabler/icons-react'
+import { useUrlStatuses, UrlStatusDot } from '../../shared/urlcheck'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../shared/auth'
 import { useCohort } from '../cohortContext'
@@ -27,6 +28,7 @@ export default function HackathonAdmin() {
   const [reopenOpen, setReopenOpen] = useState(false)
   const [deleteTarget, setDeleteTarget] = useState(null) // entry row | { hall: row }
   const [busy, setBusy] = useState(false)
+  const urlStatus = useUrlStatuses(rows ? rows.map((r) => r.url) : [])
 
   async function load() {
     if (!selectedId) { setRows([]); return }
@@ -171,6 +173,11 @@ export default function HackathonAdmin() {
           {closed && <StatusPill kind="closed">마감됨</StatusPill>}
         </h2>
         <div className="row" style={{ gap: 8 }}>
+          <button className="btn btn-white btn-sm" onClick={urlStatus.recheck} disabled={urlStatus.checking || urlStatus.total === 0}
+            title="등록된 웹앱 URL이 모두 연결되는지 다시 확인합니다 (발표 전 점검용)">
+            <IconRefresh size={14} stroke={1.75} className={urlStatus.checking ? 'spin' : ''} />
+            {urlStatus.checking ? 'URL 검사 중…' : '전체 URL 다시 검사'}
+          </button>
           <button className="btn btn-white btn-sm" onClick={openRanking}>
             <IconListNumbers size={14} stroke={1.75} /> {closed ? '최종 순위표 보기' : '현재 순위표 보기'}
           </button>
@@ -186,6 +193,17 @@ export default function HackathonAdmin() {
         </div>
       </div>
 
+      {rows.length > 0 && urlStatus.total > 0 && (
+        <div className="url-summary">
+          <span className="url-summary-item ok"><span className="dot" /> {urlStatus.ok}개 정상</span>
+          <span className="url-summary-item bad"><span className="dot" /> {urlStatus.bad}개 오류</span>
+          {urlStatus.pending > 0 && <span className="url-summary-item"><span className="dot" /> {urlStatus.pending}개 확인 중</span>}
+          <span className="t-caption muted-soft" style={{ marginLeft: 'auto' }}>
+            URL 미등록 {rows.length - urlStatus.total}건{urlStatus.checkedAt ? ` · 마지막 검사 ${new Date(urlStatus.checkedAt).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })}` : ''}
+          </span>
+        </div>
+      )}
+
       {rows.length === 0 ? (
         <EmptyState title="등록된 결과물이 없습니다" description="학생들이 '바이브 해커톤' 메뉴에서 결과물을 등록하면 여기에 표시됩니다." />
       ) : (
@@ -193,7 +211,7 @@ export default function HackathonAdmin() {
           <table className="data-table">
             <thead>
               <tr>
-                <th>웹앱 제목</th><th>소속</th><th>이름</th><th style={{ width: 170 }}>평균 별점</th>
+                <th>웹앱 제목</th><th>소속</th><th>이름</th><th style={{ width: 110 }}>URL 연결</th><th style={{ width: 170 }}>평균 별점</th>
                 <th style={{ width: 130 }}>등록일</th><th style={{ width: 60 }}></th>
               </tr>
             </thead>
@@ -205,6 +223,7 @@ export default function HackathonAdmin() {
                     <td className="t-emph">{r.title}</td>
                     <td className="t-muted-sm">{r.author_org || '-'}</td>
                     <td className="t-muted-sm">{r.author_name}</td>
+                    <td onClick={(e) => e.stopPropagation()}><UrlStatusDot url={r.url} state={urlStatus.map[r.url]} link /></td>
                     <td>
                       {stat
                         ? <StarRating value={stat.avg_rating} size={13} showValue count={stat.rating_count} />

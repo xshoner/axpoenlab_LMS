@@ -763,3 +763,72 @@ input, textarea, select { font-family: inherit; }
 .hk-comment-body { flex: 1; min-width: 0; word-break: break-word; }
 .hk-comment-date { flex-shrink: 0; }
 @media (max-width: 640px) { .hk-comment { flex-wrap: wrap; } .hk-comment-body { flex-basis: 100%; order: 3; } }
+
+/* ---------- 자동 임시저장 배지 ---------- */
+.draft-badge {
+  display: inline-flex; align-items: center; gap: 4px; font-size: 11px; font-weight: 600; color: var(--muted-soft);
+  background: var(--surface); border: 1px solid var(--border); border-radius: 9999px; padding: 2px 8px; white-space: nowrap;
+}
+
+/* ---------- 본문 복사 블록 (명령어 / 프롬프트) ---------- */
+.rich-body .copy-block {
+  border: 1px solid var(--border); border-radius: 12px; overflow: hidden; margin: 12px 0; background: var(--surface);
+}
+.rich-body .copy-block .cb-head {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 6px 10px 6px 14px;
+  background: var(--primary-tint); border-bottom: 1px solid var(--border);
+}
+.rich-body .copy-block .cb-label { font-size: 12px; font-weight: 700; color: var(--primary); letter-spacing: 0.02em; }
+.rich-body .copy-block .cb-copy {
+  display: inline-flex; align-items: center; gap: 4px; height: 26px; padding: 0 10px; border-radius: 9999px;
+  border: 1px solid var(--primary); background: var(--background); color: var(--primary); font-size: 12px; font-weight: 700; cursor: pointer;
+}
+.rich-body .copy-block .cb-copy::before { content: '⧉'; font-size: 13px; }
+.rich-body .copy-block .cb-copy:hover { background: var(--primary); color: var(--on-primary); }
+.rich-body .copy-block .cb-copy.done { background: var(--success); border-color: var(--success); color: #fff; }
+.rich-body .copy-block .cb-copy.done::before { content: ''; }
+.rich-body .copy-block .cb-body {
+  margin: 0; padding: 12px 14px; white-space: pre-wrap; word-break: break-word; font-size: 14px; line-height: 1.6;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; color: var(--foreground); background: var(--surface); outline: none;
+}
+.rich-body .copy-block[data-kind="prompt"] .cb-body { font-family: inherit; }
+.rich-body .copy-block[data-kind="prompt"] .cb-head { background: var(--accent-light); }
+.rich-body .copy-block[data-kind="prompt"] .cb-label { color: var(--accent-deep); }
+.rich-body .copy-block[data-kind="prompt"] .cb-copy { border-color: var(--accent-deep); color: var(--accent-deep); }
+.rich-body .copy-block[data-kind="prompt"] .cb-copy:hover { background: var(--accent-deep); color: #fff; }
+
+/* ---------- URL 연결 상태 (목록) ---------- */
+.url-status {
+  display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 700; text-decoration: none; white-space: nowrap;
+  color: var(--muted-soft);
+}
+.url-status .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--muted-soft); flex-shrink: 0; }
+.url-status.ok { color: #047857; } .url-status.ok .dot { background: #10b981; box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.18); }
+.url-status.bad { color: var(--danger); } .url-status.bad .dot { background: var(--danger); box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.18); }
+.url-status.checking .dot { animation: live-pulse 1.2s ease-out infinite; }
+.url-summary {
+  display: flex; align-items: center; gap: 16px; flex-wrap: wrap; padding: 10px 16px; border-radius: 12px;
+  background: var(--surface); border: 1px solid var(--border); font-size: 13px; font-weight: 700;
+}
+.url-summary-item { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); }
+.url-summary-item .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--muted-soft); }
+.url-summary-item.ok { color: #047857; } .url-summary-item.ok .dot { background: #10b981; }
+.url-summary-item.bad { color: var(--danger); } .url-summary-item.bad .dot { background: var(--danger); }
+.spin { animation: spin 1s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ---------- 쪽지 링크 입력 ---------- */
+.push-action-fields { display: flex; gap: 8px; align-items: flex-end; }
+@media (max-width: 560px) { .push-action-fields { flex-direction: column; align-items: stretch; } .push-action-fields .field { width: auto !important; } }
+
+/* ---------- 학생 화면 미리보기 ---------- */
+.inq-pill.hot-primary { background: var(--primary); color: var(--on-primary); }
+.preview-banner {
+  display: flex; align-items: center; gap: 12px; padding: 12px 16px; border-radius: 14px;
+  background: var(--primary); color: var(--on-primary); box-shadow: var(--shadow-soft);
+}
+.preview-frame {
+  border: 2px dashed var(--border); border-radius: 20px; padding: 24px; background: rgba(255, 255, 255, 0.5);
+  max-width: 1280px; margin: 0 auto; width: 100%;
+}
+@media (max-width: 767px) { .preview-frame { padding: 12px; } .inq-pill span:last-child { display: none; } }

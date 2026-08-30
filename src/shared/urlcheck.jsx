@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 
 export const AI_OPTIONS = ['GPT', 'Gemini', 'Claude', 'Meta', 'Grok', 'Perplexity', '기타']
 
@@ -92,4 +92,61 @@ export function UrlThumbnail({ url, width = 640, height = 400 }) {
       <span className="url-thumb-label">미리보기{tick === 0 ? ' · 스냅샷 생성 중…' : ''}</span>
     </a>
   )
+}
+
+/* 여러 URL의 연결 상태를 한 번에 검사한다 (목록용). 재검사는 recheck() 호출. */
+export function useUrlStatuses(urls) {
+  const urlsKey = JSON.stringify(urls || [])
+  const list = useMemo(() => [...new Set((JSON.parse(urlsKey)).filter((u) => u && /^https?:\/\//i.test(u)))], [urlsKey])
+  const [map, setMap] = useState({})
+  const [checking, setChecking] = useState(false)
+  const [checkedAt, setCheckedAt] = useState(null)
+
+  const run = useCallback(async (targets) => {
+    if (targets.length === 0) return
+    setChecking(true)
+    setMap((m) => { const n = { ...m }; for (const u of targets) n[u] = 'checking'; return n })
+    // 동시 6개씩 검사
+    const queue = [...targets]
+    const worker = async () => {
+      while (queue.length) {
+        const u = queue.shift()
+        const ok = await checkUrlReachable(u, 8000)
+        setMap((m) => ({ ...m, [u]: ok ? 'ok' : 'bad' }))
+      }
+    }
+    await Promise.all(Array.from({ length: Math.min(6, targets.length) }, worker))
+    setChecking(false)
+    setCheckedAt(Date.now())
+  }, [])
+
+  // 새로 나타난 URL만 자동 검사
+  useEffect(() => {
+    const fresh = list.filter((u) => !(u in map))
+    if (fresh.length) run(fresh)
+  }, [list]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const recheck = useCallback(() => run(list), [list, run])
+
+  let ok = 0, bad = 0, pending = 0
+  for (const u of list) {
+    const st = map[u]
+    if (st === 'ok') ok += 1
+    else if (st === 'bad') bad += 1
+    else pending += 1
+  }
+  return { map, checking, recheck, ok, bad, pending, total: list.length, checkedAt }
+}
+
+/** 목록 셀용 상태 표시: 🟢 정상 / 🔴 오류 / 확인 중 / URL 없음 */
+export function UrlStatusDot({ url, state, link = false }) {
+  if (!url) return <span className="t-caption muted-soft">URL 없음</span>
+  const st = state || 'checking'
+  const label = st === 'ok' ? '정상' : st === 'bad' ? '오류' : '확인 중'
+  const inner = <><span className="dot" />{label}</>
+  const cls = `url-status ${st}`
+  if (link) {
+    return <a href={url} target="_blank" rel="noreferrer" className={cls} title={url}>{inner}</a>
+  }
+  return <span className={cls} title={url}>{inner}</span>
 }

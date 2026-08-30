@@ -3,7 +3,7 @@ import { Routes, Route, NavLink, Navigate, useLocation } from 'react-router-dom'
 import {
   IconLayoutDashboard, IconUsersGroup, IconBook2, IconClipboardText, IconChecklist,
   IconPencilQuestion, IconSpeakerphone, IconUsers, IconMessageCircleQuestion,
-  IconShieldLock, IconSettings, IconLogout, IconMenu2, IconMessages, IconRocket,
+  IconShieldLock, IconSettings, IconLogout, IconMenu2, IconMessages, IconRocket, IconEye,
 } from '@tabler/icons-react'
 import { supabase } from '../lib/supabase'
 import { useAuth, signOut } from '../shared/auth'
@@ -25,6 +25,7 @@ import BoardAdmin from './pages/BoardAdmin'
 import HackathonAdmin from './pages/HackathonAdmin'
 import AdminAccounts from './pages/AdminAccounts'
 import SystemSettings from './pages/SystemSettings'
+import StudentPreview from './pages/StudentPreview'
 
 const MENU = [
   { to: '/', label: '대시보드', icon: IconLayoutDashboard, end: true },
@@ -139,6 +140,10 @@ function AdminShell({ profile }) {
             </select>
             {selectedId && <StatusPill kind="neutral">{cohorts.find((c) => c.id === selectedId)?.name} 기준으로 표시 중</StatusPill>}
             <div className="topbar-right">
+              <NavLink to="/preview" className={({ isActive }) => `inq-pill ${isActive ? 'hot-primary' : ''}`} title="선택한 기수의 학생에게 보이는 화면을 미리 봅니다">
+                <IconEye size={14} stroke={1.75} />
+                <span>학생 화면 미리보기</span>
+              </NavLink>
               <AdminPushComposer cohortId={selectedId} cohortName={cohorts.find((c) => c.id === selectedId)?.name} />
               <span className="live-pill" title="현재 접속 중인 학생 수">
                 <span className="live-dot" />
@@ -185,6 +190,7 @@ function AdminShell({ profile }) {
               <Route path="/members" element={<Members />} />
               <Route path="/inquiries" element={<InquiriesAdmin />} />
               <Route path="/board" element={<BoardAdmin />} />
+              <Route path="/preview" element={<StudentPreview />} />
               {isSuper && <Route path="/admins" element={<AdminAccounts />} />}
               {isSuper && <Route path="/settings" element={<SystemSettings />} />}
               <Route path="*" element={<Navigate to="/" replace />} />

@@ -5,6 +5,7 @@ import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../shared/auth'
 import { Loading, EmptyState, StatusPill, useToast } from '../../shared/ui'
 import { fmtDate, fmtBytes, getSettings, uploadFile, downloadFile, pad2, storageSafeName } from '../../lib/helpers'
+import { useDraft, DraftBadge } from '../../shared/draft'
 
 export default function Inquiries() {
   return (
@@ -70,6 +71,9 @@ function InquiryNew() {
   const [busy, setBusy] = useState(false)
   const [settings, setSettings] = useState({ allowedExtensions: [], maxFileSizeMb: 5 })
   const fileInput = useRef(null)
+  const draft = useDraft(`inquiry:${profile.id}:new`, { title, body, courseId },
+    (d) => { setTitle(d.title || ''); setBody(d.body || ''); setCourseId(d.courseId || '') },
+    (d) => !d.title && !d.body)
 
   useEffect(() => {
     supabase.from('cohort_courses').select('id, course_no, title').order('course_no')
@@ -104,6 +108,7 @@ function InquiryNew() {
         cohort_course_id: courseId || null,
       })
       if (error) throw error
+      draft.clear()
       toast('문의가 등록되었습니다.')
       nav('/inquiries')
     } catch {
@@ -115,7 +120,7 @@ function InquiryNew() {
 
   return (
     <div className="card-panel" style={{ maxWidth: 720 }}>
-      <h2 className="t-h2 mb-16">문의 작성</h2>
+      <h2 className="t-h2 mb-16 row" style={{ gap: 10 }}>문의 작성 <DraftBadge savedAt={draft.savedAt} restored={draft.restored} /></h2>
       <form onSubmit={submit}>
         <div className="field">
           <label>제목 <span className="req">*</span></label>

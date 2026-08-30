@@ -3,6 +3,8 @@ import { Link, Route, Routes, useNavigate, useParams } from 'react-router-dom'
 import { IconRocket, IconTrash, IconFile, IconPlus, IconLock } from '@tabler/icons-react'
 import { UrlHealthBadge, AI_OPTIONS } from '../../shared/urlcheck'
 import { HackathonEntryView } from '../../shared/hackathonEntry'
+import { useDraft, DraftBadge } from '../../shared/draft'
+import { useUrlStatuses, UrlStatusDot } from '../../shared/urlcheck'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../shared/auth'
 import { Loading, EmptyState, StatusPill, StarRating, ConfirmDialog, useToast } from '../../shared/ui'
@@ -37,6 +39,7 @@ function EntryList() {
   const [rows, setRows] = useState(null)
   const [statsMap, setStatsMap] = useState({})
   const closed = useRound(cohort?.id)
+  const urlStatus = useUrlStatuses(rows ? rows.map((r) => r.url) : [])
 
   useEffect(() => {
     if (!cohort) { setRows([]); return }
@@ -88,6 +91,7 @@ function EntryList() {
                 <th>웹앱 제목</th>
                 <th style={{ width: 140 }}>소속</th>
                 <th style={{ width: 120 }}>이름</th>
+                <th style={{ width: 100 }}>URL 연결</th>
                 <th style={{ width: 170 }}>평균 별점</th>
               </tr>
             </thead>
@@ -105,6 +109,7 @@ function EntryList() {
                     </td>
                     <td className="t-muted-sm">{r.author_org || '-'}</td>
                     <td className="t-muted-sm">{r.author_name}</td>
+                    <td><UrlStatusDot url={r.url} state={urlStatus.map[r.url]} /></td>
                     <td>
                       {stat
                         ? <StarRating value={stat.avg_rating} size={13} showValue count={stat.rating_count} />
@@ -190,6 +195,9 @@ function EntryForm() {
   const [loading, setLoading] = useState(!!id)
   const [busy, setBusy] = useState(false)
   const fileInput = useRef(null)
+  // 자동 임시저장 (수정 모드는 서버 데이터 로드 후 활성화)
+  const draft = useDraft(loading ? null : `hackathon:${profile.id}:${id || 'new'}`, form, setForm,
+    (d) => !d.title && !d.summary && !d.url && !d.main_ai && !d.prompt_text && !d.repo_url)
 
   useEffect(() => {
     if (!id) return
@@ -260,6 +268,7 @@ function EntryForm() {
           .insert({ entry_id: entryId, file_path: path, filename: file.name, file_size: file.size })
         if (error) throw error
       }
+      draft.clear()
       toast(id ? '결과물이 수정되었습니다.' : '해커톤 참여가 등록되었습니다!')
       nav('/hackathon')
     } catch (e) {
@@ -271,7 +280,7 @@ function EntryForm() {
   return (
     <div className="stack" style={{ gap: 16, maxWidth: 760 }}>
       <div className="row-between">
-        <h2 className="t-h2">{id ? '결과물 수정' : '해커톤 참여하기'}</h2>
+        <h2 className="t-h2 row" style={{ gap: 10 }}>{id ? '결과물 수정' : '해커톤 참여하기'} <DraftBadge savedAt={draft.savedAt} restored={draft.restored} /></h2>
         <div className="row" style={{ gap: 8 }}>
           <button className="btn btn-white btn-sm" onClick={() => nav('/hackathon')}>취소</button>
           <button className="btn btn-primary btn-sm" onClick={save} disabled={busy}>

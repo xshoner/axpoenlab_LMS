@@ -5,6 +5,7 @@ import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../shared/auth'
 import { Loading, EmptyState, ConfirmDialog, EmojiBar, Pagination, useToast } from '../../shared/ui'
 import { fmtDate, isNew, insertAtCursor } from '../../lib/helpers'
+import { useDraft, DraftBadge } from '../../shared/draft'
 
 /* 공개게시판 — 누구나 글·댓글 작성 가능, 본인 글은 삭제 가능 */
 export default function Board() {
@@ -84,6 +85,8 @@ function PostNew() {
   const [body, setBody] = useState('')
   const [busy, setBusy] = useState(false)
   const bodyRef = useRef(null)
+  const draft = useDraft(`board:${profile.id}:new`, { title, body },
+    (d) => { setTitle(d.title || ''); setBody(d.body || '') }, (d) => !d.title && !d.body)
 
   function pickEmoji(em) {
     const next = insertAtCursor(bodyRef.current, em, body)
@@ -100,13 +103,14 @@ function PostNew() {
     })
     setBusy(false)
     if (error) { toast('등록에 실패했습니다.', 'error'); return }
+    draft.clear()
     toast('게시글이 등록되었습니다.')
     nav('/board')
   }
 
   return (
     <div className="card-panel" style={{ maxWidth: 720 }}>
-      <h2 className="t-h2 mb-16">글쓰기</h2>
+      <h2 className="t-h2 mb-16 row" style={{ gap: 10 }}>글쓰기 <DraftBadge savedAt={draft.savedAt} restored={draft.restored} /></h2>
       <form onSubmit={submit}>
         <div className="field">
           <label>제목 <span className="req">*</span></label>

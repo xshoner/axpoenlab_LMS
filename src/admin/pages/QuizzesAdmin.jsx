@@ -8,6 +8,7 @@ import { supabase } from '../../lib/supabase'
 import { useCohort } from '../cohortContext'
 import { ConfirmDialog, EmptyState, HBar, Loading, StatCard, StatusPill, useToast } from '../../shared/ui'
 import { pad2, downloadCsv, CONTENT_STATUS } from '../../lib/helpers'
+import { useDraft, DraftBadge } from '../../shared/draft'
 
 const Q_TYPES = { choice: '선다형', short: '단답형', ox: 'OX형' }
 
@@ -194,6 +195,10 @@ function QuizBuilder({ quizId, courses, isMaster, onDone }) {
   })
   const [questions, setQuestions] = useState(quizId ? null : [])
   const [busy, setBusy] = useState(false)
+  const draft = useDraft((quiz && questions) ? `quiz:${isMaster ? 'master' : 'cohort'}:${quizId || 'new'}` : null,
+    { quiz, questions },
+    (d) => { if (d.quiz) setQuiz(d.quiz); if (Array.isArray(d.questions)) setQuestions(d.questions) },
+    (d) => !quizId && !d.quiz?.title && !d.quiz?.description && (d.questions || []).length === 0)
 
   useEffect(() => {
     if (!quizId) return
@@ -264,6 +269,7 @@ function QuizBuilder({ quizId, courses, isMaster, onDone }) {
       })
       if (error) throw error
       toast('퀴즈가 저장되었습니다.')
+      draft.clear()
       onDone()
     } catch {
       toast('저장에 실패했습니다.', 'error')
@@ -275,12 +281,13 @@ function QuizBuilder({ quizId, courses, isMaster, onDone }) {
   return (
     <div className="stack" style={{ gap: 0, maxWidth: 860 }}>
       <div className="toolbar-sticky">
-        <span className="t-caption muted">
+        <span className="t-caption muted row" style={{ gap: 10 }}>
           {quizId ? '퀴즈 편집' : '새 퀴즈'}
+          <DraftBadge savedAt={draft.savedAt} restored={draft.restored} />
           {anyMissing && <span style={{ color: 'var(--warning)', marginLeft: 8 }}>정답 누락 문항이 있습니다</span>}
         </span>
         <div className="row" style={{ gap: 8, marginLeft: 'auto' }}>
-          <button className="btn btn-white btn-sm" onClick={onDone}>취소</button>
+          <button className="btn btn-white btn-sm" onClick={() => { draft.clear(); onDone() }}>취소</button>
           <button className="btn btn-primary btn-sm" onClick={save} disabled={busy}>{busy ? '저장 중…' : '저장'}</button>
         </div>
       </div>
