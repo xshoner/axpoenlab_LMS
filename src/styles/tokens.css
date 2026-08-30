@@ -817,9 +817,15 @@ input, textarea, select { font-family: inherit; }
 .spin { animation: spin 1s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
 
-/* ---------- 쪽지 링크 입력 ---------- */
-.push-action-fields { display: flex; gap: 8px; align-items: flex-end; }
-@media (max-width: 560px) { .push-action-fields { flex-direction: column; align-items: stretch; } .push-action-fields .field { width: auto !important; } }
+/* ---------- 쪽지: 넓은 다이얼로그 · 본문 안 링크 버튼 ---------- */
+.dialog-wide { max-width: 680px; }
+.rich-body a.link-btn {
+  display: inline-flex; align-items: center; gap: 4px; padding: 4px 12px; border-radius: 9999px; margin: 2px 0;
+  background: var(--primary); color: var(--on-primary) !important; font-size: 13px; font-weight: 700; text-decoration: none;
+}
+.rich-body a.link-btn::after { content: '↗'; font-size: 12px; }
+.rich-body a.link-btn:hover { background: var(--primary-hover); }
+.push-body .rich-body p:last-child { margin-bottom: 0; }
 
 /* ---------- 학생 화면 미리보기 ---------- */
 .inq-pill.hot-primary { background: var(--primary); color: var(--on-primary); }

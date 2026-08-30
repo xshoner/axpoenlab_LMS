@@ -71,7 +71,7 @@ function linkPreviewHtml(url) {
 
 /* 경량 리치 텍스트 에디터 (강좌 본문·공지 작성용)
    URL을 붙여넣거나 링크 버튼으로 넣으면 400×300 썸네일 미리보기 카드가 자동 삽입됩니다. */
-export default function RichEditor({ value, onChange, minHeight = 200 }) {
+export default function RichEditor({ value, onChange, minHeight = 200, compact = false }) {
   const ref = useRef(null)
   const imgInput = useRef(null)
   const [uploading, setUploading] = useState(false)
@@ -144,6 +144,19 @@ export default function RichEditor({ value, onChange, minHeight = 200 }) {
     insertPreview(trimmed)
   }
 
+  // 텍스트 링크(버튼처럼 보이는 링크) — 쪽지용. 예: "아래 사이트에 접속하세요 [Gemini 열기]"
+  function addTextLink() {
+    const url = prompt('링크 URL을 입력하세요 (https://...)')
+    if (!url) return
+    const trimmed = url.trim()
+    if (!isValidUrl(trimmed)) { alert('http:// 또는 https:// 로 시작하는 URL만 넣을 수 있습니다.'); return }
+    const sel = window.getSelection()?.toString().trim()
+    const label = sel || prompt('링크에 표시할 이름을 입력하세요', '링크 열기')
+    if (label == null) return
+    const safe = escAttr(trimmed)
+    exec('insertHTML', `<a class="link-btn" href="${safe}" target="_blank" rel="noopener noreferrer">${escAttr(label.trim() || trimmed)}</a>&nbsp;`)
+  }
+
   function addVideo() {
     const url = prompt('유튜브 동영상 URL을 입력하세요.\n예: https://www.youtube.com/watch?v=... 또는 https://youtu.be/...')
     if (!url) return
@@ -189,18 +202,19 @@ export default function RichEditor({ value, onChange, minHeight = 200 }) {
     setCopyDlg(null)
   }
 
+  // compact(쪽지 등 짧은 본문): 이미지·동영상 도구를 숨기고 링크는 미리보기 카드 없이 텍스트 링크만 삽입
   const tools = [
     { icon: IconBold, cmd: () => exec('bold'), label: '굵게' },
     { icon: IconItalic, cmd: () => exec('italic'), label: '기울임' },
     { icon: IconList, cmd: () => exec('insertUnorderedList'), label: '목록' },
     { icon: IconListNumbers, cmd: () => exec('insertOrderedList'), label: '번호 목록' },
-    { icon: IconLink, cmd: addLink, label: '링크 + 미리보기' },
-    { icon: IconBrandYoutube, cmd: addVideo, label: '유튜브 동영상 삽입' },
-    { icon: IconPhoto, cmd: () => imgInput.current?.click(), label: '이미지 삽입' },
+    { icon: IconLink, cmd: compact ? addTextLink : addLink, label: compact ? '링크 삽입' : '링크 + 미리보기' },
+    !compact && { icon: IconBrandYoutube, cmd: addVideo, label: '유튜브 동영상 삽입' },
+    !compact && { icon: IconPhoto, cmd: () => imgInput.current?.click(), label: '이미지 삽입' },
     { icon: IconTerminal2, cmd: () => setCopyDlg({ kind: 'code', text: '', label: '' }), label: '명령어 블록 (복사 버튼)' },
     { icon: IconSparkles, cmd: () => setCopyDlg({ kind: 'prompt', text: '', label: '' }), label: '프롬프트 블록 (복사 버튼)' },
     { icon: IconClearFormatting, cmd: () => exec('removeFormat'), label: '서식 지우기' },
-  ]
+  ].filter(Boolean)
 
   return (
     <div style={{ border: '1px solid var(--border)', borderRadius: 8, overflow: 'hidden' }}>
@@ -211,7 +225,7 @@ export default function RichEditor({ value, onChange, minHeight = 200 }) {
           </button>
         ))}
         {uploading && <span className="t-caption muted-soft" style={{ marginLeft: 8 }}>이미지 업로드 중…</span>}
-        <span className="t-caption muted-soft" style={{ marginLeft: 'auto' }}>URL 붙여넣기 시 미리보기 자동 삽입</span>
+        {!compact && <span className="t-caption muted-soft" style={{ marginLeft: 'auto' }}>URL 붙여넣기 시 미리보기 자동 삽입</span>}
         <input ref={imgInput} type="file" accept="image/*" hidden
           onChange={(e) => { insertImage(e.target.files?.[0]); e.target.value = '' }} />
       </div>
@@ -221,7 +235,7 @@ export default function RichEditor({ value, onChange, minHeight = 200 }) {
         contentEditable
         style={{ minHeight, padding: '12px 14px', outline: 'none', fontSize: 16 }}
         onInput={() => onChange(ref.current.innerHTML)}
-        onPaste={onPaste}
+        onPaste={compact ? undefined : onPaste}
         suppressContentEditableWarning
       />
       <Dialog open={!!copyDlg} title={copyDlg ? COPY_KINDS[copyDlg.kind].title : ''} onClose={() => setCopyDlg(null)}

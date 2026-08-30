@@ -50,7 +50,7 @@ export function HackathonEntryView({ entry, profile, isAdmin = false, onBack, on
       loadComments()
     })()
     return () => { alive = false }
-  }, [entry.id, entry.cohort_id, profile.id]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [entry.id, entry.cohort_id, profile.id])
 
   async function rate(n) {
     if (rateBusy) return

@@ -61,7 +61,6 @@ export function useDraft(key, data, restore, isEmpty) {
       } catch { /* quota 등 — 임시저장은 비필수 */ }
     }, 800)
     return () => clearTimeout(t)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key, dataKey])
 
   // 작성 중 이탈 경고 (새로고침·탭 닫기)
@@ -72,7 +71,6 @@ export function useDraft(key, data, restore, isEmpty) {
     const handler = (e) => { e.preventDefault(); e.returnValue = '작성 중인 내용이 있습니다. 이동하시겠습니까?' }
     window.addEventListener('beforeunload', handler)
     return () => window.removeEventListener('beforeunload', handler)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key, dataKey])
 
   function clear() {

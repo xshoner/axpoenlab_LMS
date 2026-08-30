@@ -124,18 +124,21 @@ export function useUrlStatuses(urls) {
   useEffect(() => {
     const fresh = list.filter((u) => !(u in map))
     if (fresh.length) run(fresh)
-  }, [list]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [list])
 
   const recheck = useCallback(() => run(list), [list, run])
 
-  let ok = 0, bad = 0, pending = 0
-  for (const u of list) {
+  // 집계는 행 기준(같은 URL을 여러 학생이 등록해도 각각 1건) — 검사 자체는 고유 URL당 1회
+  let ok = 0, bad = 0, pending = 0, total = 0
+  for (const u of JSON.parse(urlsKey)) {
+    if (!u || !/^https?:\/\//i.test(u)) continue
+    total += 1
     const st = map[u]
     if (st === 'ok') ok += 1
     else if (st === 'bad') bad += 1
     else pending += 1
   }
-  return { map, checking, recheck, ok, bad, pending, total: list.length, checkedAt }
+  return { map, checking, recheck, ok, bad, pending, total, checkedAt }
 }
 
 /** 목록 셀용 상태 표시: 🟢 정상 / 🔴 오류 / 확인 중 / URL 없음 */
