@@ -1,13 +1,11 @@
 import { useEffect, useState } from 'react'
-import {
-  IconArrowLeft, IconTrash, IconTrophy, IconFlagCheck, IconListNumbers,
-  IconLockOpen, IconFile, IconDownload, IconExternalLink,
-} from '@tabler/icons-react'
-import { UrlHealthBadge, AI_OPTIONS } from '../../shared/urlcheck'
+import { IconTrash, IconTrophy, IconFlagCheck, IconListNumbers, IconLockOpen } from '@tabler/icons-react'
 import { supabase } from '../../lib/supabase'
+import { useAuth } from '../../shared/auth'
 import { useCohort } from '../cohortContext'
+import { HackathonEntryView } from '../../shared/hackathonEntry'
 import { ConfirmDialog, EmptyState, Loading, StatusPill, StarRating, useToast } from '../../shared/ui'
-import { fmtDate, fmtBytes, downloadFile } from '../../lib/helpers'
+import { fmtDate } from '../../lib/helpers'
 
 const RANK_LABEL = { 1: '🥇 TOP 1', 2: '🥈 TOP 2', 3: '🥉 TOP 3' }
 
@@ -15,9 +13,10 @@ function esc(s) {
   return String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
 }
 
-/* 해커톤 관리 — 기수별 결과물 전체 열람·수정·삭제, 마감 처리, 최종 순위표, 명예의 전당 관리 */
+/* 해커톤 관리 — 기수별 결과물 리뷰(별점·한줄평)·삭제, 마감 처리, 최종 순위표, 명예의 전당 관리 */
 export default function HackathonAdmin() {
   const { selectedId, selected } = useCohort()
+  const { profile } = useAuth()
   const toast = useToast()
   const [rows, setRows] = useState(null)
   const [statsMap, setStatsMap] = useState({})
@@ -152,14 +151,16 @@ export default function HackathonAdmin() {
 
   const current = rows.find((r) => r.id === openId)
   if (current) {
-    return <EntryEditor entry={current} stat={statsMap[current.id]}
-      onBack={() => setOpenId(null)} onSaved={() => { setOpenId(null); load() }}
-      onDelete={() => setDeleteTarget(current)}
-      deleteDialog={
+    return (
+      <>
+        <HackathonEntryView entry={current} profile={profile} isAdmin
+          onBack={() => { setOpenId(null); load() }}
+          onDelete={() => setDeleteTarget(current)} />
         <ConfirmDialog open={!!deleteTarget} danger busy={busy} title="결과물 삭제"
-          message={`'${deleteTarget?.title}' 결과물과 받은 별점이 모두 삭제됩니다.`}
+          message={`'${deleteTarget?.title}' 결과물과 받은 별점·평가 의견이 모두 삭제됩니다.`}
           confirmLabel="삭제" onConfirm={doDelete} onClose={() => setDeleteTarget(null)} />
-      } />
+      </>
+    )
   }
 
   return (
@@ -258,132 +259,6 @@ export default function HackathonAdmin() {
           ? `'${deleteTarget.hall.title}' 등재 기록을 삭제합니다.`
           : `'${deleteTarget?.title}' 결과물과 받은 별점이 모두 삭제됩니다.`}
         confirmLabel="삭제" onConfirm={doDelete} onClose={() => setDeleteTarget(null)} />
-    </div>
-  )
-}
-
-/* ============ 결과물 상세·수정 (관리자) ============ */
-function EntryEditor({ entry, stat, onBack, onSaved, onDelete, deleteDialog }) {
-  const toast = useToast()
-  const [form, setForm] = useState({
-    title: entry.title, summary: entry.summary || '', url: entry.url || '',
-    main_ai: entry.main_ai || '', prompt_text: entry.prompt_text || '', repo_url: entry.repo_url || '',
-  })
-  const [attachments, setAttachments] = useState(entry.hackathon_attachments || [])
-  const [busy, setBusy] = useState(false)
-
-  async function save() {
-    const title = form.title.trim()
-    const url = form.url.trim()
-    if (!title) { toast('제목을 입력해 주세요.', 'error'); return }
-    if (url && !/^https?:\/\/.+/.test(url)) { toast('URL 형식을 확인해 주세요.', 'error'); return }
-    const repoUrl = form.repo_url.trim()
-    if (repoUrl && !/^https?:\/\/.+/.test(repoUrl)) { toast('Github Repo 주소 형식을 확인해 주세요.', 'error'); return }
-    setBusy(true)
-    const { error } = await supabase.from('hackathon_entries')
-      .update({
-        title, summary: form.summary.trim(), url: url || null,
-        main_ai: form.main_ai, prompt_text: form.prompt_text.trim(), repo_url: repoUrl || null,
-        updated_at: new Date().toISOString(),
-      })
-      .eq('id', entry.id)
-    setBusy(false)
-    if (error) { toast('저장에 실패했습니다.', 'error'); return }
-    toast('저장되었습니다.')
-    onSaved()
-  }
-
-  async function removeAttachment(att) {
-    const { error } = await supabase.from('hackathon_attachments').delete().eq('id', att.id)
-    if (error) { toast('첨부 삭제에 실패했습니다.', 'error'); return }
-    setAttachments((a) => a.filter((x) => x.id !== att.id))
-  }
-
-  return (
-    <div className="stack" style={{ gap: 16, maxWidth: 760 }}>
-      <div className="row-between">
-        <button className="btn btn-text" onClick={onBack}>
-          <IconArrowLeft size={14} stroke={1.75} /> 목록으로
-        </button>
-        <div className="row" style={{ gap: 8 }}>
-          <button className="btn btn-danger btn-sm" onClick={onDelete}>
-            <IconTrash size={14} stroke={1.75} /> 삭제
-          </button>
-          <button className="btn btn-primary btn-sm" onClick={save} disabled={busy}>
-            {busy ? '저장 중…' : '저장'}
-          </button>
-        </div>
-      </div>
-
-      <div className="card-panel">
-        <div className="row mb-16" style={{ gap: 8 }}>
-          <span className="avatar">{(entry.author_name || '?').slice(0, 1)}</span>
-          <span className="t-label">{entry.author_name}</span>
-          {entry.author_org && <span className="t-caption muted-soft">{entry.author_org}</span>}
-          <span style={{ marginLeft: 'auto' }}>
-            {stat
-              ? <StarRating value={stat.avg_rating} size={14} showValue count={stat.rating_count} />
-              : <span className="t-caption muted-soft">평가 없음</span>}
-          </span>
-        </div>
-        <div className="field">
-          <label>웹앱 제목</label>
-          <input className="input" maxLength={100} value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} />
-        </div>
-        <div className="field">
-          <label>주요 내용 요약</label>
-          <textarea className="textarea" maxLength={2000} style={{ minHeight: 120 }}
-            value={form.summary} onChange={(e) => setForm({ ...form, summary: e.target.value })} />
-        </div>
-        <div className="field">
-          <label>주로 사용한 AI</label>
-          <select className="select" value={form.main_ai} onChange={(e) => setForm({ ...form, main_ai: e.target.value })}>
-            <option value="">선택 안 함</option>
-            {AI_OPTIONS.map((o) => <option key={o} value={o}>{o}</option>)}
-          </select>
-        </div>
-        <div className="field">
-          <label>입력한 프롬프트 내용</label>
-          <textarea className="textarea" maxLength={5000} style={{ minHeight: 100 }}
-            value={form.prompt_text} onChange={(e) => setForm({ ...form, prompt_text: e.target.value })} />
-        </div>
-        <div className="field">
-          <label>Github Repo.</label>
-          <input className="input" placeholder="https://github.com/..." value={form.repo_url} onChange={(e) => setForm({ ...form, repo_url: e.target.value })} />
-        </div>
-        <div className="field">
-          <label>웹앱 URL</label>
-          <div className="row" style={{ gap: 8 }}>
-            <input className="input" placeholder="https://..." value={form.url} style={{ flex: 1 }} onChange={(e) => setForm({ ...form, url: e.target.value })} />
-            <UrlHealthBadge url={form.url} />
-          </div>
-        </div>
-        {form.url && /^https?:\/\/.+/.test(form.url.trim()) && (
-          <a href={form.url.trim()} target="_blank" rel="noreferrer" className="row t-muted-sm" style={{ gap: 6 }}>
-            <IconExternalLink size={14} stroke={1.75} /> 새 창에서 열어 보기
-          </a>
-        )}
-      </div>
-
-      <div className="card-panel">
-        <h3 className="t-h3 mb-16">첨부파일</h3>
-        {attachments.length === 0 ? (
-          <p className="t-muted-sm">첨부파일이 없습니다.</p>
-        ) : attachments.map((a) => (
-          <div key={a.id} className="attachment-row">
-            <IconFile size={18} stroke={1.75} color="var(--muted)" />
-            <span>{a.filename}</span>
-            <span className="size">{fmtBytes(a.file_size)}</span>
-            <button className="icon-btn" onClick={() => downloadFile('hackathon-files', a.file_path, a.filename).catch(() => toast('다운로드에 실패했습니다.', 'error'))}>
-              <IconDownload size={16} stroke={1.75} />
-            </button>
-            <button className="icon-btn danger" onClick={() => removeAttachment(a)}>
-              <IconTrash size={16} stroke={1.75} />
-            </button>
-          </div>
-        ))}
-      </div>
-      {deleteDialog}
     </div>
   )
 }

@@ -1,14 +1,12 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link, Route, Routes, useNavigate, useParams } from 'react-router-dom'
-import {
-  IconArrowLeft, IconRocket, IconTrash, IconPencil, IconFile, IconDownload,
-  IconExternalLink, IconPlus, IconLock, IconBrandGithub, IconFileDescription, IconSparkles, IconTerminal2,
-} from '@tabler/icons-react'
+import { IconRocket, IconTrash, IconFile, IconPlus, IconLock } from '@tabler/icons-react'
 import { UrlHealthBadge, AI_OPTIONS } from '../../shared/urlcheck'
+import { HackathonEntryView } from '../../shared/hackathonEntry'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../shared/auth'
 import { Loading, EmptyState, StatusPill, StarRating, ConfirmDialog, useToast } from '../../shared/ui'
-import { fmtDate, fmtBytes, downloadFile, uploadFile, storageSafeName } from '../../lib/helpers'
+import { fmtBytes, uploadFile, storageSafeName } from '../../lib/helpers'
 
 /* 바이브 해커톤 — 기수별 웹앱 결과물 등록·상호 별점 평가.
    마감(관리자) 후에는 별점 평가만 잠기고, 본인 글 수정·삭제와 열람은 계속 가능하다. */
@@ -135,67 +133,27 @@ function EntryList() {
   )
 }
 
-/* ============ 상세 (별점 평가) ============ */
+/* ============ 상세 (리뷰·별점·한줄평) ============ */
 function EntryDetail() {
   const { id } = useParams()
   const { profile } = useAuth()
   const nav = useNavigate()
   const toast = useToast()
   const [entry, setEntry] = useState(null)
-  const [stat, setStat] = useState(null)
-  const [myRating, setMyRating] = useState(0)
-  const [closed, setClosed] = useState(false)
-  const [rateBusy, setRateBusy] = useState(false)
   const [deleteOpen, setDeleteOpen] = useState(false)
   const [deleteBusy, setDeleteBusy] = useState(false)
 
-  async function loadStats() {
-    const { data } = await supabase.from('hackathon_rating_stats')
-      .select('avg_rating, rating_count').eq('entry_id', id).maybeSingle()
-    setStat(data || null)
-  }
-
   useEffect(() => {
     let alive = true
-    ;(async () => {
-      const { data: e } = await supabase.from('hackathon_entries')
-        .select('*, hackathon_attachments(*)').eq('id', id).maybeSingle()
-      if (!alive) return
-      if (!e) { setEntry(false); return }
-      setEntry(e)
-      const [rQ, roundQ] = await Promise.all([
-        supabase.from('hackathon_ratings').select('rating').eq('entry_id', id).eq('user_id', profile.id).maybeSingle(),
-        supabase.from('hackathon_rounds').select('closed').eq('cohort_id', e.cohort_id).maybeSingle(),
-      ])
-      if (!alive) return
-      setMyRating(rQ.data?.rating || 0)
-      setClosed(!!roundQ.data?.closed)
-      loadStats()
-    })()
+    supabase.from('hackathon_entries').select('*, hackathon_attachments(*)').eq('id', id).maybeSingle()
+      .then(({ data }) => { if (alive) setEntry(data || false) })
     return () => { alive = false }
-  }, [id, profile.id]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [id])
 
   if (entry === null) return <Loading />
   if (entry === false) return <EmptyState title="결과물을 찾을 수 없습니다" action={<Link to="/hackathon" className="btn btn-white btn-sm">목록으로</Link>} />
 
   const mine = entry.user_id === profile.id
-
-  async function rate(n) {
-    if (rateBusy) return
-    setRateBusy(true)
-    const prev = myRating
-    setMyRating(n)
-    const { data, error } = await supabase.rpc('rate_hackathon', { p_entry_id: id, p_rating: n })
-    setRateBusy(false)
-    if (error || !data?.ok) {
-      setMyRating(prev)
-      toast(data?.error === 'closed' ? '해커톤이 마감되어 평가할 수 없습니다.' : '별점 저장에 실패했습니다.', 'error')
-      if (data?.error === 'closed') setClosed(true)
-      return
-    }
-    toast(prev ? '별점이 수정되었습니다.' : '별점이 등록되었습니다!')
-    loadStats()
-  }
 
   async function doDelete() {
     setDeleteBusy(true)
@@ -207,141 +165,16 @@ function EntryDetail() {
   }
 
   return (
-    <div className="stack" style={{ gap: 16, maxWidth: 760 }}>
-      <button className="btn btn-text" style={{ alignSelf: 'flex-start' }} onClick={() => nav('/hackathon')}>
-        <IconArrowLeft size={14} stroke={1.75} /> 목록으로
-      </button>
-
-      <div className="card-panel">
-        <div className="row-between mb-8">
-          <h2 className="t-h2 row" style={{ gap: 8 }}>
-            {entry.title}
-            {closed && <StatusPill kind="closed">마감</StatusPill>}
-          </h2>
-          {mine && (
-            <div className="row" style={{ gap: 6 }}>
-              <button className="btn btn-white btn-sm" onClick={() => nav(`/hackathon/${id}/edit`)}>
-                <IconPencil size={14} stroke={1.75} /> 수정
-              </button>
-              <button className="btn btn-danger btn-sm" onClick={() => setDeleteOpen(true)}>
-                <IconTrash size={14} stroke={1.75} /> 삭제
-              </button>
-            </div>
-          )}
-        </div>
-        <div className="row mb-16" style={{ gap: 8 }}>
-          <span className="avatar">{(entry.author_name || '?').slice(0, 1)}</span>
-          <span className="t-label">{entry.author_name}</span>
-          {entry.author_org && <span className="t-caption muted-soft">{entry.author_org}</span>}
-          <span className="t-caption muted-soft tnum" style={{ marginLeft: 'auto' }}>{fmtDate(entry.created_at, true)}</span>
-        </div>
-
-        <div className="hk-sections">
-          <div className="hk-section">
-            <div className="hk-section-head"><IconExternalLink size={15} stroke={1.75} /> 웹앱 URL</div>
-            {entry.url ? (
-              <div className="hk-url-row">
-                <a href={entry.url} target="_blank" rel="noreferrer" className="hk-url" title={entry.url}>{entry.url}</a>
-                <UrlHealthBadge url={entry.url} />
-                <a href={entry.url} target="_blank" rel="noreferrer" className="btn btn-primary btn-sm">
-                  <IconExternalLink size={14} stroke={1.75} /> 열어 보기
-                </a>
-              </div>
-            ) : <span className="t-muted-sm">등록된 URL이 없습니다 (첨부파일 제출)</span>}
-          </div>
-
-          <div className="hk-section">
-            <div className="hk-section-head"><IconFileDescription size={15} stroke={1.75} /> 주요 내용 요약</div>
-            {entry.summary
-              ? <p className="t-body" style={{ whiteSpace: 'pre-wrap' }}>{entry.summary}</p>
-              : <span className="t-muted-sm">작성된 요약이 없습니다.</span>}
-          </div>
-
-          <div className="hk-grid-2">
-            <div className="hk-section">
-              <div className="hk-section-head"><IconSparkles size={15} stroke={1.75} /> 주로 사용한 AI</div>
-              {entry.main_ai
-                ? <span className="hk-ai-chip">{entry.main_ai}</span>
-                : <span className="t-muted-sm">선택하지 않음</span>}
-            </div>
-            <div className="hk-section">
-              <div className="hk-section-head"><IconBrandGithub size={15} stroke={1.75} /> Github Repo.</div>
-              {entry.repo_url
-                ? <a href={entry.repo_url} target="_blank" rel="noreferrer" className="hk-url" title={entry.repo_url}>{entry.repo_url}</a>
-                : <span className="t-muted-sm">등록되지 않음</span>}
-            </div>
-          </div>
-
-          <div className="hk-section">
-            <div className="hk-section-head"><IconTerminal2 size={15} stroke={1.75} /> 입력한 프롬프트 내용</div>
-            {entry.prompt_text
-              ? <pre className="prompt-box">{entry.prompt_text}</pre>
-              : <span className="t-muted-sm">등록된 프롬프트가 없습니다.</span>}
-          </div>
-        </div>
-
-        {(entry.hackathon_attachments || []).length > 0 && (
-          <div className="hk-section mt-16">
-            <div className="hk-section-head"><IconFile size={15} stroke={1.75} /> 첨부파일</div>
-            {entry.hackathon_attachments.map((a) => (
-              <div key={a.id} className="attachment-row">
-                <IconFile size={18} stroke={1.75} color="var(--muted)" />
-                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{a.filename}</span>
-                <span className="size">{fmtBytes(a.file_size)}</span>
-                <button className="icon-btn" aria-label={`${a.filename} 다운로드`}
-                  onClick={() => downloadFile('hackathon-files', a.file_path, a.filename).catch(() => toast('다운로드에 실패했습니다.', 'error'))}>
-                  <IconDownload size={16} stroke={1.75} />
-                </button>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-
-      <div className="card-panel" style={{ textAlign: 'center' }}>
-        {mine ? (
-          <>
-            <h3 className="t-h3 mb-8">동료들의 평가</h3>
-            {stat && stat.rating_count > 0 ? (
-              <div className="row" style={{ justifyContent: 'center', gap: 8 }}>
-                <StarRating value={stat.avg_rating} size={22} showValue count={stat.rating_count} />
-              </div>
-            ) : (
-              <p className="t-muted-sm">아직 받은 평가가 없습니다.</p>
-            )}
-          </>
-        ) : closed ? (
-          <>
-            <h3 className="t-h3 mb-8">최종 평가</h3>
-            {stat && stat.rating_count > 0 ? (
-              <div className="row" style={{ justifyContent: 'center', gap: 8 }}>
-                <StarRating value={stat.avg_rating} size={22} showValue count={stat.rating_count} />
-              </div>
-            ) : (
-              <p className="t-muted-sm">받은 평가가 없습니다.</p>
-            )}
-            <p className="t-caption muted-soft mt-8">해커톤이 마감되어 별점 평가가 종료되었습니다.</p>
-          </>
-        ) : (
-          <>
-            <h3 className="t-h3 mb-8">이 결과물은 어떠셨나요?</h3>
-            <p className="t-muted-sm mb-16">별점을 눌러 평가해 주세요. 언제든 수정할 수 있습니다.</p>
-            <StarRating value={myRating} onChange={rate} size={32} />
-            <div className="t-caption muted-soft mt-8">
-              {myRating > 0 ? `내 평가: ${myRating}점` : '아직 평가하지 않았습니다'}
-              {stat && stat.rating_count > 0 && (
-                <> · 평균 {Number(stat.avg_rating).toFixed(1)}점 ({stat.rating_count}명 참여)</>
-              )}
-            </div>
-          </>
-        )}
-      </div>
-
+    <>
+      <HackathonEntryView entry={entry} profile={profile}
+        onBack={() => nav('/hackathon')}
+        onEdit={mine ? () => nav(`/hackathon/${id}/edit`) : undefined}
+        onDelete={mine ? () => setDeleteOpen(true) : undefined} />
       <ConfirmDialog open={deleteOpen} danger busy={deleteBusy}
         title="결과물 삭제"
-        message="결과물과 받은 별점이 모두 삭제됩니다. 계속할까요?"
+        message="결과물과 받은 별점·평가 의견이 모두 삭제됩니다. 계속할까요?"
         confirmLabel="삭제" onConfirm={doDelete} onClose={() => setDeleteOpen(false)} />
-    </div>
+    </>
   )
 }
 

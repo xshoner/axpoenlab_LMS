@@ -45,3 +45,51 @@ export function UrlHealthBadge({ url }) {
     </span>
   )
 }
+
+/* 웹앱 URL 미리보기 썸네일 — WordPress mshots 공개 스냅샷 서비스.
+   연결이 '정상'일 때만 표시하고, 스냅샷 생성 중(로딩 GIF 리다이렉트)에는 준비될 때까지 폴링한다. */
+export function UrlThumbnail({ url, width = 640, height = 400 }) {
+  const trimmed = (url || '').trim()
+  const valid = /^https?:\/\/[^\s]+\.[^\s]+/.test(trimmed)
+  const [reachable, setReachable] = useState(null)
+  const [tick, setTick] = useState(0)
+  const [failed, setFailed] = useState(false)
+  const thumb = valid ? `https://s.wordpress.com/mshots/v1/${encodeURIComponent(trimmed)}?w=${width}&h=${height}` : ''
+
+  useEffect(() => {
+    if (!valid) { setReachable(null); return }
+    let alive = true
+    setReachable(null); setFailed(false); setTick(0)
+    checkUrlReachable(trimmed).then((ok) => { if (alive) setReachable(ok) })
+    return () => { alive = false }
+  }, [trimmed, valid])
+
+  // 스냅샷 준비 폴링: opaqueredirect(로딩 GIF)면 3초 후 재시도, 최대 20회
+  useEffect(() => {
+    if (!reachable || !thumb) return
+    let alive = true
+    let tries = 0
+    const poll = async () => {
+      tries += 1
+      let ready = false
+      try {
+        const res = await fetch(thumb, { mode: 'no-cors', redirect: 'manual', cache: 'no-store' })
+        ready = res.type !== 'opaqueredirect'
+      } catch { ready = true }
+      if (!alive) return
+      if (ready) { setTick(tries); return }
+      if (tries < 20) setTimeout(poll, 3000)
+    }
+    const t = setTimeout(poll, 2500)
+    return () => { alive = false; clearTimeout(t) }
+  }, [reachable, thumb])
+
+  if (!valid || !reachable || failed) return null
+  return (
+    <a href={trimmed} target="_blank" rel="noreferrer" className="url-thumb" title="웹앱 미리보기 (클릭하여 열기)">
+      <img src={tick ? `${thumb}&r=${tick}` : thumb} alt="웹앱 미리보기" loading="lazy" referrerPolicy="no-referrer"
+        onError={() => setFailed(true)} />
+      <span className="url-thumb-label">미리보기{tick === 0 ? ' · 스냅샷 생성 중…' : ''}</span>
+    </a>
+  )
+}
