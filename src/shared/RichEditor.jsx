@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { IconBold, IconItalic, IconList, IconListNumbers, IconLink, IconClearFormatting, IconPhoto, IconBrandYoutube, IconTerminal2, IconSparkles } from '@tabler/icons-react'
+import { IconBold, IconItalic, IconList, IconListNumbers, IconLink, IconClearFormatting, IconPhoto, IconBrandYoutube, IconTerminal2, IconSparkles, IconPalette } from '@tabler/icons-react'
 import { Dialog } from './ui'
 import { supabase } from '../lib/supabase'
 import { storageSafeName } from '../lib/helpers'
@@ -42,6 +42,14 @@ function videoEmbedHtml(id) {
   )
 }
 
+// 글자 색 팔레트
+const TEXT_COLORS = [
+  { name: '검정', value: '#0f1419' }, { name: '회색', value: '#6b7280' }, { name: '빨강', value: '#dc2626' },
+  { name: '주황', value: '#ea580c' }, { name: '노랑(진)', value: '#ca8a04' }, { name: '초록', value: '#16a34a' },
+  { name: '파랑', value: '#2563eb' }, { name: '남색', value: '#1a3356' }, { name: '보라', value: '#7c3aed' },
+  { name: '핑크', value: '#db2777' }, { name: '골드', value: '#a67d33' }, { name: '하늘', value: '#0891b2' },
+]
+
 // 복사 블록 — 명령어(code) / 실습 프롬프트(prompt). 학생 화면(RichBody)에서 [복사] 버튼이 동작한다.
 const COPY_KINDS = {
   code: { label: '명령어', btn: '복사', title: '명령어 블록 (복사 버튼 포함)', placeholder: 'npm install -g @anthropic-ai/claude-code' },
@@ -76,6 +84,7 @@ export default function RichEditor({ value, onChange, minHeight = 200, compact =
   const imgInput = useRef(null)
   const [uploading, setUploading] = useState(false)
   const [copyDlg, setCopyDlg] = useState(null) // { kind, text, label }
+  const [colorOpen, setColorOpen] = useState(false)
 
   useEffect(() => {
     if (ref.current && ref.current.innerHTML !== (value || '')) {
@@ -161,22 +170,15 @@ export default function RichEditor({ value, onChange, minHeight = 200, compact =
     pollThumbnail(thumbnailUrl(url))
   }
 
-  function addLink() {
-    const url = prompt('링크 URL을 입력하세요 (https://...)\n썸네일 미리보기가 함께 삽입됩니다.')
-    if (!url) return
-    const trimmed = url.trim()
-    if (!isValidUrl(trimmed)) { alert('http:// 또는 https:// 로 시작하는 URL만 넣을 수 있습니다.'); return }
-    const yt = youtubeId(trimmed)
-    if (yt) { insertHtml(videoEmbedHtml(yt)); return }
-    insertPreview(trimmed)
-  }
-
-  // 텍스트 링크(버튼처럼 보이는 링크) — 쪽지용. 예: "아래 사이트에 접속하세요 [Gemini 열기]"
+  // 링크 버튼 — 버튼 모양의 텍스트 링크 삽입. 예: "아래 사이트에 접속하세요 [Gemini 열기]"
+  // (유튜브 URL은 동영상 임베드. URL을 본문에 직접 붙여넣으면 기존처럼 썸네일 미리보기 카드가 들어간다)
   function addTextLink() {
     const url = prompt('링크 URL을 입력하세요 (https://...)')
     if (!url) return
     const trimmed = url.trim()
     if (!isValidUrl(trimmed)) { alert('http:// 또는 https:// 로 시작하는 URL만 넣을 수 있습니다.'); return }
+    const yt = youtubeId(trimmed)
+    if (yt) { insertHtml(videoEmbedHtml(yt)); return }
     const sel = window.getSelection()?.toString().trim()
     const label = sel || prompt('링크에 표시할 이름을 입력하세요', '링크 열기')
     if (label == null) return
@@ -223,6 +225,14 @@ export default function RichEditor({ value, onChange, minHeight = 200, compact =
     }
   }
 
+  function applyColor(color) {
+    ref.current?.focus()
+    document.execCommand('styleWithCSS', false, true)
+    document.execCommand('foreColor', false, color)
+    onChange(ref.current.innerHTML)
+    setColorOpen(false)
+  }
+
   function insertCopyBlock() {
     if (!copyDlg?.text.trim()) return
     insertHtml(copyBlockHtml(copyDlg.kind, copyDlg.text.replace(/\s+$/, ''), copyDlg.label.trim()))
@@ -235,7 +245,7 @@ export default function RichEditor({ value, onChange, minHeight = 200, compact =
     { icon: IconItalic, cmd: () => exec('italic'), label: '기울임' },
     { icon: IconList, cmd: () => exec('insertUnorderedList'), label: '목록' },
     { icon: IconListNumbers, cmd: () => exec('insertOrderedList'), label: '번호 목록' },
-    { icon: IconLink, cmd: compact ? addTextLink : addLink, label: compact ? '링크 삽입' : '링크 + 미리보기' },
+    { icon: IconLink, cmd: addTextLink, label: '링크 버튼 삽입' },
     !compact && { icon: IconBrandYoutube, cmd: addVideo, label: '유튜브 동영상 삽입' },
     !compact && { icon: IconPhoto, cmd: () => imgInput.current?.click(), label: '이미지 삽입' },
     { icon: IconTerminal2, cmd: () => setCopyDlg({ kind: 'code', text: '', label: '' }), label: '명령어 블록 (복사 버튼)' },
@@ -244,13 +254,29 @@ export default function RichEditor({ value, onChange, minHeight = 200, compact =
   ].filter(Boolean)
 
   return (
-    <div style={{ border: '1px solid var(--border)', borderRadius: 8, overflow: 'hidden' }}>
-      <div className="row" style={{ gap: 2, padding: '6px 8px', borderBottom: '1px solid var(--border)', background: 'var(--surface)' }}>
+    <div className="rich-editor">
+      <div className={`row rich-toolbar ${compact ? 'compact' : ''}`}>
         {tools.map(({ icon: Icon, cmd, label }) => (
           <button key={label} type="button" className="icon-btn" onClick={cmd} title={label} aria-label={label} style={{ width: 32, height: 32 }}>
             <Icon size={16} stroke={1.75} />
           </button>
         ))}
+        <span className="color-tool">
+          <button type="button" className="icon-btn" title="글자 색" aria-label="글자 색" style={{ width: 32, height: 32 }}
+            onMouseDown={(e) => e.preventDefault()} onClick={() => setColorOpen((o) => !o)}>
+            <IconPalette size={16} stroke={1.75} />
+          </button>
+          {colorOpen && (
+            <span className="color-pop" onMouseDown={(e) => e.preventDefault()}>
+              {TEXT_COLORS.map((c) => (
+                <button key={c.value} type="button" className="color-swatch" title={c.name} aria-label={c.name}
+                  style={{ background: c.value }} onClick={() => applyColor(c.value)} />
+              ))}
+              <button type="button" className="btn btn-white btn-sm" style={{ gridColumn: '1 / -1', height: 26 }}
+                onClick={() => applyColor('inherit')}>기본색</button>
+            </span>
+          )}
+        </span>
         {uploading && <span className="t-caption muted-soft" style={{ marginLeft: 8 }}>이미지 업로드 중…</span>}
         {!compact && <span className="t-caption muted-soft" style={{ marginLeft: 'auto' }}>URL 붙여넣기 시 미리보기 자동 삽입</span>}
         <input ref={imgInput} type="file" accept="image/*" hidden

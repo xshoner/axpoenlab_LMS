@@ -838,3 +838,19 @@ input, textarea, select { font-family: inherit; }
   max-width: 1280px; margin: 0 auto; width: 100%;
 }
 @media (max-width: 767px) { .preview-frame { padding: 12px; } .inq-pill span:last-child { display: none; } }
+
+/* ---------- 리치 에디터: 툴바 스크롤 시 상단 고정 · 글자 색 ---------- */
+.rich-editor { border: 1px solid var(--border); border-radius: 8px; }
+.rich-editor .rich-body { border-radius: 0 0 8px 8px; }
+.rich-toolbar {
+  gap: 2px; padding: 6px 8px; border-bottom: 1px solid var(--border); background: var(--surface);
+  border-radius: 8px 8px 0 0; position: sticky; top: 64px; z-index: 6; flex-wrap: wrap;
+}
+.rich-toolbar.compact { top: 0; }
+.color-tool { position: relative; display: inline-flex; }
+.color-pop {
+  position: absolute; top: 36px; left: 0; z-index: 30; display: grid; grid-template-columns: repeat(6, 22px); gap: 6px;
+  padding: 8px; background: var(--background); border: 1px solid var(--border); border-radius: 10px; box-shadow: var(--shadow-overlay);
+}
+.color-swatch { width: 22px; height: 22px; border-radius: 50%; border: 2px solid #fff; box-shadow: 0 0 0 1px var(--border); cursor: pointer; }
+.color-swatch:hover { transform: scale(1.15); }
