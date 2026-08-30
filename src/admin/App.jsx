@@ -10,6 +10,7 @@ import { useAuth, signOut } from '../shared/auth'
 import { Aurora, Dialog, FooterBar, Loading, StatusPill, VisitorCounter, useToast } from '../shared/ui'
 import { CohortProvider, useCohort } from './cohortContext'
 import { useOnlineStudentCount, useOpenInquiryCount } from '../shared/presence'
+import { AdminPushComposer } from '../shared/push'
 import { COHORT_STATUS } from '../lib/helpers'
 import AdminDashboard from './pages/AdminDashboard'
 import Cohorts from './pages/Cohorts'
@@ -138,6 +139,7 @@ function AdminShell({ profile }) {
             </select>
             {selectedId && <StatusPill kind="neutral">{cohorts.find((c) => c.id === selectedId)?.name} 기준으로 표시 중</StatusPill>}
             <div className="topbar-right">
+              <AdminPushComposer cohortId={selectedId} cohortName={cohorts.find((c) => c.id === selectedId)?.name} />
               <span className="live-pill" title="현재 접속 중인 학생 수">
                 <span className="live-dot" />
                 <span className="tnum">접속 {online}명</span>

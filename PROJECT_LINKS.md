@@ -53,7 +53,7 @@ npx vercel deploy --prod                        # 프로덕션 배포 (빌드 1~
 | URL | `https://ugelgndotyppgksbubot.supabase.co` |
 | 클라이언트 키 | publishable key — `src/lib/supabase.js`에 기본값 있음 (공개 허용 키) |
 | 대시보드 | `https://supabase.com/dashboard/project/ugelgndotyppgksbubot` |
-| 마이그레이션 | `supabase/migrations/` (8개, 원격과 동기화 상태) |
+| 마이그레이션 | `supabase/migrations/` (17개, 원격과 동기화 상태 — 2026-08-30) |
 | RLS 테스트 | `supabase/tests/rls_smoke_test.sql` (트랜잭션+롤백, 실데이터 무영향) |
 | Edge Functions | `supabase/functions/` — `signup`, `admin-users` |
 

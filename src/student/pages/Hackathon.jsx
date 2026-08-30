@@ -2,8 +2,9 @@ import { useEffect, useRef, useState } from 'react'
 import { Link, Route, Routes, useNavigate, useParams } from 'react-router-dom'
 import {
   IconArrowLeft, IconRocket, IconTrash, IconPencil, IconFile, IconDownload,
-  IconExternalLink, IconPlus, IconLock,
+  IconExternalLink, IconPlus, IconLock, IconBrandGithub,
 } from '@tabler/icons-react'
+import { UrlHealthBadge, AI_OPTIONS } from '../../shared/urlcheck'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../shared/auth'
 import { Loading, EmptyState, StatusPill, StarRating, ConfirmDialog, useToast } from '../../shared/ui'
@@ -242,6 +243,31 @@ function EntryDetail() {
         )}
         {entry.summary && <p className="t-body" style={{ whiteSpace: 'pre-wrap' }}>{entry.summary}</p>}
 
+        {(entry.main_ai || entry.prompt_text || entry.repo_url) && (
+          <div className="mt-16 stack" style={{ gap: 10 }}>
+            {entry.main_ai && (
+              <div className="row" style={{ gap: 8 }}>
+                <span className="t-label" style={{ width: 120, flexShrink: 0 }}>주로 사용한 AI</span>
+                <span className="pill pill-neutral">{entry.main_ai}</span>
+              </div>
+            )}
+            {entry.repo_url && (
+              <div className="row" style={{ gap: 8 }}>
+                <span className="t-label" style={{ width: 120, flexShrink: 0 }}>Github Repo.</span>
+                <a href={entry.repo_url} target="_blank" rel="noreferrer" className="row t-muted-sm" style={{ gap: 4, overflow: 'hidden' }}>
+                  <IconBrandGithub size={14} stroke={1.75} /> <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{entry.repo_url}</span>
+                </a>
+              </div>
+            )}
+            {entry.prompt_text && (
+              <div>
+                <div className="t-label mb-8">입력한 프롬프트 내용</div>
+                <pre className="prompt-box">{entry.prompt_text}</pre>
+              </div>
+            )}
+          </div>
+        )}
+
         {(entry.hackathon_attachments || []).length > 0 && (
           <div className="mt-16">
             <h3 className="t-h3 mb-8">첨부파일</h3>
@@ -313,7 +339,7 @@ function EntryForm() {
   const { profile, cohort } = useAuth()
   const nav = useNavigate()
   const toast = useToast()
-  const [form, setForm] = useState({ title: '', summary: '', url: '' })
+  const [form, setForm] = useState({ title: '', summary: '', url: '', main_ai: '', prompt_text: '', repo_url: '' })
   const [attachments, setAttachments] = useState([])
   const [pending, setPending] = useState([])
   const [loading, setLoading] = useState(!!id)
@@ -327,7 +353,10 @@ function EntryForm() {
       .then(({ data }) => {
         if (!alive) return
         if (!data || data.user_id !== profile.id) { nav('/hackathon'); return }
-        setForm({ title: data.title, summary: data.summary || '', url: data.url || '' })
+        setForm({
+          title: data.title, summary: data.summary || '', url: data.url || '',
+          main_ai: data.main_ai || '', prompt_text: data.prompt_text || '', repo_url: data.repo_url || '',
+        })
         setAttachments(data.hackathon_attachments || [])
         setLoading(false)
       })
@@ -354,6 +383,8 @@ function EntryForm() {
     const url = form.url.trim()
     if (!title) { toast('웹앱 제목을 입력해 주세요.', 'error'); return }
     if (url && !/^https?:\/\/.+/.test(url)) { toast('URL은 http:// 또는 https:// 로 시작해야 합니다.', 'error'); return }
+    const repoUrl = form.repo_url.trim()
+    if (repoUrl && !/^https?:\/\/.+/.test(repoUrl)) { toast('Github Repo 주소는 http:// 또는 https:// 로 시작해야 합니다.', 'error'); return }
     if (!url && attachments.length === 0 && pending.length === 0) {
       toast('URL 또는 파일 중 최소 하나는 제출해야 합니다.', 'error')
       return
@@ -362,6 +393,7 @@ function EntryForm() {
     try {
       const base = {
         title, summary: form.summary.trim(), url: url || null,
+        main_ai: form.main_ai, prompt_text: form.prompt_text.trim(), repo_url: repoUrl || null,
         author_name: profile.nickname || profile.name,
         author_org: profile.org || '',
       }
@@ -416,10 +448,31 @@ function EntryForm() {
             value={form.summary} onChange={(e) => setForm({ ...form, summary: e.target.value })} />
         </div>
         <div className="field">
+          <label>주로 사용한 AI</label>
+          <select className="select" value={form.main_ai} onChange={(e) => setForm({ ...form, main_ai: e.target.value })}>
+            <option value="">선택하세요</option>
+            {AI_OPTIONS.map((o) => <option key={o} value={o}>{o}</option>)}
+          </select>
+        </div>
+        <div className="field">
+          <label>입력한 프롬프트 내용 <span className="t-caption muted-soft">(선택)</span></label>
+          <textarea className="textarea" maxLength={5000} style={{ minHeight: 120 }}
+            placeholder="웹앱을 만들 때 AI에 입력한 주요 프롬프트를 붙여 넣어 주세요."
+            value={form.prompt_text} onChange={(e) => setForm({ ...form, prompt_text: e.target.value })} />
+        </div>
+        <div className="field">
+          <label>Github Repo. <span className="t-caption muted-soft">(선택)</span></label>
+          <input className="input" placeholder="https://github.com/사용자/저장소" value={form.repo_url}
+            onChange={(e) => setForm({ ...form, repo_url: e.target.value })} />
+        </div>
+        <div className="field">
           <label>웹앱 URL</label>
-          <input className="input" placeholder="https://..." value={form.url}
-            onChange={(e) => setForm({ ...form, url: e.target.value })} />
-          <span className="hint">배포된 웹앱 주소를 입력하세요. URL 또는 파일 중 최소 하나는 필요합니다.</span>
+          <div className="row" style={{ gap: 8 }}>
+            <input className="input" placeholder="https://..." value={form.url} style={{ flex: 1 }}
+              onChange={(e) => setForm({ ...form, url: e.target.value })} />
+            <UrlHealthBadge url={form.url} />
+          </div>
+          <span className="hint">배포된 웹앱 주소를 입력하세요. URL 또는 파일 중 최소 하나는 필요합니다. 입력하면 연결 상태를 자동으로 확인합니다.</span>
         </div>
       </div>
 

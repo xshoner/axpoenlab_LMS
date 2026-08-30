@@ -4,6 +4,7 @@ import { IconClipboardText, IconChecklist, IconPencilQuestion } from '@tabler/ic
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../shared/auth'
 import { Loading, EmptyState } from '../../shared/ui'
+import { AiBookmarks } from '../../shared/bookmarks'
 import { fmtDate, isNew, pad2 } from '../../lib/helpers'
 
 export default function Dashboard() {
@@ -126,6 +127,8 @@ export default function Dashboard() {
           </div>
         )}
       </section>
+
+      <AiBookmarks />
 
       <section className="card-panel">
         <div className="row-between mb-16">

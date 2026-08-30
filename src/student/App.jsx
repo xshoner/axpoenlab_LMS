@@ -25,6 +25,7 @@ import Hackathon from './pages/Hackathon'
 import HallOfFame from './pages/HallOfFame'
 import Profile from './pages/Profile'
 import { useStudentPresenceTrack } from '../shared/presence'
+import { StudentPushInbox } from '../shared/push'
 
 const MENU = [
   { to: '/', label: '대시보드', icon: IconLayoutDashboard, end: true },
@@ -59,7 +60,7 @@ export default function App() {
   const focusMode = /^\/(surveys|quizzes)\//.test(location.pathname)
 
   useEffect(() => { setDrawerOpen(false) }, [location.pathname])
-  useStudentPresenceTrack(session && profile?.role === 'student' ? profile.id : null)
+  const online = useStudentPresenceTrack(session && profile?.role === 'student' ? profile.id : null)
 
   // QR 게스트 게시판 — 로그인 없이 접근 (토큰은 RPC에서 검증)
   if (location.pathname === '/guest-board') {
@@ -165,6 +166,11 @@ export default function App() {
             </button>
             <span className="topbar-title">{title}</span>
             <div className="topbar-right">
+              <StudentPushInbox cohortId={cohort?.id || null} />
+              <span className="live-pill" title="현재 접속 중인 학생 수">
+                <span className="live-dot" />
+                <span className="tnum">접속 {online}명</span>
+              </span>
               <VisitorCounter />
               <span className="avatar">{(profile.name || '?').slice(0, 1)}</span>
               <span className="t-label" style={{ color: 'var(--foreground)' }}>{profile.name}</span>

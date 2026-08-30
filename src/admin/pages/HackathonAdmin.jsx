@@ -3,6 +3,7 @@ import {
   IconArrowLeft, IconTrash, IconTrophy, IconFlagCheck, IconListNumbers,
   IconLockOpen, IconFile, IconDownload, IconExternalLink,
 } from '@tabler/icons-react'
+import { UrlHealthBadge, AI_OPTIONS } from '../../shared/urlcheck'
 import { supabase } from '../../lib/supabase'
 import { useCohort } from '../cohortContext'
 import { ConfirmDialog, EmptyState, Loading, StatusPill, StarRating, useToast } from '../../shared/ui'
@@ -264,7 +265,10 @@ export default function HackathonAdmin() {
 /* ============ 결과물 상세·수정 (관리자) ============ */
 function EntryEditor({ entry, stat, onBack, onSaved, onDelete, deleteDialog }) {
   const toast = useToast()
-  const [form, setForm] = useState({ title: entry.title, summary: entry.summary || '', url: entry.url || '' })
+  const [form, setForm] = useState({
+    title: entry.title, summary: entry.summary || '', url: entry.url || '',
+    main_ai: entry.main_ai || '', prompt_text: entry.prompt_text || '', repo_url: entry.repo_url || '',
+  })
   const [attachments, setAttachments] = useState(entry.hackathon_attachments || [])
   const [busy, setBusy] = useState(false)
 
@@ -273,9 +277,15 @@ function EntryEditor({ entry, stat, onBack, onSaved, onDelete, deleteDialog }) {
     const url = form.url.trim()
     if (!title) { toast('제목을 입력해 주세요.', 'error'); return }
     if (url && !/^https?:\/\/.+/.test(url)) { toast('URL 형식을 확인해 주세요.', 'error'); return }
+    const repoUrl = form.repo_url.trim()
+    if (repoUrl && !/^https?:\/\/.+/.test(repoUrl)) { toast('Github Repo 주소 형식을 확인해 주세요.', 'error'); return }
     setBusy(true)
     const { error } = await supabase.from('hackathon_entries')
-      .update({ title, summary: form.summary.trim(), url: url || null, updated_at: new Date().toISOString() })
+      .update({
+        title, summary: form.summary.trim(), url: url || null,
+        main_ai: form.main_ai, prompt_text: form.prompt_text.trim(), repo_url: repoUrl || null,
+        updated_at: new Date().toISOString(),
+      })
       .eq('id', entry.id)
     setBusy(false)
     if (error) { toast('저장에 실패했습니다.', 'error'); return }
@@ -326,8 +336,27 @@ function EntryEditor({ entry, stat, onBack, onSaved, onDelete, deleteDialog }) {
             value={form.summary} onChange={(e) => setForm({ ...form, summary: e.target.value })} />
         </div>
         <div className="field">
+          <label>주로 사용한 AI</label>
+          <select className="select" value={form.main_ai} onChange={(e) => setForm({ ...form, main_ai: e.target.value })}>
+            <option value="">선택 안 함</option>
+            {AI_OPTIONS.map((o) => <option key={o} value={o}>{o}</option>)}
+          </select>
+        </div>
+        <div className="field">
+          <label>입력한 프롬프트 내용</label>
+          <textarea className="textarea" maxLength={5000} style={{ minHeight: 100 }}
+            value={form.prompt_text} onChange={(e) => setForm({ ...form, prompt_text: e.target.value })} />
+        </div>
+        <div className="field">
+          <label>Github Repo.</label>
+          <input className="input" placeholder="https://github.com/..." value={form.repo_url} onChange={(e) => setForm({ ...form, repo_url: e.target.value })} />
+        </div>
+        <div className="field">
           <label>웹앱 URL</label>
-          <input className="input" placeholder="https://..." value={form.url} onChange={(e) => setForm({ ...form, url: e.target.value })} />
+          <div className="row" style={{ gap: 8 }}>
+            <input className="input" placeholder="https://..." value={form.url} style={{ flex: 1 }} onChange={(e) => setForm({ ...form, url: e.target.value })} />
+            <UrlHealthBadge url={form.url} />
+          </div>
         </div>
         {form.url && /^https?:\/\/.+/.test(form.url.trim()) && (
           <a href={form.url.trim()} target="_blank" rel="noreferrer" className="row t-muted-sm" style={{ gap: 6 }}>

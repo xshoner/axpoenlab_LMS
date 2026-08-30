@@ -10,6 +10,7 @@ import { useAuth } from '../../shared/auth'
 import { useCohort } from '../cohortContext'
 import { Loading, StatCard, StarRating, useToast } from '../../shared/ui'
 import { fmtDate, pad2 } from '../../lib/helpers'
+import { AiBookmarks } from '../../shared/bookmarks'
 
 export default function AdminDashboard() {
   const { cohorts, selectedId, selected } = useCohort()
@@ -204,6 +205,7 @@ export default function AdminDashboard() {
             )}
           </div>
         </div>
+        <div className="mb-24"><AiBookmarks /></div>
         <div className="grid-2">
           <div className="chart-panel">
             <div className="row mb-16" style={{ gap: 8 }}>
