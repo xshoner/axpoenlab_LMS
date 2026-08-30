@@ -61,7 +61,7 @@ export default function App() {
   const focusMode = /^\/(surveys|quizzes)\//.test(location.pathname)
 
   useEffect(() => { setDrawerOpen(false) }, [location.pathname])
-  const online = useStudentPresenceTrack(session && profile?.role === 'student' ? profile.id : null)
+  const online = useStudentPresenceTrack(session && profile?.role === 'student' ? profile.id : null, cohort?.id || null)
 
   // QR 게스트 게시판 — 로그인 없이 접근 (토큰은 RPC에서 검증)
   if (location.pathname === '/guest-board') {

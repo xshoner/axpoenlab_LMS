@@ -72,7 +72,6 @@ export function StudentHelpButton({ cohortId }) {
 
   async function submit() {
     const desc = description.trim()
-    if (!desc) { toast('현재 겪고 있는 문제를 간단히 적어 주세요.', 'error'); return }
     setBusy(true)
     try {
       let screenshot_path = null
@@ -164,7 +163,7 @@ export function StudentHelpButton({ cohortId }) {
               </div>
             </div>
             <div className="field" style={{ marginBottom: 0 }}>
-              <label>현재 오류 설명 <span className="req">*</span></label>
+              <label>현재 오류 설명 <span className="t-caption muted-soft">(선택 — 비워 두면 문제 유형만 전달됩니다)</span></label>
               <textarea className="textarea" style={{ minHeight: 90 }} maxLength={500}
                 placeholder="예) vercel deploy 하면 Build Failed 라고 나옵니다. 오류 메시지: ..."
                 value={description} onChange={(e) => setDescription(e.target.value)} />
@@ -182,7 +181,7 @@ export function StudentHelpButton({ cohortId }) {
             </div>
             <div className="row" style={{ gap: 8, justifyContent: 'flex-end' }}>
               <button className="btn btn-white btn-sm" disabled={busy} onClick={() => setOpen(false)}>취소</button>
-              <button className="btn btn-primary btn-sm sheen" disabled={busy || !description.trim()} onClick={submit}>
+              <button className="btn btn-primary btn-sm sheen" disabled={busy} onClick={submit}>
                 <IconHandStop size={14} stroke={1.75} /> {busy ? '접수 중…' : '도움 요청'}
               </button>
             </div>
@@ -194,19 +193,20 @@ export function StudentHelpButton({ cohortId }) {
 }
 
 /* ============ 관리자: 대기 중 도움 요청 수 (실시간) ============ */
-export function useHelpQueueCount() {
+export function useHelpQueueCount(cohortId = null) {
   const [count, setCount] = useState(0)
   useEffect(() => {
     let alive = true
     const fetchCount = () => {
-      supabase.from('help_requests').select('id', { count: 'exact', head: true }).in('status', ['waiting', 'in_progress'])
-        .then(({ count: c }) => { if (alive) setCount(c || 0) })
+      let q = supabase.from('help_requests').select('id', { count: 'exact', head: true }).in('status', ['waiting', 'in_progress'])
+      if (cohortId) q = q.eq('cohort_id', cohortId)
+      q.then(({ count: c }) => { if (alive) setCount(c || 0) })
     }
     fetchCount()
     const ch = supabase.channel('lms-help-count')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'help_requests' }, fetchCount)
       .subscribe()
     return () => { alive = false; supabase.removeChannel(ch) }
-  }, [])
+  }, [cohortId])
   return count
 }

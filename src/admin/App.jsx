@@ -71,9 +71,10 @@ function AdminShell({ profile }) {
   const toast = useToast()
   const { cohorts, selectedId, select } = useCohort()
   const [drawerOpen, setDrawerOpen] = useState(false)
-  const unanswered = useOpenInquiryCount(location.pathname)
-  const online = useOnlineStudentCount()
-  const helpCount = useHelpQueueCount()
+  const cohortScope = selectedId || null // 전체 기수 = null
+  const unanswered = useOpenInquiryCount(location.pathname, cohortScope)
+  const online = useOnlineStudentCount(cohortScope)
+  const helpCount = useHelpQueueCount(cohortScope)
   const [nickOpen, setNickOpen] = useState(false)
   const [nick, setNick] = useState('')
   const [nickBusy, setNickBusy] = useState(false)
@@ -145,23 +146,23 @@ function AdminShell({ profile }) {
             </select>
             {selectedId && <StatusPill kind="neutral">{cohorts.find((c) => c.id === selectedId)?.name} 기준으로 표시 중</StatusPill>}
             <div className="topbar-right">
-              <NavLink to="/help" className={`inq-pill help-pill ${helpCount > 0 ? 'waiting' : ''}`} title="학생 도움 요청 대기열">
+              <NavLink to="/preview" className={({ isActive }) => `inq-pill ${isActive ? 'hot-primary' : ''}`} title="선택한 기수의 학생에게 보이는 화면을 미리 봅니다">
+                <IconEye size={14} stroke={1.75} />
+                <span>미리보기</span>
+              </NavLink>
+              <NavLink to="/help" className={`inq-pill help-pill ${helpCount > 0 ? 'waiting' : ''}`} title={`학생 도움 요청 대기열${cohortScope ? '' : ' (전체 기수)'}`}>
                 <IconHandStop size={14} stroke={1.75} />
                 <span>도움 요청 <span className="tnum inq-count">{helpCount}명</span></span>
               </NavLink>
-              <NavLink to="/preview" className={({ isActive }) => `inq-pill ${isActive ? 'hot-primary' : ''}`} title="선택한 기수의 학생에게 보이는 화면을 미리 봅니다">
-                <IconEye size={14} stroke={1.75} />
-                <span>학생 화면 미리보기</span>
-              </NavLink>
               <AdminPushComposer cohortId={selectedId} cohortName={cohorts.find((c) => c.id === selectedId)?.name} />
-              <span className="live-pill" title="현재 접속 중인 학생 수">
-                <span className="live-dot" />
-                <span className="tnum">접속 {online}명</span>
-              </span>
-              <NavLink to="/inquiries" className={`inq-pill ${unanswered > 0 ? 'hot' : ''}`} title="미답변 1:1 문의">
+              <NavLink to="/inquiries" className={`inq-pill ${unanswered > 0 ? 'hot' : ''}`} title={`미답변 1:1 문의${cohortScope ? '' : ' (전체 기수)'}`}>
                 <IconMessageCircleQuestion size={14} stroke={1.75} />
                 <span>질문 <span className="tnum inq-count">{unanswered}건</span></span>
               </NavLink>
+              <span className="live-pill" title={`현재 접속 중인 학생 수${cohortScope ? '' : ' (전체 기수)'}`}>
+                <span className="live-dot" />
+                <span className="tnum">접속 {online}명</span>
+              </span>
               <VisitorCounter />
               <button className="row" style={{ gap: 8, background: 'transparent', border: 'none', padding: 0 }}
                 title="클릭하여 닉네임 설정" onClick={() => { setNick(profile.nickname || ''); setNickOpen(true) }}>
