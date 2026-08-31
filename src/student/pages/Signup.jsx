@@ -3,11 +3,13 @@ import { Link, useNavigate } from 'react-router-dom'
 import { IconCheck, IconX } from '@tabler/icons-react'
 import { supabase, setKeepSignedIn, FUNCTIONS_URL, ANON_KEY } from '../../lib/supabase'
 import { FooterBar } from '../../shared/ui'
+import { PRIVACY_NOTICE_TEXT, PrivacyPolicyContent } from '../../shared/privacy'
 
 export default function Signup() {
   const nav = useNavigate()
   const [form, setForm] = useState({ org: '', name: '', email: '', password: '', password2: '', cohortCode: '' })
   const [agree, setAgree] = useState(false)
+  const [policyOpen, setPolicyOpen] = useState(false)
   const [errors, setErrors] = useState({})
   const [emailDup, setEmailDup] = useState(null) // null | 'checking' | true | false
   const [busy, setBusy] = useState(false)
@@ -38,7 +40,7 @@ export default function Signup() {
     if (form.password.length < 8 || !/[A-Za-z]/.test(form.password) || !/[0-9]/.test(form.password))
       e.password = '비밀번호는 8자 이상, 영문+숫자 조합이어야 합니다.'
     if (form.password2 !== form.password) e.password2 = '비밀번호가 일치하지 않습니다.'
-    if (!agree) e.agree = '약관 동의가 필요합니다.'
+    if (!agree) e.agree = '개인정보 수집·이용 동의가 필요합니다.'
     setErrors(e)
     return Object.keys(e).length === 0
   }
@@ -137,9 +139,25 @@ export default function Signup() {
             <input className="input" value={form.cohortCode} onChange={set('cohortCode')} placeholder="예: AX3-2026" />
             <span className="hint">미입력 시 미배정 상태로 가입되며 관리자가 배정합니다.</span>
           </div>
-          <div className="checkbox-row mb-16">
+          <div className="checkbox-row">
             <input id="agree" type="checkbox" checked={agree} onChange={(e) => setAgree(e.target.checked)} />
-            <label htmlFor="agree">이용약관 및 개인정보 수집·이용에 동의합니다. <span className="req">*</span></label>
+            <label htmlFor="agree">개인정보 수집·이용에 동의합니다. <span className="req">*</span></label>
+          </div>
+          <div className="privacy-note mb-16">
+            <span>{PRIVACY_NOTICE_TEXT}</span>{' '}
+            <button
+              type="button"
+              className="privacy-link"
+              aria-expanded={policyOpen}
+              onClick={() => setPolicyOpen((o) => !o)}
+            >
+              [개인정보처리방침]
+            </button>
+            {policyOpen && (
+              <div className="privacy-policy-box">
+                <PrivacyPolicyContent />
+              </div>
+            )}
           </div>
           {errors.agree && <div className="err-msg mb-16" style={{ color: 'var(--danger)', fontSize: 12 }}>{errors.agree}</div>}
           <button className="btn btn-primary sheen btn-block" type="submit" disabled={busy}>

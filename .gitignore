@@ -11,3 +11,6 @@ Thumbs.db
 
 .vercel
 .env*
+
+# 로컬 진단 로그(환경변수 포함) — 커밋 금지
+gcm-diagnose.log

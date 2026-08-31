@@ -2,6 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useRef, useState } f
 import { IconCheck, IconAlertTriangle, IconInbox, IconX, IconStar, IconStarFilled } from '@tabler/icons-react'
 import { supabase } from '../lib/supabase'
 import { getSettings } from '../lib/helpers'
+import { PRIVACY_NOTICE_TEXT, PrivacyPolicyContent } from './privacy'
 
 /* ---------- Toast ---------- */
 const ToastCtx = createContext(null)
@@ -176,10 +177,31 @@ function UsersIcon() {
 
 /* ---------- Footer ---------- */
 export function FooterBar() {
+  const [policyOpen, setPolicyOpen] = useState(false)
   return (
     <footer className="footer-bar">
-      <span>Produced by AXopenLab /</span>
-      <a href="mailto:xshoner@gmail.com">xshoner@gmail.com</a>
+      <div className="footer-line">
+        <span>Produced by AXopenLab /</span>
+        <a href="mailto:xshoner@gmail.com">xshoner@gmail.com</a>
+      </div>
+      <div className="footer-line">
+        <span>{PRIVACY_NOTICE_TEXT}</span>
+        <button type="button" className="privacy-link" onClick={() => setPolicyOpen(true)}>
+          [개인정보처리방침]
+        </button>
+      </div>
+      <Dialog
+        open={policyOpen}
+        title="개인정보 처리방침"
+        onClose={() => setPolicyOpen(false)}
+        actions={
+          <button className="btn btn-white btn-sm" onClick={() => setPolicyOpen(false)}>닫기</button>
+        }
+      >
+        <div style={{ maxHeight: '55vh', overflowY: 'auto', paddingRight: 4 }}>
+          <PrivacyPolicyContent />
+        </div>
+      </Dialog>
     </footer>
   )
 }

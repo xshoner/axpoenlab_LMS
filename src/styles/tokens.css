@@ -311,10 +311,34 @@ input, textarea, select { font-family: inherit; }
 }
 
 .footer-bar {
-  height: 56px; border-top: 1px solid var(--border); display: flex; align-items: center;
-  justify-content: center; gap: 6px; color: var(--muted-soft); font-size: 12px;
+  min-height: 56px; border-top: 1px solid var(--border); display: flex; flex-direction: column;
+  align-items: center; justify-content: center; gap: 4px; padding: 12px 16px;
+  color: var(--muted-soft); font-size: 12px;
   background: var(--background); position: relative; z-index: 10;
 }
+.footer-line {
+  display: flex; align-items: center; justify-content: center; gap: 6px;
+  flex-wrap: wrap; text-align: center;
+}
+
+/* ============ 개인정보처리방침 ============ */
+.privacy-link {
+  border: none; background: transparent; padding: 0; cursor: pointer;
+  font-size: inherit; color: inherit; font-weight: 600; text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.privacy-link:hover { color: var(--primary); }
+.privacy-note { font-size: 12px; color: var(--muted-soft); line-height: 1.6; margin-top: 8px; }
+.privacy-policy-box {
+  height: 150px; overflow-y: auto; margin-top: 8px; padding: 12px 14px;
+  border: 1px solid var(--border); border-radius: 8px; background: var(--surface);
+}
+.privacy-policy { font-size: 12px; color: var(--muted); line-height: 1.65; text-align: left; }
+.privacy-policy h4 { font-size: 12px; font-weight: 700; color: var(--foreground); margin: 12px 0 4px; }
+.privacy-policy h4:first-of-type { margin-top: 0; }
+.privacy-policy p { margin: 0 0 6px; }
+.privacy-policy ul { margin: 0 0 6px; padding-left: 18px; }
+.privacy-policy li { margin-bottom: 2px; }
 
 /* ============ 입력 ============ */
 .field { display: flex; flex-direction: column; gap: 6px; margin-bottom: 16px; }
