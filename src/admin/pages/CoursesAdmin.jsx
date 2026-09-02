@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState } from 'react'
-import { IconPlus, IconTrash, IconFile, IconDownload, IconPaperclip } from '@tabler/icons-react'
+import { IconPlus, IconTrash, IconFile, IconDownload, IconPaperclip, IconPencil, IconExternalLink } from '@tabler/icons-react'
 import { supabase } from '../../lib/supabase'
 import { useCohort } from '../cohortContext'
 import RichEditor from '../../shared/RichEditor'
+import RichBody from '../../shared/RichBody'
 import { ConfirmDialog, EmptyState, Loading, StatusPill, StarRating, useToast } from '../../shared/ui'
-import { fmtBytes, pad2, downloadFile, uploadFile, storageSafeName } from '../../lib/helpers'
+import { fmtBytes, fmtDate, pad2, downloadFile, uploadFile, storageSafeName } from '../../lib/helpers'
 import { useDraft, DraftBadge } from '../../shared/draft'
 
 export default function CoursesAdmin() {
@@ -25,6 +26,7 @@ function MasterCourses() {
   const toast = useToast()
   const [rows, setRows] = useState(null)
   const [editing, setEditing] = useState(null)
+  const [mode, setMode] = useState('view') // view | edit — 기존 강좌는 읽기 화면이 기본
   const [deleteTarget, setDeleteTarget] = useState(null)
   const [busy, setBusy] = useState(false)
   const [ratingMap, setRatingMap] = useState({})
@@ -82,6 +84,13 @@ function MasterCourses() {
   if (!rows) return <Loading />
 
   if (editing) {
+    if (editing !== 'new' && mode === 'view') {
+      return <CourseAdminView
+        isMaster course={editing}
+        onBack={() => { setEditing(null); load() }}
+        onEdit={() => setMode('edit')}
+      />
+    }
     return <CourseEditor
       isMaster course={editing === 'new' ? null : editing}
       onDone={() => { setEditing(null); load() }}
@@ -92,17 +101,17 @@ function MasterCourses() {
     <>
       <div className="row-between">
         <p className="t-muted-sm">재사용 가능한 강좌 라이브러리입니다. 기수 배정 시 과제·설문·퀴즈 구성과 함께 스냅샷으로 복제되며, 마스터 수정은 기배포 기수에 반영되지 않습니다. 카드를 드래그하면 배정 시 기본 순서가 바뀝니다.</p>
-        <button className="btn btn-primary btn-sm" onClick={() => setEditing('new')}><IconPlus size={14} stroke={1.75} /> 새 마스터 강좌</button>
+        <button className="btn btn-primary btn-sm" onClick={() => { setMode('edit'); setEditing('new') }}><IconPlus size={14} stroke={1.75} /> 새 마스터 강좌</button>
       </div>
       {rows.length === 0 ? (
         <EmptyState title="마스터 강좌가 없습니다" description="새 마스터 강좌를 만들어 라이브러리를 구성해 보세요."
-          action={<button className="btn btn-primary btn-sm" onClick={() => setEditing('new')}>새 마스터 강좌</button>} />
+          action={<button className="btn btn-primary btn-sm" onClick={() => { setMode('edit'); setEditing('new') }}>새 마스터 강좌</button>} />
       ) : (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 20 }}>
           {rows.map((c, idx) => {
             const stat = ratingMap[c.id]
             return (
-              <div key={c.id} className={`card-course theme-${idx % 6}`} onClick={() => setEditing(c)}
+              <div key={c.id} className={`card-course theme-${idx % 6}`} onClick={() => { setMode('view'); setEditing(c) }}
                 draggable title="드래그하여 순서 변경"
                 onDragStart={() => { dragIdx.current = idx }}
                 onDragOver={(e) => e.preventDefault()}
@@ -149,6 +158,7 @@ function CohortCourses() {
   const toast = useToast()
   const [rows, setRows] = useState(null)
   const [editing, setEditing] = useState(null)
+  const [mode, setMode] = useState('view') // view | edit — 기존 강좌는 읽기 화면이 기본
   const [deleteTarget, setDeleteTarget] = useState(null)
   const [busy, setBusy] = useState(false)
   const dragIdx = useRef(null)
@@ -205,6 +215,13 @@ function CohortCourses() {
   if (!rows) return <Loading />
 
   if (editing) {
+    if (editing !== 'new' && mode === 'view') {
+      return <CourseAdminView
+        course={editing}
+        onBack={() => { setEditing(null); load() }}
+        onEdit={() => setMode('edit')}
+      />
+    }
     return <CourseEditor
       cohortId={selectedId}
       nextNo={rows.length ? Math.max(...rows.map((r) => r.course_no)) + 1 : 1}
@@ -217,18 +234,18 @@ function CohortCourses() {
     <>
       <div className="row-between">
         <p className="t-muted-sm">{selected?.name}의 강좌입니다. 여기서의 수정·삭제는 다른 기수와 마스터에 영향을 주지 않습니다. 카드를 드래그하면 순서가 바뀌고 강좌 번호가 자동으로 재부여됩니다.</p>
-        <button className="btn btn-primary btn-sm" onClick={() => setEditing('new')}><IconPlus size={14} stroke={1.75} /> 새 강좌</button>
+        <button className="btn btn-primary btn-sm" onClick={() => { setMode('edit'); setEditing('new') }}><IconPlus size={14} stroke={1.75} /> 새 강좌</button>
       </div>
       {rows.length === 0 ? (
         <EmptyState title="이 기수에 강좌가 없습니다" description="기수 관리에서 마스터 강좌를 배정하거나 새 강좌를 직접 만들 수 있습니다."
-          action={<button className="btn btn-primary btn-sm" onClick={() => setEditing('new')}>새 강좌</button>} />
+          action={<button className="btn btn-primary btn-sm" onClick={() => { setMode('edit'); setEditing('new') }}>새 강좌</button>} />
       ) : (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 20 }}>
           {rows.map((c, idx) => {
             const stat = ratingMap[c.id]
             const theme = ((Number(c.course_no) || idx + 1) - 1) % 6
             return (
-              <div key={c.id} className={`card-course theme-${theme}`} onClick={() => setEditing(c)}
+              <div key={c.id} className={`card-course theme-${theme}`} onClick={() => { setMode('view'); setEditing(c) }}
                 draggable title="드래그하여 순서 변경"
                 onDragStart={() => { dragIdx.current = idx }}
                 onDragOver={(e) => e.preventDefault()}
@@ -266,6 +283,86 @@ function CohortCourses() {
         message={`'${deleteTarget?.title}' 강좌를 이 기수에서 삭제합니다. 학생들의 열람·제출 기록도 함께 삭제됩니다.`}
         confirmLabel="삭제" onConfirm={remove} onClose={() => setDeleteTarget(null)} />
     </>
+  )
+}
+
+/* ============ 강좌 읽기 화면 (마스터/기수 공용) — 학생 화면과 유사한 읽기 전용 뷰 ============ */
+function CourseAdminView({ isMaster, course, onBack, onEdit }) {
+  const toast = useToast()
+  const attachments = (isMaster ? course.master_attachments : course.cohort_attachments) || []
+
+  async function handleDownload(att) {
+    try {
+      await downloadFile('course-files', att.file_path, att.filename)
+    } catch {
+      toast('다운로드에 실패했습니다.', 'error')
+    }
+  }
+
+  const actionButtons = (
+    <div className="row" style={{ gap: 8 }}>
+      <button className="btn btn-white btn-sm" onClick={onBack}>목록으로</button>
+      <button className="btn btn-primary btn-sm" onClick={onEdit}><IconPencil size={14} stroke={1.75} /> 수정</button>
+    </div>
+  )
+
+  return (
+    <div className="stack" style={{ gap: 16, maxWidth: 860 }}>
+      <div className="row-between">
+        <div className="row" style={{ gap: 12 }}>
+          {isMaster
+            ? <span className="badge-role-soft">마스터</span>
+            : <span className="badge-course-no" style={{ fontSize: 13, padding: '6px 10px' }}>{pad2(course.course_no)}</span>}
+          <h2 className="t-h2">{course.title}</h2>
+        </div>
+        {actionButtons}
+      </div>
+      {course.summary && <p className="t-muted-sm">{course.summary}</p>}
+
+      <section className="card-panel">
+        <RichBody html={course.body || '<p class="muted">본문이 없습니다.</p>'} />
+      </section>
+
+      {!isMaster && course.external_url && (
+        <section className="card-panel">
+          <h3 className="t-h3 mb-8">외부 링크</h3>
+          <a href={course.external_url} target="_blank" rel="noreferrer" className="row" style={{ gap: 6 }}>
+            <IconExternalLink size={16} stroke={1.75} /> {course.external_url}
+          </a>
+        </section>
+      )}
+
+      {attachments.length > 0 && (
+        <section className="card-panel">
+          <h3 className="t-h3 mb-16">첨부파일</h3>
+          {attachments.map((a) => (
+            <div key={a.id} className="attachment-row">
+              <IconFile size={18} stroke={1.75} color="var(--muted)" />
+              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{a.filename}</span>
+              <span className="size">{fmtBytes(a.file_size)}</span>
+              <button className="icon-btn" onClick={() => handleDownload(a)} aria-label={`${a.filename} 다운로드`}>
+                <IconDownload size={16} stroke={1.75} />
+              </button>
+            </div>
+          ))}
+        </section>
+      )}
+
+      {course.assignment_enabled && (
+        <section className="card-panel">
+          <div className="row mb-8" style={{ gap: 8 }}>
+            <h3 className="t-h3">과제</h3>
+            <StatusPill kind="neutral">사용 중</StatusPill>
+          </div>
+          {course.assignment_text && <p className="t-body" style={{ whiteSpace: 'pre-wrap' }}>{course.assignment_text}</p>}
+          {course.assignment_due && (
+            <span className="t-muted-sm tnum">마감일 {fmtDate(course.assignment_due, true)}</span>
+          )}
+        </section>
+      )}
+
+      <div className="row" style={{ justifyContent: 'flex-end' }}>{actionButtons}</div>
+    </div>
   )
 }
 
@@ -457,6 +554,11 @@ function CourseEditor({ isMaster, cohortId, nextNo, course, onDone }) {
             ))}
           </>
         )}
+      </div>
+
+      <div className="row" style={{ gap: 8, justifyContent: 'flex-end' }}>
+        <button className="btn btn-white btn-sm" onClick={() => { draft.clear(); onDone() }}>목록으로</button>
+        <button className="btn btn-primary btn-sm" onClick={save} disabled={busy}>{busy ? '저장 중…' : '저장'}</button>
       </div>
     </div>
   )

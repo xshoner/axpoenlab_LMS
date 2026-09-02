@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import {
   IconArrowLeft, IconTrash, IconPencil, IconFile, IconDownload, IconExternalLink,
   IconBrandGithub, IconFileDescription, IconSparkles, IconTerminal2, IconMessage2, IconSend,
+  IconChevronLeft, IconChevronRight,
 } from '@tabler/icons-react'
 import { supabase } from '../lib/supabase'
 import { StatusPill, StarRating, ConfirmDialog, Loading, useToast } from './ui'
@@ -9,8 +10,9 @@ import { UrlHealthBadge, UrlThumbnail } from './urlcheck'
 import { fmtDate, fmtBytes, downloadFile } from '../lib/helpers'
 
 /* 해커톤 결과물 리뷰 화면 — 학생·관리자 공용.
-   본문 구획 표시, URL 연결 상태·미리보기, 별점 평가(본인 결과물 제외), 한줄평(본인 글만 삭제). */
-export function HackathonEntryView({ entry, profile, isAdmin = false, onBack, onEdit, onDelete }) {
+   본문 구획 표시, URL 연결 상태·미리보기, 별점 평가(본인 결과물 제외), 한줄평(본인 글만 삭제).
+   onPrev/onNext를 넘기면 하단에 이전으로·목록으로·다음으로 내비게이션이 표시된다 (null이면 비활성). */
+export function HackathonEntryView({ entry, profile, isAdmin = false, onBack, onEdit, onDelete, onPrev, onNext }) {
   const toast = useToast()
   const [stat, setStat] = useState(null)
   const [myRating, setMyRating] = useState(0)
@@ -254,9 +256,23 @@ export function HackathonEntryView({ entry, profile, isAdmin = false, onBack, on
         </div>
       </div>
 
-      <button className="btn btn-white" style={{ alignSelf: 'flex-start' }} onClick={onBack}>
-        <IconArrowLeft size={14} stroke={1.75} /> 목록으로
-      </button>
+      {(onPrev !== undefined || onNext !== undefined) ? (
+        <div className="row-between" style={{ gap: 8 }}>
+          <button className="btn btn-white" disabled={!onPrev} onClick={onPrev || undefined}>
+            <IconChevronLeft size={16} stroke={1.75} /> 이전으로
+          </button>
+          <button className="btn btn-white" onClick={onBack}>
+            <IconArrowLeft size={14} stroke={1.75} /> 목록으로
+          </button>
+          <button className="btn btn-white" disabled={!onNext} onClick={onNext || undefined}>
+            다음으로 <IconChevronRight size={16} stroke={1.75} />
+          </button>
+        </div>
+      ) : (
+        <button className="btn btn-white" style={{ alignSelf: 'flex-start' }} onClick={onBack}>
+          <IconArrowLeft size={14} stroke={1.75} /> 목록으로
+        </button>
+      )}
 
       <ConfirmDialog open={!!deleteComment} danger busy={commentBusy} title="평가 의견 삭제"
         message="내가 작성한 이 평가 의견을 삭제할까요?"

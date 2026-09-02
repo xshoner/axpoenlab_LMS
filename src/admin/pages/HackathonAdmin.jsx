@@ -151,12 +151,17 @@ export default function HackathonAdmin() {
     } finally { setBusy(false) }
   }
 
-  const current = rows.find((r) => r.id === openId)
+  const currentIdx = rows.findIndex((r) => r.id === openId)
+  const current = currentIdx >= 0 ? rows[currentIdx] : null
   if (current) {
+    const prevEntry = currentIdx > 0 ? rows[currentIdx - 1] : null
+    const nextEntry = currentIdx < rows.length - 1 ? rows[currentIdx + 1] : null
     return (
       <>
-        <HackathonEntryView entry={current} profile={profile} isAdmin
+        <HackathonEntryView key={current.id} entry={current} profile={profile} isAdmin
           onBack={() => { setOpenId(null); load() }}
+          onPrev={prevEntry ? () => setOpenId(prevEntry.id) : null}
+          onNext={nextEntry ? () => setOpenId(nextEntry.id) : null}
           onDelete={() => setDeleteTarget(current)} />
         <ConfirmDialog open={!!deleteTarget} danger busy={busy} title="결과물 삭제"
           message={`'${deleteTarget?.title}' 결과물과 받은 별점·평가 의견이 모두 삭제됩니다.`}
