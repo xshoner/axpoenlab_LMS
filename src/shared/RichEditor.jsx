@@ -82,6 +82,7 @@ function linkPreviewHtml(url) {
 export default function RichEditor({ value, onChange, minHeight = 200, compact = false }) {
   const ref = useRef(null)
   const imgInput = useRef(null)
+  const savedRange = useRef(null)
   const [uploading, setUploading] = useState(false)
   const [copyDlg, setCopyDlg] = useState(null) // { kind, text, label }
   const [colorOpen, setColorOpen] = useState(false)
@@ -98,9 +99,41 @@ export default function RichEditor({ value, onChange, minHeight = 200, compact =
     thumbs.forEach((t) => pollThumbnail(t))
   }, [])
 
+  function saveSelection() {
+    const sel = window.getSelection()
+    if (!sel?.rangeCount) return
+    const range = sel.getRangeAt(0)
+    if (ref.current?.contains(range.commonAncestorContainer)) {
+      savedRange.current = range.cloneRange()
+    }
+  }
+
+  useEffect(() => {
+    document.addEventListener('selectionchange', saveSelection)
+    return () => document.removeEventListener('selectionchange', saveSelection)
+  }, [])
+
+  function restoreSelection() {
+    const root = ref.current
+    if (!root) return null
+    // focus()가 선택 영역을 본문 처음으로 옮기기 전에 저장된 위치를 복제한다.
+    let range = savedRange.current?.cloneRange()
+    if (!range || !root.contains(range.commonAncestorContainer)) {
+      range = document.createRange()
+      range.selectNodeContents(root)
+      range.collapse(false)
+    }
+    root.focus()
+    const sel = window.getSelection()
+    sel.removeAllRanges()
+    sel.addRange(range)
+    return range
+  }
+
   function exec(cmd, arg) {
-    ref.current?.focus()
+    restoreSelection()
     document.execCommand(cmd, false, arg)
+    saveSelection()
     onChange(ref.current.innerHTML)
   }
 
@@ -109,25 +142,59 @@ export default function RichEditor({ value, onChange, minHeight = 200, compact =
   function insertHtml(html) {
     const root = ref.current
     if (!root) return
-    root.focus()
+    const range = restoreSelection()
     const sel = window.getSelection()
-    let range = sel && sel.rangeCount ? sel.getRangeAt(0) : null
-    if (!range || !root.contains(range.commonAncestorContainer)) {
-      range = document.createRange()
-      range.selectNodeContents(root)
-      range.collapse(false)
-    }
     range.deleteContents()
     const frag = range.createContextualFragment(html)
     const last = frag.lastChild
     range.insertNode(frag)
     if (last) {
       const after = document.createRange()
-      after.setStartAfter(last)
+      // 블록 뒤 빈 문단 안에 커서를 둬 바로 입력하거나 블록을 삭제할 수 있게 한다.
+      if (last.nodeName === 'P' && last.innerHTML === '<br>') after.setStart(last, 0)
+      else after.setStartAfter(last)
       after.collapse(true)
       sel.removeAllRanges()
       sel.addRange(after)
     }
+    saveSelection()
+    onChange(root.innerHTML)
+  }
+
+  function onKeyDown(e) {
+    if (e.key !== 'Backspace' || e.nativeEvent.isComposing || e.ctrlKey || e.metaKey || e.altKey || e.shiftKey) return
+    const root = ref.current
+    const sel = window.getSelection()
+    if (!sel?.rangeCount || !sel.isCollapsed) return
+    const range = sel.getRangeAt(0)
+    let node = range.startContainer
+    const element = node.nodeType === Node.ELEMENT_NODE ? node : node.parentElement
+    if (!root.contains(node) || element.closest('.copy-block')) return
+
+    // 현재 줄 시작에서 바로 앞 블록만 찾는다. 일반 글자나 줄바꿈은 건너뛰지 않는다.
+    if (node.nodeType === Node.TEXT_NODE) {
+      if (range.startOffset > 0) return
+    } else if (range.startOffset > 0) {
+      node = node.childNodes[range.startOffset - 1]
+      while (node && !node.matches?.('.copy-block') && node.lastChild) node = node.lastChild
+      if (!node?.matches?.('.copy-block') && node.textContent) return
+      if (node?.nodeName === 'BR') return
+    }
+    while (node && node !== root && !node.matches?.('.copy-block')) {
+      if (node.previousSibling) {
+        node = node.previousSibling
+        while (!node.matches?.('.copy-block') && node.lastChild) node = node.lastChild
+        if (!node.matches?.('.copy-block') && (node.textContent || node.nodeType === Node.ELEMENT_NODE)) return
+      } else {
+        node = node.parentNode
+      }
+    }
+    if (node === root || !node?.matches?.('.copy-block')) return
+    e.preventDefault()
+    node.remove()
+    sel.removeAllRanges()
+    sel.addRange(range)
+    saveSelection()
     onChange(root.innerHTML)
   }
 
@@ -196,6 +263,7 @@ export default function RichEditor({ value, onChange, minHeight = 200, compact =
 
   // URL만 붙여넣으면: 유튜브 URL은 동영상 임베드, 그 외는 링크 + 썸네일 미리보기 카드
   function onPaste(e) {
+    saveSelection()
     const text = e.clipboardData?.getData('text/plain')?.trim()
     if (text && isValidUrl(text) && !/\s/.test(text)) {
       e.preventDefault()
@@ -226,7 +294,7 @@ export default function RichEditor({ value, onChange, minHeight = 200, compact =
   }
 
   function applyColor(color) {
-    ref.current?.focus()
+    restoreSelection()
     document.execCommand('styleWithCSS', false, true)
     document.execCommand('foreColor', false, color)
     onChange(ref.current.innerHTML)
@@ -257,7 +325,7 @@ export default function RichEditor({ value, onChange, minHeight = 200, compact =
     <div className="rich-editor">
       <div className={`row rich-toolbar ${compact ? 'compact' : ''}`}>
         {tools.map(({ icon: Icon, cmd, label }) => (
-          <button key={label} type="button" className="icon-btn" onClick={cmd} title={label} aria-label={label} style={{ width: 32, height: 32 }}>
+          <button key={label} type="button" className="icon-btn" onMouseDown={(e) => { saveSelection(); e.preventDefault() }} onClick={cmd} title={label} aria-label={label} style={{ width: 32, height: 32 }}>
             <Icon size={16} stroke={1.75} />
           </button>
         ))}
@@ -287,7 +355,9 @@ export default function RichEditor({ value, onChange, minHeight = 200, compact =
         className="rich-body"
         contentEditable
         style={{ minHeight, padding: '12px 14px', outline: 'none', fontSize: 16 }}
-        onInput={() => onChange(ref.current.innerHTML)}
+        onInput={() => { saveSelection(); onChange(ref.current.innerHTML) }}
+        onBlur={saveSelection}
+        onKeyDown={onKeyDown}
         onPaste={compact ? undefined : onPaste}
         suppressContentEditableWarning
       />
