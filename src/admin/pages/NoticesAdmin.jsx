@@ -1,11 +1,12 @@
 import { useEffect, useRef, useState } from 'react'
-import { IconPlus, IconTrash, IconPin, IconFile } from '@tabler/icons-react'
+import { IconArrowLeft, IconDownload, IconPlus, IconTrash, IconPin, IconFile } from '@tabler/icons-react'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../shared/auth'
 import { useCohort } from '../cohortContext'
 import RichEditor from '../../shared/RichEditor'
+import RichBody from '../../shared/RichBody'
 import { ConfirmDialog, EmptyState, Loading, StatusPill, useToast } from '../../shared/ui'
-import { fmtDate, fmtBytes, uploadFile, storageSafeName } from '../../lib/helpers'
+import { downloadFile, fmtDate, fmtBytes, uploadFile, storageSafeName } from '../../lib/helpers'
 import { useDraft, DraftBadge } from '../../shared/draft'
 
 export default function NoticesAdmin() {
@@ -14,6 +15,7 @@ export default function NoticesAdmin() {
   const toast = useToast()
   const [rows, setRows] = useState(null)
   const [editing, setEditing] = useState(null)
+  const [viewing, setViewing] = useState(null)
   const [deleteTarget, setDeleteTarget] = useState(null)
 
   async function load() {
@@ -38,6 +40,10 @@ export default function NoticesAdmin() {
       onDone={() => { setEditing(null); load() }} />
   }
 
+  if (viewing) {
+    return <NoticeReadOnly notice={viewing} onBack={() => setViewing(null)} onEdit={() => setEditing(viewing)} />
+  }
+
   return (
     <div className="stack" style={{ gap: 16 }}>
       <div className="row-between">
@@ -58,7 +64,7 @@ export default function NoticesAdmin() {
                 <tr key={n.id}>
                   <td>
                     {n.pinned && <IconPin size={14} stroke={1.75} color="var(--primary)" style={{ marginRight: 6 }} />}
-                    <span className="t-emph">{n.title}</span>
+                    <button type="button" className="btn btn-text t-emph" onClick={() => setViewing(n)}>{n.title}</button>
                   </td>
                   <td>{n.cohort_id ? <StatusPill kind="neutral">{n.cohorts?.name}</StatusPill> : <StatusPill kind="done">전체</StatusPill>}</td>
                   <td className="tnum">{fmtDate(n.created_at)}</td>
@@ -78,6 +84,54 @@ export default function NoticesAdmin() {
       <ConfirmDialog open={!!deleteTarget} danger title="공지 삭제"
         message={`'${deleteTarget?.title}' 공지를 삭제합니다.`} confirmLabel="삭제"
         onConfirm={remove} onClose={() => setDeleteTarget(null)} />
+    </div>
+  )
+}
+
+function NoticeReadOnly({ notice, onBack, onEdit }) {
+  const toast = useToast()
+  const editButton = (
+    <button className="btn btn-primary btn-sm" onClick={onEdit}>수정</button>
+  )
+
+  return (
+    <div className="stack" style={{ gap: 16, maxWidth: 860 }}>
+      <div className="row-between">
+        <button className="btn btn-text" onClick={onBack}>
+          <IconArrowLeft size={14} stroke={1.75} /> 목록으로
+        </button>
+        {editButton}
+      </div>
+      <div className="card-panel">
+        <div className="row" style={{ gap: 8, flexWrap: 'wrap' }}>
+          {notice.pinned && <IconPin size={16} stroke={1.75} color="var(--primary)" />}
+          {notice.cohort_id ? <StatusPill kind="neutral">{notice.cohorts?.name}</StatusPill> : <StatusPill kind="done">전체</StatusPill>}
+        </div>
+        <h1 className="t-h1 mt-8 mb-8">{notice.title}</h1>
+        <div className="t-caption muted-soft tnum mb-24">{fmtDate(notice.created_at, true)} · 조회 {notice.view_count}</div>
+        <RichBody html={notice.body || ''} />
+        {(notice.notice_attachments || []).length > 0 && (
+          <div className="mt-24" style={{ borderTop: '1px solid var(--border)', paddingTop: 16 }}>
+            {notice.notice_attachments.map((attachment) => (
+              <div key={attachment.id} className="attachment-row">
+                <IconFile size={18} stroke={1.75} color="var(--muted)" />
+                <span>{attachment.filename}</span>
+                <span className="size">{fmtBytes(attachment.file_size)}</span>
+                <button className="icon-btn" title="다운로드"
+                  onClick={() => downloadFile('notice-files', attachment.file_path, attachment.filename).catch(() => toast('다운로드 실패', 'error'))}>
+                  <IconDownload size={18} stroke={1.75} />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+      <div className="row-between">
+        <button className="btn btn-text" onClick={onBack}>
+          <IconArrowLeft size={14} stroke={1.75} /> 목록으로
+        </button>
+        {editButton}
+      </div>
     </div>
   )
 }

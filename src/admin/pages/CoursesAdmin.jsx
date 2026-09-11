@@ -9,7 +9,7 @@ import { fmtBytes, fmtDate, pad2, downloadFile, uploadFile, storageSafeName } fr
 import { useDraft, DraftBadge } from '../../shared/draft'
 
 export default function CoursesAdmin() {
-  const [tab, setTab] = useState('cohort') // cohort | master
+  const [tab, setTab] = useState('master') // cohort | master
   return (
     <div className="stack" style={{ gap: 24 }}>
       <div className="row" style={{ gap: 8 }}>

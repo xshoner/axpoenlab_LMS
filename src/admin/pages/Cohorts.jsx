@@ -19,6 +19,7 @@ export default function Cohorts() {
   const [deleteTarget, setDeleteTarget] = useState(null)
   const [snapshotTarget, setSnapshotTarget] = useState(null)
   const [coursesTarget, setCoursesTarget] = useState(null)
+  const [membersTarget, setMembersTarget] = useState(null)
   const [busy, setBusy] = useState(false)
 
   async function saveCohort(form) {
@@ -79,7 +80,11 @@ export default function Cohorts() {
             <tbody>
               {cohorts.map((c) => (
                 <tr key={c.id}>
-                  <td className="t-emph">{c.name}</td>
+                  <td>
+                    <button type="button" className="btn btn-text t-emph" onClick={() => setMembersTarget(c)}>
+                      {c.name}
+                    </button>
+                  </td>
                   <td className="tnum">{fmtDate(c.start_date)} ~ {fmtDate(c.end_date)}</td>
                   <td className="tnum"><code style={{ background: 'var(--surface)', padding: '2px 8px', borderRadius: 6 }}>{c.code}</code></td>
                   <td><StatusPill kind={c.status === 'active' ? 'open' : c.status === 'closed' ? 'closed' : 'neutral'}>{COHORT_STATUS[c.status]}</StatusPill></td>
@@ -102,6 +107,7 @@ export default function Cohorts() {
       {editTarget && <CohortDialog cohort={editTarget} busy={busy} onSave={saveCohort} onClose={() => setEditTarget(null)} />}
       {snapshotTarget && <SnapshotDialog cohort={snapshotTarget} onClose={() => { setSnapshotTarget(null) }} />}
       {coursesTarget && <ReorderDialog cohort={coursesTarget} onClose={() => setCoursesTarget(null)} />}
+      {membersTarget && <CohortMembersDialog cohort={membersTarget} onClose={() => setMembersTarget(null)} />}
       <ConfirmDialog
         open={!!deleteTarget} danger busy={busy}
         title="기수 삭제"
@@ -110,6 +116,65 @@ export default function Cohorts() {
         onConfirm={softDelete} onClose={() => setDeleteTarget(null)}
       />
     </div>
+  )
+}
+
+function CohortMembersDialog({ cohort, onClose }) {
+  const [members, setMembers] = useState(null)
+  const [error, setError] = useState('')
+
+  useEffect(() => {
+    let alive = true
+    ;(async () => {
+      const { data, error: queryError } = await supabase.from('cohort_members')
+        .select('id, joined_at, profiles(id, name, email, org, status)')
+        .eq('cohort_id', cohort.id)
+        .order('joined_at', { ascending: true })
+      if (!alive) return
+      if (queryError) {
+        setError('회원 정보를 불러오지 못했습니다.')
+        setMembers([])
+      } else {
+        setMembers(data || [])
+      }
+    })()
+    return () => { alive = false }
+  }, [cohort.id])
+
+  return (
+    <Dialog open wide title={`${cohort.name} — 회원 정보`} onClose={onClose}
+      actions={<button className="btn btn-primary btn-sm" onClick={onClose}>닫기</button>}>
+      {!members ? <Loading label="회원 정보를 불러오는 중…" /> : error ? (
+        <div className="t-muted-sm">{error}</div>
+      ) : members.length === 0 ? (
+        <EmptyState title="이 기수에 등록된 회원이 없습니다" />
+      ) : (
+        <>
+          <div className="t-caption muted-soft mb-8">총 {members.length}명</div>
+          <div className="table-wrap" style={{ maxHeight: '55vh' }}>
+            <table className="data-table">
+              <thead>
+                <tr><th>이름</th><th>소속</th><th>이메일</th><th>상태</th><th>등록일</th></tr>
+              </thead>
+              <tbody>
+                {members.map((member) => {
+                  const profile = Array.isArray(member.profiles) ? member.profiles[0] : member.profiles
+                  return (
+                    <tr key={member.id}>
+                      <td className="t-emph">{profile?.name || '-'}</td>
+                      <td>{profile?.org || '-'}</td>
+                      <td>{profile?.email || '-'}</td>
+                      <td><StatusPill kind={profile?.status === 'active' ? 'open' : 'neutral'}>{profile?.status === 'active' ? '활성' : '비활성'}</StatusPill></td>
+                      <td className="tnum">{fmtDate(member.joined_at)}</td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+        </>
+      )}
+    </Dialog>
   )
 }
 
