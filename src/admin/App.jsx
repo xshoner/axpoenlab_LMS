@@ -6,7 +6,7 @@ import {
   IconShieldLock, IconSettings, IconLogout, IconMenu2, IconMessages, IconRocket, IconEye, IconHandStop,
 } from '@tabler/icons-react'
 import { supabase } from '../lib/supabase'
-import { useAuth, signOut } from '../shared/auth'
+import { InactiveAccount, useAuth, signOut } from '../shared/auth'
 import { Aurora, Dialog, FooterBar, Loading, StatusPill, VisitorCounter, useToast } from '../shared/ui'
 import { CohortProvider, useCohort } from './cohortContext'
 import { useOnlineStudentCount, useOpenInquiryCount } from '../shared/presence'
@@ -52,12 +52,12 @@ export default function AdminApp() {
     window.location.replace('/')
     return <Loading label="로그인 페이지로 이동 중…" />
   }
-  if (profile && profile.role === 'student') {
+  if (!profile) return <Loading />
+  if (profile.status !== 'active') return <InactiveAccount />
+  if (profile.role === 'student') {
     window.location.replace('/')
     return <Loading label="학습자 페이지로 이동 중…" />
   }
-  if (!profile) return <Loading />
-
   return (
     <CohortProvider>
       <AdminShell profile={profile} />

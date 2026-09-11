@@ -5,7 +5,7 @@ import {
   IconMessageCircleQuestion, IconMessages, IconUserCircle, IconLogout, IconMenu2,
   IconRocket, IconTrophy,
 } from '@tabler/icons-react'
-import { useAuth, signOut } from '../shared/auth'
+import { InactiveAccount, useAuth, signOut } from '../shared/auth'
 import { Aurora, FooterBar, Loading, StatusPill, VisitorCounter } from '../shared/ui'
 import Login from './pages/Login'
 import Signup from './pages/Signup'
@@ -102,14 +102,15 @@ export default function App() {
   }
 
   // 관리자는 admin.html 로 이동
-  if (profile && profile.role !== 'student') {
+  if (!profile) return <Loading />
+  if (profile.status !== 'active') return <InactiveAccount />
+
+  if (profile.role !== 'student') {
     window.location.replace('/admin.html')
     return <Loading label="관리자 페이지로 이동 중…" />
   }
 
   if (isAuthRoute) return <Navigate to="/" replace />
-  if (!profile) return <Loading />
-
   const title = PAGE_TITLES.find(([p]) => location.pathname.startsWith(p) && (p !== '/' || location.pathname === '/'))?.[1] || ''
 
   if (focusMode) {

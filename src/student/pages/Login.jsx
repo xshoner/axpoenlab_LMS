@@ -5,8 +5,7 @@ import { FooterBar } from '../../shared/ui'
 
 const LOCK_KEY = 'ax-login-lock'
 const FAIL_KEY = 'ax-login-fails'
-const MAX_FAILS = 5
-const LOCK_MINUTES = 10
+const DEFAULT_SECURITY = { maxFails: 5, lockMinutes: 10 }
 
 function getLockRemaining() {
   const until = Number(localStorage.getItem(LOCK_KEY) || 0)
@@ -20,6 +19,22 @@ export default function Login() {
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
   const [lockLeft, setLockLeft] = useState(getLockRemaining())
+  const [security, setSecurity] = useState(DEFAULT_SECURITY)
+
+  useEffect(() => {
+    let active = true
+    supabase.from('system_settings').select('key, value')
+      .in('key', ['login_lock_attempts', 'login_lock_minutes'])
+      .then(({ data }) => {
+        if (!active || !data) return
+        const values = Object.fromEntries(data.map((row) => [row.key, Number(row.value)]))
+        setSecurity({
+          maxFails: Math.max(3, Math.min(20, values.login_lock_attempts || DEFAULT_SECURITY.maxFails)),
+          lockMinutes: Math.max(1, Math.min(1440, values.login_lock_minutes || DEFAULT_SECURITY.lockMinutes)),
+        })
+      })
+    return () => { active = false }
+  }, [])
 
   useEffect(() => {
     if (lockLeft <= 0) return
@@ -48,8 +63,8 @@ export default function Login() {
     if (err) {
       const fails = Number(localStorage.getItem(FAIL_KEY) || 0) + 1
       localStorage.setItem(FAIL_KEY, String(fails))
-      if (fails >= MAX_FAILS) {
-        localStorage.setItem(LOCK_KEY, String(Date.now() + LOCK_MINUTES * 60_000))
+      if (fails >= security.maxFails) {
+        localStorage.setItem(LOCK_KEY, String(Date.now() + security.lockMinutes * 60_000))
         setLockLeft(getLockRemaining())
       }
       setError('메일주소 또는 비밀번호가 올바르지 않습니다.')

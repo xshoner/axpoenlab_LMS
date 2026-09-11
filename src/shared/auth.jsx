@@ -51,6 +51,20 @@ export function useAuth() {
   return useContext(AuthCtx)
 }
 
+export function InactiveAccount() {
+  return (
+    <div className="auth-wrap">
+      <div className="auth-panel" style={{ textAlign: 'center' }}>
+        <div className="t-h2 mb-16">비활성화된 계정입니다</div>
+        <p className="t-body muted mb-16">
+          이 계정은 현재 LMS를 이용할 수 없습니다.<br />관리자에게 계정 활성화를 요청해 주세요.
+        </p>
+        <button className="btn btn-primary btn-block" onClick={signOut}>로그아웃</button>
+      </div>
+    </div>
+  )
+}
+
 export async function signOut() {
   await supabase.auth.signOut()
   window.location.href = '/'

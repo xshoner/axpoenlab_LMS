@@ -27,9 +27,9 @@ Deno.serve(async (req: Request) => {
     if (authErr || !caller?.user) return json({ ok: false, error: "unauthorized" }, 401);
 
     const { data: callerProfile } = await admin
-      .from("profiles").select("role").eq("id", caller.user.id).single();
+      .from("profiles").select("role, status").eq("id", caller.user.id).single();
     const callerRole = callerProfile?.role;
-    if (callerRole !== "admin" && callerRole !== "super_admin") {
+    if (callerProfile?.status !== "active" || (callerRole !== "admin" && callerRole !== "super_admin")) {
       return json({ ok: false, error: "forbidden" }, 403);
     }
 
@@ -71,17 +71,33 @@ Deno.serve(async (req: Request) => {
       return json({ ok: true });
     }
 
-    if (action === "reset_password") {
+    if (action === "set_status") {
       const targetId = String(body.user_id ?? "");
-      const newPassword = String(body.new_password ?? "");
-      if (!targetId || newPassword.length < 8) return json({ ok: false, error: "weak_password" }, 400);
-      const { data: target } = await admin.from("profiles").select("role").eq("id", targetId).single();
+      const status = String(body.status ?? "");
+      if (!targetId || targetId === caller.user.id || !["active", "inactive"].includes(status)) {
+        return json({ ok: false, error: "invalid_target" }, 400);
+      }
+      const { data: target } = await admin.from("profiles").select("role, status").eq("id", targetId).single();
       if (!target) return json({ ok: false, error: "not_found" }, 404);
       if (target.role !== "student" && callerRole !== "super_admin") {
         return json({ ok: false, error: "forbidden" }, 403);
       }
-      const { error } = await admin.auth.admin.updateUserById(targetId, { password: newPassword });
-      if (error) return json({ ok: false, error: error.message }, 400);
+      if (target.role === "super_admin") return json({ ok: false, error: "cannot_change_super_admin" }, 400);
+      if (target.status === status) return json({ ok: true });
+
+      const banDuration = status === "inactive" ? "876000h" : "none";
+      const { error: authUpdateError } = await admin.auth.admin.updateUserById(targetId, {
+        ban_duration: banDuration,
+      });
+      if (authUpdateError) return json({ ok: false, error: authUpdateError.message }, 400);
+
+      const { error: profileUpdateError } = await admin.from("profiles").update({ status }).eq("id", targetId);
+      if (profileUpdateError) {
+        await admin.auth.admin.updateUserById(targetId, {
+          ban_duration: status === "inactive" ? "none" : "876000h",
+        });
+        return json({ ok: false, error: profileUpdateError.message }, 500);
+      }
       return json({ ok: true });
     }
 

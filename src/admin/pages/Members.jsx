@@ -1,14 +1,11 @@
 import { useEffect, useState } from 'react'
 import { IconFileSpreadsheet, IconSearch } from '@tabler/icons-react'
-import { supabase } from '../../lib/supabase'
-import { useAuth } from '../../shared/auth'
+import { supabase, FUNCTIONS_URL } from '../../lib/supabase'
 import { useCohort } from '../cohortContext'
 import { ConfirmDialog, Dialog, EmptyState, Loading, StatusPill, useToast } from '../../shared/ui'
 import { fmtDate, downloadCsv, asOne } from '../../lib/helpers'
-import { FUNCTIONS_URL } from '../../lib/supabase'
 
 export default function Members() {
-  const { profile } = useAuth()
   const { cohorts, selectedId } = useCohort()
   const toast = useToast()
   const [rows, setRows] = useState(null)
@@ -65,24 +62,31 @@ export default function Members() {
 
   async function toggleActive(user) {
     const next = user.status === 'active' ? 'inactive' : 'active'
-    const { error } = await supabase.from('profiles').update({ status: next }).eq('id', user.id)
-    if (error) toast('상태 변경 실패', 'error')
-    else { toast(next === 'active' ? '계정이 활성화되었습니다.' : '계정이 비활성화되었습니다.'); load() }
+    setBusy(true)
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      const res = await fetch(`${FUNCTIONS_URL}/admin-users`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session?.access_token}` },
+        body: JSON.stringify({ action: 'set_status', user_id: user.id, status: next }),
+      })
+      const json = await res.json()
+      if (!res.ok || !json.ok) throw new Error(json.error)
+      toast(next === 'active' ? '계정이 활성화되었습니다.' : '계정이 비활성화되었습니다.')
+      load()
+    } catch {
+      toast('상태 변경 실패', 'error')
+    } finally { setBusy(false) }
   }
 
   async function resetPassword() {
     setBusy(true)
     try {
-      const newPassword = 'ax' + Math.random().toString(36).slice(2, 8) + Math.floor(Math.random() * 90 + 10)
-      const { data: { session } } = await supabase.auth.getSession()
-      const res = await fetch(`${FUNCTIONS_URL}/admin-users`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
-        body: JSON.stringify({ action: 'reset_password', user_id: resetTarget.id, new_password: newPassword }),
+      const { error } = await supabase.auth.resetPasswordForEmail(resetTarget.email, {
+        redirectTo: `${window.location.origin}/#/reset`,
       })
-      const json = await res.json()
-      if (!json.ok) throw new Error(json.error)
-      alert(`${resetTarget.name} 님의 임시 비밀번호: ${newPassword}\n(학생에게 전달 후 즉시 변경을 안내해 주세요)`)
+      if (error) throw error
+      toast(`${resetTarget.name} 님에게 재설정 메일을 발송했습니다.`)
       setResetTarget(null)
     } catch {
       toast('비밀번호 초기화 실패', 'error')
@@ -137,8 +141,8 @@ export default function Members() {
                   <td>
                     <div className="row" style={{ gap: 4 }}>
                       <button className="btn btn-white btn-sm" onClick={() => { setAssignTarget(r); setAssignCohort(asOne(r.cohort_members)?.cohort_id || '') }}>기수 배정</button>
-                      <button className="btn btn-white btn-sm" onClick={() => toggleActive(r)}>{r.status === 'active' ? '비활성화' : '활성화'}</button>
-                      <button className="btn btn-white btn-sm" onClick={() => setResetTarget(r)}>비번 초기화</button>
+                      <button className="btn btn-white btn-sm" disabled={busy} onClick={() => toggleActive(r)}>{r.status === 'active' ? '비활성화' : '활성화'}</button>
+                      <button className="btn btn-white btn-sm" disabled={busy} onClick={() => setResetTarget(r)}>재설정 메일</button>
                     </div>
                   </td>
                 </tr>
@@ -166,9 +170,9 @@ export default function Members() {
         message={confirmMove?.message} confirmLabel="이동"
         onConfirm={doAssign} onClose={() => setConfirmMove(null)} />
 
-      <ConfirmDialog open={!!resetTarget} busy={busy} title="비밀번호 초기화"
-        message={`${resetTarget?.name} 님의 비밀번호를 임시 비밀번호로 초기화합니다.`}
-        confirmLabel="초기화" onConfirm={resetPassword} onClose={() => setResetTarget(null)} />
+      <ConfirmDialog open={!!resetTarget} busy={busy} title="비밀번호 재설정 메일 발송"
+        message={`${resetTarget?.name} 님의 가입 메일(${resetTarget?.email})로 안전한 비밀번호 재설정 링크를 보냅니다.`}
+        confirmLabel="메일 발송" onConfirm={resetPassword} onClose={() => setResetTarget(null)} />
     </div>
   )
 }

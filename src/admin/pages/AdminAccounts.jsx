@@ -61,9 +61,15 @@ export default function AdminAccounts() {
 
   async function toggleActive(user) {
     const next = user.status === 'active' ? 'inactive' : 'active'
-    const { error } = await supabase.from('profiles').update({ status: next }).eq('id', user.id)
-    if (error) toast('상태 변경 실패', 'error')
-    else load()
+    setBusy(true)
+    try {
+      const json = await callFn({ action: 'set_status', user_id: user.id, status: next })
+      if (!json.ok) throw new Error(json.error)
+      toast(next === 'active' ? '관리자 계정이 활성화되었습니다.' : '관리자 계정이 비활성화되었습니다.')
+      load()
+    } catch {
+      toast('상태 변경 실패', 'error')
+    } finally { setBusy(false) }
   }
 
   if (!rows) return <Loading />
@@ -92,7 +98,7 @@ export default function AdminAccounts() {
                 <td>
                   {r.role !== 'super_admin' && (
                     <div className="row" style={{ gap: 4 }}>
-                      <button className="btn btn-white btn-sm" onClick={() => toggleActive(r)}>{r.status === 'active' ? '비활성화' : '활성화'}</button>
+                      <button className="btn btn-white btn-sm" disabled={busy} onClick={() => toggleActive(r)}>{r.status === 'active' ? '비활성화' : '활성화'}</button>
                       <button className="icon-btn danger" onClick={() => setDeleteTarget(r)}><IconTrash size={16} stroke={1.75} /></button>
                     </div>
                   )}
