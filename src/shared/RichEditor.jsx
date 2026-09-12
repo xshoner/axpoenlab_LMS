@@ -123,18 +123,49 @@ export default function RichEditor({ value, onChange, minHeight = 200, compact =
       range.selectNodeContents(root)
       range.collapse(false)
     }
-    root.focus()
+    // 일반 focus()는 긴 편집 화면을 에디터 시작점으로 스크롤할 수 있다.
+    // 현재 선택 영역이 보이는 위치를 유지한 채 편집기에 포커스만 돌려준다.
+    try { root.focus({ preventScroll: true }) } catch { root.focus() }
     const sel = window.getSelection()
     sel.removeAllRanges()
     sel.addRange(range)
     return range
   }
 
+  function captureScrollPositions() {
+    const positions = [{ node: window, left: window.scrollX, top: window.scrollY }]
+    let node = ref.current?.parentElement
+    while (node) {
+      if (node.scrollHeight > node.clientHeight || node.scrollWidth > node.clientWidth) {
+        positions.push({ node, left: node.scrollLeft, top: node.scrollTop })
+      }
+      node = node.parentElement
+    }
+    return positions
+  }
+
+  function restoreScrollPositions(positions) {
+    const restore = () => {
+      for (const pos of positions) {
+        if (pos.node === window) window.scrollTo(pos.left, pos.top)
+        else {
+          pos.node.scrollLeft = pos.left
+          pos.node.scrollTop = pos.top
+        }
+      }
+    }
+    restore()
+    // React 상태 반영 뒤에도 레이아웃 변경이 스크롤 위치를 흔들지 않게 한 번 더 복원한다.
+    requestAnimationFrame(restore)
+  }
+
   function exec(cmd, arg) {
+    const scrollPositions = captureScrollPositions()
     restoreSelection()
     document.execCommand(cmd, false, arg)
     saveSelection()
     onChange(ref.current.innerHTML)
+    restoreScrollPositions(scrollPositions)
   }
 
   // HTML 조각 삽입 — execCommand('insertHTML')은 포커스/선택 상태에 따라 태그를 텍스트로 넣는 경우가 있어
@@ -294,11 +325,14 @@ export default function RichEditor({ value, onChange, minHeight = 200, compact =
   }
 
   function applyColor(color) {
+    const scrollPositions = captureScrollPositions()
     restoreSelection()
     document.execCommand('styleWithCSS', false, true)
     document.execCommand('foreColor', false, color)
+    saveSelection()
     onChange(ref.current.innerHTML)
     setColorOpen(false)
+    restoreScrollPositions(scrollPositions)
   }
 
   function insertCopyBlock() {
