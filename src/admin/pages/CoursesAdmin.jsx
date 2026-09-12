@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { useLocation, useNavigate } from 'react-router-dom'
 import { IconPlus, IconTrash, IconFile, IconDownload, IconPaperclip, IconPencil, IconExternalLink } from '@tabler/icons-react'
 import { supabase } from '../../lib/supabase'
 import { useCohort } from '../cohortContext'
@@ -9,20 +10,39 @@ import { fmtBytes, fmtDate, pad2, downloadFile, uploadFile, storageSafeName } fr
 import { useDraft, DraftBadge } from '../../shared/draft'
 
 export default function CoursesAdmin() {
-  const [tab, setTab] = useState('master') // cohort | master
+  const location = useLocation()
+  const navigate = useNavigate()
+  const detailMatch = location.pathname.match(/^\/courses\/(master|cohort)\/([^/]+)$/)
+  const detailType = detailMatch?.[1] || null
+  const detailId = detailMatch?.[2] || null
+  const [tab, setTab] = useState(detailType || 'master') // cohort | master
+
+  useEffect(() => {
+    if (detailType) setTab(detailType)
+  }, [detailType])
+
+  const openCourse = (type, course) => navigate(`/courses/${type}/${course.id}`)
+  const closeCourse = () => navigate('/courses', { replace: true })
+  const selectTab = (nextTab) => {
+    setTab(nextTab)
+    if (detailId) navigate('/courses', { replace: true })
+  }
+
   return (
     <div className="stack" style={{ gap: 24 }}>
       <div className="row" style={{ gap: 8 }}>
-        <button className={`btn btn-sm ${tab === 'cohort' ? 'btn-primary' : 'btn-white'}`} onClick={() => setTab('cohort')}>기수별 강좌</button>
-        <button className={`btn btn-sm ${tab === 'master' ? 'btn-primary' : 'btn-white'}`} onClick={() => setTab('master')}>마스터 강좌 라이브러리</button>
+        <button className={`btn btn-sm ${tab === 'cohort' ? 'btn-primary' : 'btn-white'}`} onClick={() => selectTab('cohort')}>기수별 강좌</button>
+        <button className={`btn btn-sm ${tab === 'master' ? 'btn-primary' : 'btn-white'}`} onClick={() => selectTab('master')}>마스터 강좌 라이브러리</button>
       </div>
-      {tab === 'cohort' ? <CohortCourses /> : <MasterCourses />}
+      {tab === 'cohort'
+        ? <CohortCourses detailId={detailType === 'cohort' ? detailId : null} onOpen={(course) => openCourse('cohort', course)} onClose={closeCourse} />
+        : <MasterCourses detailId={detailType === 'master' ? detailId : null} onOpen={(course) => openCourse('master', course)} onClose={closeCourse} />}
     </div>
   )
 }
 
 /* ============ 마스터 강좌 ============ */
-function MasterCourses() {
+function MasterCourses({ detailId, onOpen, onClose }) {
   const toast = useToast()
   const [rows, setRows] = useState(null)
   const [editing, setEditing] = useState(null)
@@ -50,6 +70,18 @@ function MasterCourses() {
     setRows(data || [])
   }
   useEffect(() => { load() }, [])
+
+  useEffect(() => {
+    if (!detailId) {
+      setEditing((current) => current === 'new' ? current : null)
+      return
+    }
+    const course = rows?.find((row) => row.id === detailId)
+    if (course) {
+      setMode('view')
+      setEditing(course)
+    }
+  }, [detailId, rows])
 
   async function remove() {
     setBusy(true)
@@ -87,13 +119,13 @@ function MasterCourses() {
     if (editing !== 'new' && mode === 'view') {
       return <CourseAdminView
         isMaster course={editing}
-        onBack={() => { setEditing(null); load() }}
+        onBack={() => { setEditing(null); onClose(); load() }}
         onEdit={() => setMode('edit')}
       />
     }
     return <CourseEditor
       isMaster course={editing === 'new' ? null : editing}
-      onDone={() => { setEditing(null); load() }}
+      onDone={() => { setEditing(null); onClose(); load() }}
     />
   }
 
@@ -111,7 +143,7 @@ function MasterCourses() {
           {rows.map((c, idx) => {
             const stat = ratingMap[c.id]
             return (
-              <div key={c.id} className={`card-course theme-${idx % 6}`} onClick={() => { setMode('view'); setEditing(c) }}
+              <div key={c.id} className={`card-course theme-${idx % 6}`} onClick={() => { setMode('view'); onOpen(c) }}
                 draggable title="드래그하여 순서 변경"
                 onDragStart={() => { dragIdx.current = idx }}
                 onDragOver={(e) => e.preventDefault()}
@@ -153,7 +185,7 @@ function MasterCourses() {
 }
 
 /* ============ 기수 강좌 ============ */
-function CohortCourses() {
+function CohortCourses({ detailId, onOpen, onClose }) {
   const { selectedId, selected } = useCohort()
   const toast = useToast()
   const [rows, setRows] = useState(null)
@@ -179,6 +211,18 @@ function CohortCourses() {
     setRows(data || [])
   }
   useEffect(() => { load() }, [selectedId])
+
+  useEffect(() => {
+    if (!detailId) {
+      setEditing((current) => current === 'new' ? current : null)
+      return
+    }
+    const course = rows?.find((row) => row.id === detailId)
+    if (course) {
+      setMode('view')
+      setEditing(course)
+    }
+  }, [detailId, rows])
 
   // 현재 나열 순서대로 course_no를 1부터 다시 부여 (변경된 행만 갱신)
   async function persistOrder(list) {
@@ -218,7 +262,7 @@ function CohortCourses() {
     if (editing !== 'new' && mode === 'view') {
       return <CourseAdminView
         course={editing}
-        onBack={() => { setEditing(null); load() }}
+        onBack={() => { setEditing(null); onClose(); load() }}
         onEdit={() => setMode('edit')}
       />
     }
@@ -226,7 +270,7 @@ function CohortCourses() {
       cohortId={selectedId}
       nextNo={rows.length ? Math.max(...rows.map((r) => r.course_no)) + 1 : 1}
       course={editing === 'new' ? null : editing}
-      onDone={() => { setEditing(null); load() }}
+      onDone={() => { setEditing(null); onClose(); load() }}
     />
   }
 
@@ -245,7 +289,7 @@ function CohortCourses() {
             const stat = ratingMap[c.id]
             const theme = ((Number(c.course_no) || idx + 1) - 1) % 6
             return (
-              <div key={c.id} className={`card-course theme-${theme}`} onClick={() => { setMode('view'); setEditing(c) }}
+              <div key={c.id} className={`card-course theme-${theme}`} onClick={() => { setMode('view'); onOpen(c) }}
                 draggable title="드래그하여 순서 변경"
                 onDragStart={() => { dragIdx.current = idx }}
                 onDragOver={(e) => e.preventDefault()}
