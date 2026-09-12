@@ -45,6 +45,28 @@ Deno.serve(async (req: Request) => {
       const msg = /already|exist/i.test(error.message) ? "email_exists" : error.message;
       return err(msg, 400);
     }
+
+    // 강제 가입 기수는 클라이언트 입력을 신뢰하지 않고 서버에서 즉시 배정한다.
+    const { data: forcedCohort, error: forcedError } = await admin
+      .from("cohorts")
+      .select("id")
+      .eq("signup_forced", true)
+      .is("deleted_at", null)
+      .maybeSingle();
+    if (forcedError) {
+      await admin.auth.admin.deleteUser(data.user!.id);
+      return err("forced_cohort_lookup_failed", 500);
+    }
+    if (forcedCohort && data.user) {
+      const { error: assignError } = await admin.from("cohort_members").insert({
+        cohort_id: forcedCohort.id,
+        user_id: data.user.id,
+      });
+      if (assignError) {
+        await admin.auth.admin.deleteUser(data.user.id);
+        return err("forced_cohort_assignment_failed", 500);
+      }
+    }
     return new Response(JSON.stringify({ ok: true, user_id: data.user?.id }), {
       headers: { ...cors, "Content-Type": "application/json" },
     });

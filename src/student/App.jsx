@@ -175,8 +175,10 @@ export default function App() {
                 <span className="tnum">접속 {online}명</span>
               </span>
               <VisitorCounter />
-              <span className="avatar">{(profile.name || '?').slice(0, 1)}</span>
-              <span className="t-label" style={{ color: 'var(--foreground)' }}>{profile.name}</span>
+              <Link to="/profile" className="profile-link" title="내 정보로 이동">
+                <span className="avatar">{(profile.name || '?').slice(0, 1)}</span>
+                <span className="t-label" style={{ color: 'var(--foreground)' }}>{profile.name}</span>
+              </Link>
             </div>
           </header>
           <main className="content" style={{ maxWidth: 1440 }}>

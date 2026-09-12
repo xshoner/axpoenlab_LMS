@@ -249,6 +249,11 @@ input, textarea, select { font-family: inherit; }
 }
 .topbar-title { font-size: 20px; font-weight: 700; }
 .topbar-right { margin-left: auto; display: flex; align-items: center; gap: 12px; }
+.profile-link {
+  display: inline-flex; align-items: center; gap: 12px; color: inherit;
+  text-decoration: none; border-radius: 9999px; padding: 3px 6px 3px 3px;
+}
+.profile-link:hover { background: var(--neutral-wash); }
 .content { flex: 1; width: 100%; max-width: 1280px; margin: 0 auto; padding: 32px; position: relative; }
 .content.wide { max-width: none; }
 
@@ -291,6 +296,9 @@ input, textarea, select { font-family: inherit; }
 }
 .board-widget-row > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .board-widget-row.head { padding: 4px 0; }
+.board-list-page { width: 100%; max-width: 1080px; margin: 0 auto; }
+.board-list-table { table-layout: fixed; }
+.board-list-table td:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 @media (max-width: 640px) {
   .board-widget-row { grid-template-columns: minmax(0, 1fr) 90px; }
   .board-widget-row > :nth-child(2), .board-widget-row > :nth-child(3) { display: none; }

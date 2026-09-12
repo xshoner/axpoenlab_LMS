@@ -36,7 +36,7 @@ function PostList() {
   const pageRows = rows.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE)
 
   return (
-    <div className="stack">
+    <div className="stack board-list-page">
       <div className="row-between">
         <h2 className="t-h2">공개게시판</h2>
         <Link to="new" className="btn btn-primary btn-sm"><IconPlus size={14} stroke={1.75} /> 글쓰기</Link>
@@ -46,9 +46,9 @@ function PostList() {
           action={<Link to="new" className="btn btn-primary btn-sm">글쓰기</Link>} />
       ) : (
         <div className="table-wrap">
-          <table className="data-table">
+          <table className="data-table board-list-table">
             <thead>
-              <tr><th style={{ width: '44%' }}>제목</th><th style={{ width: '20%' }}>소속</th><th style={{ width: '20%' }}>작성자</th><th style={{ width: '16%' }}>작성일</th></tr>
+              <tr><th style={{ width: '36%' }}>제목</th><th style={{ width: '22%' }}>소속</th><th style={{ width: '20%' }}>작성자</th><th style={{ width: '22%' }}>작성일</th></tr>
             </thead>
             <tbody>
               {pageRows.map((r) => {

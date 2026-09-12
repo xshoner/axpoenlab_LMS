@@ -34,3 +34,8 @@ export const supabase = createClient(SUPABASE_URL, SUPABASE_KEY, {
 
 export const FUNCTIONS_URL = `${SUPABASE_URL}/functions/v1`
 export const ANON_KEY = SUPABASE_KEY
+
+// 인증 메일은 개발 서버에서 요청하더라도 실제 서비스로 돌아오게 한다.
+export const AUTH_REDIRECT_URL = `${
+  import.meta.env.VITE_PUBLIC_SITE_URL || 'https://lms-axopenlab.vercel.app'
+}/`

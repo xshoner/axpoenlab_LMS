@@ -14,9 +14,30 @@ export default function Signup() {
   const [emailDup, setEmailDup] = useState(null) // null | 'checking' | true | false
   const [busy, setBusy] = useState(false)
   const [topError, setTopError] = useState('')
+  const [forcedCohort, setForcedCohort] = useState(null)
   const dupTimer = useRef(null)
 
   const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }))
+
+  useEffect(() => {
+    let alive = true
+    async function loadForcedCohort() {
+      const { data, error } = await supabase.rpc('get_forced_signup_cohort')
+      if (!alive || error) return
+      const forced = Array.isArray(data) ? data[0] : data
+      setForcedCohort(forced || null)
+      if (forced?.code) setForm((f) => ({ ...f, cohortCode: forced.code }))
+      else setForm((f) => ({ ...f, cohortCode: '' }))
+    }
+    loadForcedCohort()
+    const timer = window.setInterval(loadForcedCohort, 2000)
+    window.addEventListener('focus', loadForcedCohort)
+    return () => {
+      alive = false
+      window.clearInterval(timer)
+      window.removeEventListener('focus', loadForcedCohort)
+    }
+  }, [])
 
   // 실시간 이메일 중복 검사
   useEffect(() => {
@@ -135,9 +156,13 @@ export default function Signup() {
             </div>
           </div>
           <div className="field">
-            <label>기수 코드 (선택)</label>
-            <input className="input" value={form.cohortCode} onChange={set('cohortCode')} placeholder="예: AX3-2026" />
-            <span className="hint">미입력 시 미배정 상태로 가입되며 관리자가 배정합니다.</span>
+            <label>기수 코드 {forcedCohort ? <span className="req">(강제 적용)</span> : '(선택)'}</label>
+            <input className="input" value={form.cohortCode} onChange={set('cohortCode')}
+              disabled={!!forcedCohort} placeholder="예: AX3-2026"
+              style={forcedCohort ? { background: 'var(--surface)' } : undefined} />
+            <span className="hint">{forcedCohort
+              ? `${forcedCohort.name}에 자동 배정되며 기수 코드는 변경할 수 없습니다.`
+              : '미입력 시 미배정 상태로 가입되며 관리자가 배정합니다.'}</span>
           </div>
           <div className="checkbox-row">
             <input id="agree" type="checkbox" checked={agree} onChange={(e) => setAgree(e.target.checked)} />

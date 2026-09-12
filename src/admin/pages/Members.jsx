@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { IconFileSpreadsheet, IconSearch } from '@tabler/icons-react'
-import { supabase, FUNCTIONS_URL } from '../../lib/supabase'
+import { AUTH_REDIRECT_URL, supabase, FUNCTIONS_URL } from '../../lib/supabase'
 import { useCohort } from '../cohortContext'
 import { ConfirmDialog, Dialog, EmptyState, Loading, StatusPill, useToast } from '../../shared/ui'
 import { fmtDate, downloadCsv, asOne } from '../../lib/helpers'
@@ -83,7 +83,7 @@ export default function Members() {
     setBusy(true)
     try {
       const { error } = await supabase.auth.resetPasswordForEmail(resetTarget.email, {
-        redirectTo: `${window.location.origin}/#/reset`,
+        redirectTo: AUTH_REDIRECT_URL,
       })
       if (error) throw error
       toast(`${resetTarget.name} 님에게 재설정 메일을 발송했습니다.`)

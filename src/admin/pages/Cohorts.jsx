@@ -22,6 +22,21 @@ export default function Cohorts() {
   const [membersTarget, setMembersTarget] = useState(null)
   const [busy, setBusy] = useState(false)
 
+  async function toggleSignupForce(cohort) {
+    setBusy(true)
+    const enabled = !cohort.signup_forced
+    const { error } = await supabase.rpc('set_forced_signup_cohort', {
+      p_cohort_id: cohort.id,
+      p_enabled: enabled,
+    })
+    setBusy(false)
+    if (error) toast('기수 코드 강제 설정을 변경하지 못했습니다.', 'error')
+    else {
+      toast(enabled ? `${cohort.name} 코드가 모든 회원가입에 강제 적용됩니다.` : '기수 코드 강제가 해제되었습니다.')
+      reload()
+    }
+  }
+
   async function saveCohort(form) {
     setBusy(true)
     try {
@@ -75,7 +90,7 @@ export default function Cohorts() {
         <div className="table-wrap">
           <table className="data-table">
             <thead>
-              <tr><th>기수명</th><th>기간</th><th>기수 코드</th><th>상태</th><th style={{ width: 340 }}>작업</th></tr>
+              <tr><th>기수명</th><th>기간</th><th>기수 코드</th><th>가입 코드</th><th>상태</th><th style={{ width: 340 }}>작업</th></tr>
             </thead>
             <tbody>
               {cohorts.map((c) => (
@@ -87,6 +102,13 @@ export default function Cohorts() {
                   </td>
                   <td className="tnum">{fmtDate(c.start_date)} ~ {fmtDate(c.end_date)}</td>
                   <td className="tnum"><code style={{ background: 'var(--surface)', padding: '2px 8px', borderRadius: 6 }}>{c.code}</code></td>
+                  <td>
+                    <label className="checkbox-row" style={{ whiteSpace: 'nowrap' }}>
+                      <input type="checkbox" checked={!!c.signup_forced} disabled={busy}
+                        onChange={() => toggleSignupForce(c)} />
+                      <span>{c.signup_forced ? '강제 적용 중' : '기수 코드 강제'}</span>
+                    </label>
+                  </td>
                   <td><StatusPill kind={c.status === 'active' ? 'open' : c.status === 'closed' ? 'closed' : 'neutral'}>{COHORT_STATUS[c.status]}</StatusPill></td>
                   <td>
                     <div className="row" style={{ gap: 4 }}>

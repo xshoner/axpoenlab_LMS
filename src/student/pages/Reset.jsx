@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { supabase } from '../../lib/supabase'
+import { AUTH_REDIRECT_URL, supabase } from '../../lib/supabase'
 import { FooterBar } from '../../shared/ui'
 
 export default function Reset() {
@@ -27,9 +27,8 @@ export default function Reset() {
     e.preventDefault()
     setBusy(true)
     setError('')
-    const redirect = `${window.location.origin}/#/reset`
     const { error: err } = await supabase.auth.resetPasswordForEmail(email.trim().toLowerCase(), {
-      redirectTo: redirect,
+      redirectTo: AUTH_REDIRECT_URL,
     })
     setBusy(false)
     if (err) setError('메일 발송에 실패했습니다. 잠시 후 다시 시도해 주세요.')

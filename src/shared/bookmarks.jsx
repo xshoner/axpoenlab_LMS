@@ -19,7 +19,20 @@ export const DEFAULT_BOOKMARKS = [
   { name: 'Cloudflare', url: 'https://www.cloudflare.com' },
   { name: 'Netlify', url: 'https://app.netlify.com' },
   { name: 'NotebookLM', url: 'https://notebook.google.com' },
+  { name: 'Obsidian', url: 'https://obsidian.md/' },
+  { name: 'Napkin AI', url: 'https://www.napkin.ai/ko/' },
+  { name: 'A.', url: 'https://adot.ai/search/' },
+  { name: 'Grok', url: 'https://grok.com/' },
+  { name: 'Perplexity', url: 'https://www.perplexity.ai/' },
 ]
+
+const NEW_DEFAULT_BOOKMARKS = DEFAULT_BOOKMARKS.slice(-5)
+
+function withNewDefaults(items) {
+  const list = Array.isArray(items) ? items : DEFAULT_BOOKMARKS
+  const urls = new Set(list.map((item) => hostOf(item.url)))
+  return [...list, ...NEW_DEFAULT_BOOKMARKS.filter((item) => !urls.has(hostOf(item.url)))]
+}
 
 function hostOf(url) {
   try { return new URL(url).hostname } catch { return '' }
@@ -56,7 +69,7 @@ export function AiBookmarks() {
     supabase.from('user_bookmarks').select('items').eq('user_id', profile.id).maybeSingle()
       .then(({ data }) => {
         if (!alive) return
-        setItems(Array.isArray(data?.items) ? data.items : DEFAULT_BOOKMARKS)
+        setItems(withNewDefaults(data?.items))
       })
     return () => { alive = false }
   }, [profile?.id])
