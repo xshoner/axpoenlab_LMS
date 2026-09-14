@@ -63,7 +63,7 @@ export default function Arcade() {
     <Link to="/arcade" className="btn btn-white btn-sm"><IconArrowLeft size={16} /> 게임 목록</Link>
     {game ? <>
       <div className="arcade-player-heading"><h1 className="t-h2">{game.name}</h1><p className="muted">{game.description}</p></div>
-      <div className={`arcade-player${new URL(game.url).hostname === 'jellyrungo.vercel.app' ? ' arcade-player--jellyrun' : ''}`}><iframe key={game.id} src={game.url} title={`${game.name} 게임 화면`} sandbox="allow-scripts allow-same-origin allow-pointer-lock" allow="autoplay; gamepad" referrerPolicy="no-referrer" /></div>
+      <div className={`arcade-player${new URL(game.url).hostname === 'jellyrungo.vercel.app' ? ' arcade-player--jellyrun' : ''}`}><iframe key={game.id} src={game.url} title={`${game.name} 게임 화면`} sandbox="allow-scripts allow-same-origin allow-pointer-lock" allow="fullscreen; autoplay; gamepad" allowFullScreen referrerPolicy="no-referrer" /></div>
       <p className="t-muted-sm mt-8">게임 화면을 눌러 시작하세요. 방향키·터치 조작은 게임 안내를 따라 주세요.</p>
       <details className="t-muted-sm mt-8"><summary>게임 화면이 보이지 않나요?</summary>게임 제공 사이트가 프레임 실행을 허용해야 합니다. 관리자에게 URL 확인을 요청해 주세요.</details>
     </> : <p className="mt-16">게임을 찾을 수 없습니다.</p>}
