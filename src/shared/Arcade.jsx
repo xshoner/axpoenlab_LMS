@@ -19,6 +19,7 @@ export default function Arcade() {
   const [open, setOpen] = useState(false)
   const [busy, setBusy] = useState(false)
   const [form, setForm] = useState({ url: '', name: '', description: '' })
+  const [gamePlaying, setGamePlaying] = useState(false)
   useEffect(() => {
     let alive = true
     async function load() {
@@ -34,6 +35,20 @@ export default function Arcade() {
     load()
     return () => { alive = false }
   }, [retry])
+  useEffect(() => {
+    const game = games.find(item => item.id === id)
+    const frame = document.querySelector('.arcade-player--jellyrun iframe')
+    if (!id || game?.url !== 'https://jellyrungo.vercel.app/' || !frame) return
+    let timer
+    function onBlur() {
+      if (document.activeElement !== frame) return
+      clearTimeout(timer)
+      // Let the initial pointer click finish before narrowing the play area.
+      timer = setTimeout(() => setGamePlaying(true), 450)
+    }
+    window.addEventListener('blur', onBlur)
+    return () => { clearTimeout(timer); window.removeEventListener('blur', onBlur) }
+  }, [games, id])
   async function save(e) {
     e.preventDefault()
     if (busy) return
@@ -59,11 +74,11 @@ export default function Arcade() {
   if (loading) return <Loading />
   if (error) return <div role="alert">오락실을 불러오지 못했습니다. <button className="btn btn-white" onClick={() => setRetry(retry + 1)}>다시 시도</button></div>
   const game = games.find(g => g.id === id)
-  if (id) return <section className="arcade arcade-player-page">
-    <Link to="/arcade" className="btn btn-white btn-sm"><IconArrowLeft size={16} /> 게임 목록</Link>
+  if (id) return <section className={`arcade arcade-player-page${gamePlaying ? ' arcade-player-page--playing' : ''}`}>
+      <Link to="/arcade" className="btn btn-white btn-sm" onClick={() => setGamePlaying(false)}><IconArrowLeft size={16} /> 게임 목록</Link>
     {game ? <>
       <div className="arcade-player-heading"><h1 className="t-h2">{game.name}</h1><p className="muted">{game.description}</p></div>
-      <div className={`arcade-player${new URL(game.url).hostname === 'jellyrungo.vercel.app' ? ' arcade-player--jellyrun' : ''}`}><iframe key={game.id} src={game.url} title={`${game.name} 게임 화면`} sandbox="allow-scripts allow-same-origin allow-pointer-lock" allow="fullscreen; autoplay; gamepad" allowFullScreen referrerPolicy="no-referrer" /></div>
+      <div className={`arcade-player${new URL(game.url).hostname === 'jellyrungo.vercel.app' ? ' arcade-player--jellyrun' : ''}${gamePlaying ? ' arcade-player--playing' : ''}`}><iframe key={game.id} src={game.url} title={`${game.name} 게임 화면`} sandbox="allow-scripts allow-same-origin allow-pointer-lock" allow="autoplay; gamepad" referrerPolicy="no-referrer" /></div>
       <p className="t-muted-sm mt-8">게임 화면을 눌러 시작하세요. 방향키·터치 조작은 게임 안내를 따라 주세요.</p>
       <details className="t-muted-sm mt-8"><summary>게임 화면이 보이지 않나요?</summary>게임 제공 사이트가 프레임 실행을 허용해야 합니다. 관리자에게 URL 확인을 요청해 주세요.</details>
     </> : <p className="mt-16">게임을 찾을 수 없습니다.</p>}
@@ -73,11 +88,11 @@ export default function Arcade() {
       {admin && <button className="btn btn-primary" onClick={() => setOpen(true)}><IconPlus size={18} /> 추가하기</button>}
     </div>
     <div className="arcade-list">{games.map((g, index) => <article className="arcade-card" key={g.id}>
-      <Link to={`/arcade/${g.id}`} className={`arcade-thumbnail arcade-tone-${index % 3}`} aria-label={`${g.name} 실행`}>
+      <Link to={`/arcade/${g.id}`} onClick={() => setGamePlaying(false)} className={`arcade-thumbnail arcade-tone-${index % 3}`} aria-label={`${g.name} 실행`}>
         <IconDeviceGamepad2 size={62} stroke={1.4} /><span>{g.name}</span><span className="arcade-play">PLAY →</span>
         <img src={g.url.startsWith('https://jellyrungo.vercel.app/') ? '/arcade-jellyrun.png' : `https://s.wordpress.com/mshots/v1/${encodeURIComponent(g.url)}?w=600&h=375`} alt="" loading="lazy" onError={e => { e.currentTarget.hidden = true }} />
       </Link>
-      <div className="arcade-card-body"><span className="t-micro muted">WEB GAME · {String(index + 1).padStart(2, '0')}</span><h2 className="t-h3"><Link to={`/arcade/${g.id}`}>{g.name}</Link></h2><p className="muted">{g.description}</p><Link className="arcade-start" to={`/arcade/${g.id}`}>게임 시작 →</Link></div>
+      <div className="arcade-card-body"><span className="t-micro muted">WEB GAME · {String(index + 1).padStart(2, '0')}</span><h2 className="t-h3"><Link to={`/arcade/${g.id}`} onClick={() => setGamePlaying(false)}>{g.name}</Link></h2><p className="muted">{g.description}</p><Link className="arcade-start" to={`/arcade/${g.id}`} onClick={() => setGamePlaying(false)}>게임 시작 →</Link></div>
     </article>)}</div>
     {!games.length && <p>아직 등록된 게임이 없습니다.</p>}
     <Dialog open={open} title="오락실 게임 추가" onClose={() => { if (!busy) setOpen(false) }}>
