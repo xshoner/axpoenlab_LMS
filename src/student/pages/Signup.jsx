@@ -21,13 +21,20 @@ export default function Signup() {
 
   useEffect(() => {
     let alive = true
+    let previousForcedCode = null
     async function loadForcedCohort() {
       const { data, error } = await supabase.rpc('get_forced_signup_cohort')
       if (!alive || error) return
-      const forced = Array.isArray(data) ? data[0] : data
+      const result = Array.isArray(data) ? data[0] : data
+      const forced = result?.code ? result : null
       setForcedCohort(forced || null)
       if (forced?.code) setForm((f) => ({ ...f, cohortCode: forced.code }))
-      else setForm((f) => ({ ...f, cohortCode: '' }))
+      else if (previousForcedCode) {
+        const releasedCode = previousForcedCode
+        setForm((f) => f.cohortCode === releasedCode ? { ...f, cohortCode: '' } : f)
+      }
+      // Polling must not erase a code the applicant entered manually.
+      previousForcedCode = forced?.code || null
     }
     loadForcedCohort()
     const timer = window.setInterval(loadForcedCohort, 2000)
