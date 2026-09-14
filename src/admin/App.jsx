@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react'
 import { Routes, Route, NavLink, Navigate, useLocation } from 'react-router-dom'
 import {
-  IconLayoutDashboard, IconUsersGroup, IconBook2, IconClipboardText, IconChecklist,
+  IconDeviceGamepad2, IconLayoutDashboard, IconUsersGroup, IconBook2, IconClipboardText, IconChecklist,
   IconPencilQuestion, IconSpeakerphone, IconUsers, IconMessageCircleQuestion,
   IconShieldLock, IconSettings, IconLogout, IconMenu2, IconMessages, IconRocket, IconEye, IconHandStop,
 } from '@tabler/icons-react'
 import { supabase } from '../lib/supabase'
+import Arcade from '../shared/Arcade'
 import { InactiveAccount, useAuth, signOut } from '../shared/auth'
 import { Aurora, Dialog, FooterBar, Loading, StatusPill, VisitorCounter, useToast } from '../shared/ui'
 import { CohortProvider, useCohort } from './cohortContext'
@@ -42,6 +43,7 @@ const MENU = [
   { to: '/inquiries', label: '1:1 문의 관리', icon: IconMessageCircleQuestion },
   { to: '/help', label: '도움 요청 대기열', icon: IconHandStop },
   { to: '/board', label: '게시판 관리', icon: IconMessages },
+  { to: '/arcade', label: '오락실', icon: IconDeviceGamepad2 },
 ]
 
 export default function AdminApp() {
@@ -163,7 +165,7 @@ function AdminShell({ profile }) {
                 <span className="live-dot" />
                 <span className="tnum">접속 {online}명</span>
               </span>
-              <VisitorCounter />
+              <VisitorCounter admin />
               <button className="row" style={{ gap: 8, background: 'transparent', border: 'none', padding: 0 }}
                 title="클릭하여 닉네임 설정" onClick={() => { setNick(profile.nickname || ''); setNickOpen(true) }}>
                 <span className="avatar">{(displayName || '?').slice(0, 1)}</span>
@@ -189,6 +191,8 @@ function AdminShell({ profile }) {
           </Dialog>
           <main className="content wide" style={{ maxWidth: 1440 }}>
             <Routes>
+              <Route path="/arcade" element={<Arcade />} />
+              <Route path="/arcade/:id" element={<Arcade />} />
               <Route path="/" element={<AdminDashboard />} />
               <Route path="/cohorts" element={<Cohorts />} />
               <Route path="/courses/*" element={<CoursesAdmin />} />

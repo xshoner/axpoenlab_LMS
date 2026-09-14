@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react'
 import { Routes, Route, NavLink, Navigate, Link, useLocation } from 'react-router-dom'
 import {
-  IconLayoutDashboard, IconBook2, IconClipboardText, IconSpeakerphone,
+  IconDeviceGamepad2, IconLayoutDashboard, IconBook2, IconClipboardText, IconSpeakerphone,
   IconMessageCircleQuestion, IconMessages, IconUserCircle, IconLogout, IconMenu2,
   IconRocket, IconTrophy,
 } from '@tabler/icons-react'
+import Arcade from '../shared/Arcade'
 import { InactiveAccount, useAuth, signOut } from '../shared/auth'
 import { Aurora, FooterBar, Loading, StatusPill, VisitorCounter } from '../shared/ui'
 import Login from './pages/Login'
@@ -37,9 +38,11 @@ const MENU = [
   { to: '/hall-of-fame', label: '명예의 전당', icon: IconTrophy },
   { to: '/inquiries', label: '1:1 문의하기', icon: IconMessageCircleQuestion },
   { to: '/board', label: '공개게시판', icon: IconMessages },
+  { to: '/arcade', label: '오락실', icon: IconDeviceGamepad2 },
 ]
 
 const PAGE_TITLES = [
+  ['/arcade', '오락실'],
   ['/courses', '내 교육과정'],
   ['/assignments', '과제 제출'],
   ['/hackathon', '바이브 해커톤'],
@@ -183,6 +186,8 @@ export default function App() {
           </header>
           <main className="content" style={{ maxWidth: 1440 }}>
             <Routes>
+              <Route path="/arcade" element={<Arcade />} />
+              <Route path="/arcade/:id" element={<Arcade />} />
               <Route path="/" element={<Dashboard />} />
               <Route path="/courses" element={<Courses />} />
               <Route path="/courses/:id" element={<CourseDetail />} />

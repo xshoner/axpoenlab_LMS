@@ -1,3 +1,4 @@
+import TodayVisits from './TodayVisits'
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react'
 import { IconCheck, IconAlertTriangle, IconInbox, IconX, IconStar, IconStarFilled } from '@tabler/icons-react'
 import { supabase } from '../lib/supabase'
@@ -130,37 +131,38 @@ export function Pagination({ page, total, pageSize = 20, onChange }) {
 }
 
 /* ---------- Visitor counter ---------- */
-export function VisitorCounter() {
+export function VisitorCounter({ admin = false }) {
+  const [visitsOpen, setVisitsOpen] = useState(false)
   const [stats, setStats] = useState(null)
   const [show, setShow] = useState(true)
   useEffect(() => {
     let alive = true
-    ;(async () => {
+    const update = async () => {
       try {
         const settings = await getSettings()
         if (!alive) return
         setShow(settings.showVisitorCounter)
-        const key = 'ax-visit-' + new Date().toISOString().slice(0, 10)
-        if (!sessionStorage.getItem(key)) {
-          const { data } = await supabase.rpc('record_visit')
-          sessionStorage.setItem(key, '1')
-          if (alive && data) setStats(data)
-        } else {
-          const { data } = await supabase.rpc('visit_stats')
-          if (alive && data) setStats(data)
-        }
+        const { data } = await supabase.rpc('visit_stats')
+        if (alive && data) setStats(data)
       } catch { /* counter is non-critical */ }
-    })()
-    return () => { alive = false }
+    }
+    update()
+    const timer = setInterval(update, 60000)
+    window.addEventListener('ax-visit-recorded', update)
+    return () => { alive = false; clearInterval(timer); window.removeEventListener('ax-visit-recorded', update) }
   }, [])
-  if (!show || !stats) return null
+  if ((!show && !admin) || !stats) return null
   return (
+    <>
     <span className="visitor-counter" title="오늘 방문자 · 누적 방문자">
       <UsersIcon />
-      <span className="vc-full">오늘 {Number(stats.today).toLocaleString()}</span>
+      {admin ? <button type="button" aria-haspopup="dialog" aria-expanded={visitsOpen} onClick={() => setVisitsOpen(true)}>오늘 {Number(stats.today).toLocaleString()}</button>
+        : <span className="vc-full">오늘 {Number(stats.today).toLocaleString()}</span>}
       <span className="vsep" />
       <span>누적 {Number(stats.total).toLocaleString()}</span>
     </span>
+    {visitsOpen && <TodayVisits onClose={() => setVisitsOpen(false)} />}
+    </>
   )
 }
 

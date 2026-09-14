@@ -38,6 +38,20 @@ export function AuthProvider({ children }) {
     return () => sub.subscription.unsubscribe()
   }, [loadProfile])
 
+  // Record each app entry/account change and return to the tab, independently of counter visibility.
+  useEffect(() => {
+    if (!session?.user?.id || profile?.id !== session.user.id || profile?.status !== 'active') return
+    const record = () => {
+      if (document.visibilityState !== 'visible') return
+      supabase.rpc('record_visit').then(({ error }) => {
+        if (!error) window.dispatchEvent(new Event('ax-visit-recorded'))
+      }).catch(() => { /* Access tracking must not block the app. */ })
+    }
+    record()
+    document.addEventListener('visibilitychange', record)
+    return () => document.removeEventListener('visibilitychange', record)
+  }, [session?.user?.id, profile?.id, profile?.status])
+
   const refresh = useCallback(() => loadProfile(session?.user?.id), [session, loadProfile])
 
   return (

@@ -1,0 +1,39 @@
+.arcade { width: 100%; min-width: 0; max-width: 1120px; margin: 0 auto; }
+.arcade-heading { display: flex; align-items: center; justify-content: space-between; gap: 20px; margin-bottom: 24px; }
+.arcade-heading .btn { flex-shrink: 0; }
+.arcade-list { display: grid; gap: 20px; }
+.arcade-card { display: grid; grid-template-columns: 260px minmax(0, 1fr); background: var(--card, #fff); border: 1px solid var(--border); border-radius: 18px; overflow: hidden; }
+.arcade-thumbnail { position: relative; min-height: 190px; display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 10px; padding: 24px; color: #fff; text-decoration: none; font-weight: 700; text-align: center; overflow-wrap: anywhere; }
+.arcade-thumbnail img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.arcade-thumbnail img[hidden] { display: none; }
+.arcade-tone-0 { background: linear-gradient(135deg, #5142ac, #9771d4); }
+.arcade-tone-1 { background: linear-gradient(135deg, #146c76, #38999e); }
+.arcade-tone-2 { background: linear-gradient(135deg, #9e4d30, #cf8552); }
+.arcade-play { font-size: 11px; letter-spacing: 2px; opacity: .8; }
+.arcade-card-body { padding: 26px; min-width: 0; }
+.arcade-card-body h2 { margin: 8px 0 10px; }
+.arcade-card-body h2 a { color: var(--foreground); text-decoration: none; }
+.arcade-card-body p, .arcade-player-heading p { white-space: pre-wrap; overflow-wrap: anywhere; }
+.arcade-card-body p { margin-bottom: 18px; }
+.arcade-start { font-size: 13px; font-weight: 600; }
+.arcade-player-heading { margin: 20px 0 16px; overflow-wrap: anywhere; }
+.arcade-player-heading p { margin-top: 8px; max-height: 100px; overflow-y: auto; }
+.arcade-player { width: 100%; height: clamp(340px, 65dvh, 800px); overflow: hidden; border: 1px solid var(--border); border-radius: 16px; background: #141326; }
+.arcade-player iframe { display: block; width: 100%; height: 100%; border: 0; }
+.today-visits-table { max-height: 50dvh; overflow: auto; }
+.today-visits-table table { width: 100%; font-size: 12px; }
+.today-visits-table th, .today-visits-table td { padding: 10px 8px; text-align: left; overflow-wrap: anywhere; }
+.today-visits-table th { position: sticky; top: 0; background: #fff; }
+.today-visits-table th:nth-child(2) { min-width: 60px; }
+.today-visits-table th:nth-child(3) { min-width: 72px; }
+.today-visits-table td { border-top: 1px solid var(--border); }
+.today-visits-table td:last-child { white-space: nowrap; }
+.visitor-counter button { border: 0; padding: 0; background: none; color: inherit; font: inherit; cursor: pointer; }
+.visitor-counter button:hover { text-decoration: underline; }
+@media (max-width: 600px) {
+  .arcade-heading { align-items: flex-start; gap: 12px; }
+  .arcade-card { grid-template-columns: minmax(0, 1fr); }
+  .arcade-thumbnail { min-height: 160px; }
+  .arcade-card-body { padding: 20px; }
+  .arcade-player { height: 62dvh; min-height: 300px; border-radius: 10px; }
+}
