@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { IconDeviceGamepad2, IconArrowLeft, IconPlus } from '@tabler/icons-react'
 import { supabase } from '../lib/supabase'
@@ -20,6 +20,7 @@ export default function Arcade() {
   const [busy, setBusy] = useState(false)
   const [form, setForm] = useState({ url: '', name: '', description: '' })
   const [gamePlaying, setGamePlaying] = useState(false)
+  const gameFrame = useRef(null)
   useEffect(() => {
     let alive = true
     async function load() {
@@ -36,19 +37,15 @@ export default function Arcade() {
     return () => { alive = false }
   }, [retry])
   useEffect(() => {
-    const game = games.find(item => item.id === id)
-    const frame = document.querySelector('.arcade-player--jellyrun iframe')
-    if (!id || game?.url !== 'https://jellyrungo.vercel.app/' || !frame) return
-    let timer
-    function onBlur() {
-      if (document.activeElement !== frame) return
-      clearTimeout(timer)
-      // Let the initial pointer click finish before narrowing the play area.
-      timer = setTimeout(() => setGamePlaying(true), 450)
+    function onDisplayMessage(event) {
+      if (event.origin !== 'https://jellyrungo.vercel.app' || event.source !== gameFrame.current?.contentWindow) return
+      if (event.data?.type !== 'jellyrun:display') return
+      if (event.data.mode === 'playing') setGamePlaying(true)
+      if (event.data.mode === 'lobby') setGamePlaying(false)
     }
-    window.addEventListener('blur', onBlur)
-    return () => { clearTimeout(timer); window.removeEventListener('blur', onBlur) }
-  }, [games, id])
+    window.addEventListener('message', onDisplayMessage)
+    return () => window.removeEventListener('message', onDisplayMessage)
+  }, [])
   async function save(e) {
     e.preventDefault()
     if (busy) return
@@ -74,11 +71,13 @@ export default function Arcade() {
   if (loading) return <Loading />
   if (error) return <div role="alert">오락실을 불러오지 못했습니다. <button className="btn btn-white" onClick={() => setRetry(retry + 1)}>다시 시도</button></div>
   const game = games.find(g => g.id === id)
+  const playUrl = game ? new URL(game.url) : null
+  if (playUrl?.hostname === 'jellyrungo.vercel.app') playUrl.searchParams.set('embed', 'lms-v1')
   if (id) return <section className={`arcade arcade-player-page${gamePlaying ? ' arcade-player-page--playing' : ''}`}>
       <Link to="/arcade" className="btn btn-white btn-sm" onClick={() => setGamePlaying(false)}><IconArrowLeft size={16} /> 게임 목록</Link>
     {game ? <>
       <div className="arcade-player-heading"><h1 className="t-h2">{game.name}</h1><p className="muted">{game.description}</p></div>
-      <div className={`arcade-player${new URL(game.url).hostname === 'jellyrungo.vercel.app' ? ' arcade-player--jellyrun' : ''}${gamePlaying ? ' arcade-player--playing' : ''}`}><iframe key={game.id} src={game.url} title={`${game.name} 게임 화면`} sandbox="allow-scripts allow-same-origin allow-pointer-lock" allow="autoplay; gamepad" referrerPolicy="no-referrer" /></div>
+      <div className={`arcade-player${playUrl.hostname === 'jellyrungo.vercel.app' ? ' arcade-player--jellyrun' : ''}${gamePlaying ? ' arcade-player--playing' : ''}`}><iframe ref={gameFrame} key={game.id} src={playUrl.href} onLoad={() => setGamePlaying(false)} title={`${game.name} 게임 화면`} sandbox="allow-scripts allow-same-origin allow-pointer-lock" allow="autoplay; gamepad" referrerPolicy="no-referrer" /></div>
       <p className="t-muted-sm mt-8">게임 화면을 눌러 시작하세요. 방향키·터치 조작은 게임 안내를 따라 주세요.</p>
       <details className="t-muted-sm mt-8"><summary>게임 화면이 보이지 않나요?</summary>게임 제공 사이트가 프레임 실행을 허용해야 합니다. 관리자에게 URL 확인을 요청해 주세요.</details>
     </> : <p className="mt-16">게임을 찾을 수 없습니다.</p>}

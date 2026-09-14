@@ -24,8 +24,8 @@
 /* Jelly Run reserves 285px for its header/guide before sizing the 16:9 arena.
    Keep the landing page tall enough to show its complete title and animation. */
 .arcade-player.arcade-player--jellyrun { height: max(100dvh, calc((100cqw - 72px) * 9 / 16 + 287px)); }
-/* On the first click the game frame takes focus. Fit the playing viewport inside
-   the LMS content column so the embedded game keeps its landscape proportions. */
+/* The game reports actual play/lobby transitions. The play viewport stays 16:9
+   and the embedded canvas fills it without the standalone game's black surround. */
 .arcade-player-page--playing {
   width: min(100%, calc((100dvh - 420px) * 16 / 9));
   max-width: none;
