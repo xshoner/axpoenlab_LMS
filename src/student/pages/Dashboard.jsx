@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { IconClipboardText, IconChecklist, IconPencilQuestion } from '@tabler/icons-react'
+import { IconClipboardText, IconChecklist, IconPencilQuestion, IconDeviceGamepad2 } from '@tabler/icons-react'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../shared/auth'
 import { Loading, EmptyState } from '../../shared/ui'
 import { AiBookmarks } from '../../shared/bookmarks'
+import './dashboard.css'
 import { fmtDate, isNew, pad2 } from '../../lib/helpers'
 
 export default function Dashboard() {
@@ -17,7 +18,7 @@ export default function Dashboard() {
     let alive = true
     ;(async () => {
       const uid = profile.id
-      const [coursesQ, viewsQ, subsQ, noticesQ, boardQ] = await Promise.all([
+      const [coursesQ, viewsQ, subsQ, noticesQ, boardQ, arcadeQ] = await Promise.all([
         supabase.from('cohort_courses').select('id, course_no, title, assignment_enabled, assignment_due').order('course_no'),
         supabase.from('course_views').select('cohort_course_id').eq('user_id', uid),
         supabase.from('submissions').select('cohort_course_id').eq('user_id', uid),
@@ -25,6 +26,7 @@ export default function Dashboard() {
         supabase.from('board_posts')
           .select('id, title, author_name, author_org, created_at, board_comments(count)')
           .order('created_at', { ascending: false }).limit(5),
+        supabase.from('arcade_games').select('id, name, description, url').order('created_at', { ascending: false }).order('id', { ascending: false }).limit(1),
       ])
       const courses = coursesQ.data || []
       const courseIds = courses.map((c) => c.id)
@@ -51,6 +53,8 @@ export default function Dashboard() {
       const respSet = new Set(myResponses.map((r) => r.survey_id))
       const quizSet = new Set(myQuizSubs.map((r) => r.quiz_id))
       setData({
+        arcade: arcadeQ.data?.[0] || null,
+        arcadeError: !!arcadeQ.error,
         courses,
         viewedSet,
         notices: noticesQ.data || [],
@@ -116,16 +120,31 @@ export default function Dashboard() {
         )}
       </section>
 
-      <section className="card-todo">
+      <section className={`card-todo dashboard-todo${allDone ? ' dashboard-todo--done' : ''}`}>
+        <div className="dashboard-todo-summary">
         {allDone ? (
           <div className="t-emph" style={{ textAlign: 'center', color: 'var(--primary)' }}>지금 할 일이 없습니다.</div>
         ) : (
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12 }}>
+          <div className="dashboard-todo-cells">
             <TodoCell icon={IconClipboardText} count={todo.assignments} label="미제출 과제" to="/assignments" />
             <TodoCell icon={IconChecklist} count={todo.surveys} label="미응답 설문" to="/courses" />
             <TodoCell icon={IconPencilQuestion} count={todo.quizzes} label="미응시 퀴즈" to="/courses" />
           </div>
         )}
+        </div>
+        <Link to="/arcade" className="dashboard-arcade" aria-label="오락실 메뉴로 이동">
+          <span className="dashboard-arcade-badge">오락실 <span>New</span></span>
+          <span className="dashboard-arcade-content">
+            <span className="dashboard-arcade-thumbnail">
+              <IconDeviceGamepad2 size={24} />
+              {data.arcade && <img key={data.arcade.url} src={data.arcade.url.startsWith('https://jellyrungo.vercel.app/') ? '/arcade-jellyrun.png' : `https://s.wordpress.com/mshots/v1/${encodeURIComponent(data.arcade.url)}?w=600&h=375`} alt="" loading="lazy" onError={e => { e.currentTarget.hidden = true }} />}
+            </span>
+            <span className="dashboard-arcade-copy">
+              <strong>{data.arcade?.name || '잠깐 쉬어 가세요'}</strong>
+              <span>{data.arcade?.description || (data.arcadeError ? '오락실에서 게임을 확인해 주세요.' : '새로운 게임을 준비 중입니다.')}</span>
+            </span>
+          </span>
+        </Link>
       </section>
 
       <AiBookmarks />

@@ -16,6 +16,7 @@
 .arcade-card-body p, .arcade-player-heading p { white-space: pre-wrap; overflow-wrap: anywhere; }
 .arcade-card-body p { margin-bottom: 18px; }
 .arcade-start { font-size: 13px; font-weight: 600; }
+.arcade-admin-actions { display: flex; gap: 8px; margin-top: 16px; }
 .arcade-player-heading { margin: 20px 0 16px; overflow-wrap: anywhere; }
 .arcade-player-heading p { margin-top: 8px; max-height: 100px; overflow-y: auto; }
 .arcade-player { width: 100%; height: clamp(340px, 65dvh, 800px); overflow: hidden; border: 1px solid var(--border); border-radius: 16px; background: #141326; }

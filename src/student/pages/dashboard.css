@@ -1,0 +1,34 @@
+.dashboard-todo { display: flex; align-items: center; justify-content: space-between; height: 106.8px; box-sizing: border-box; }
+.dashboard-todo-summary, .dashboard-arcade { width: 40%; min-width: 0; }
+.dashboard-todo-cells { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px; }
+.dashboard-todo-cells .t-caption { white-space: nowrap; font-size: clamp(9px, 1.1vw, 12px); }
+.dashboard-arcade { display: flex; flex-direction: column; gap: 6px; color: inherit; text-decoration: none; max-height: 100%; }
+.dashboard-arcade:focus-visible { outline: 2px solid var(--primary); outline-offset: 4px; border-radius: 6px; }
+.dashboard-arcade-badge { align-self: flex-start; display: inline-flex; align-items: center; gap: 6px; border-radius: 20px; padding: 2px 9px; background: var(--primary); color: white; font-size: 11px; font-weight: 700; line-height: 16px; white-space: nowrap; }
+.dashboard-arcade-badge span { color: #ffdf89; font-size: 10px; }
+.dashboard-arcade-content { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.dashboard-arcade-thumbnail { position: relative; flex: 0 0 72px; height: 44px; display: grid; place-items: center; border-radius: 7px; background: #5142ac; color: white; overflow: hidden; }
+.dashboard-arcade-thumbnail img { position: absolute; width: 100%; height: 100%; object-fit: cover; }
+.dashboard-arcade-thumbnail img[hidden] { display: none; }
+.dashboard-arcade-copy { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.dashboard-arcade-copy strong, .dashboard-arcade-copy > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dashboard-arcade-copy strong { font-size: 13px; line-height: 18px; }
+.dashboard-arcade-copy > span { font-size: 11px; line-height: 16px; color: var(--muted); }
+/* Preserve the original shorter card when there are no pending tasks. */
+.dashboard-todo--done { height: 58.4px; padding-block: 10px; }
+.dashboard-todo--done .dashboard-todo-summary > div { font-size: 12px; }
+.dashboard-todo--done .dashboard-arcade { flex-direction: row; align-items: center; }
+.dashboard-todo--done .dashboard-arcade-content { flex: 1; }
+.dashboard-todo--done .dashboard-arcade-thumbnail { flex-basis: 36px; height: 30px; }
+@media (max-width: 600px) {
+  .dashboard-todo { padding-inline: 8px; }
+  .dashboard-arcade-content { gap: 5px; }
+  .dashboard-arcade-thumbnail { flex-basis: 32px; height: 36px; }
+  .dashboard-arcade-copy strong { font-size: 11px; }
+  .dashboard-arcade-copy > span { font-size: 10px; }
+  .dashboard-todo--done .dashboard-arcade { gap: 2px; flex-direction: column; align-items: stretch; }
+  .dashboard-todo--done .dashboard-arcade-badge { line-height: 12px; padding-block: 0; }
+  .dashboard-todo--done .dashboard-arcade-thumbnail { height: 20px; flex-basis: 24px; }
+  .dashboard-todo--done .dashboard-arcade-copy { gap: 0; }
+  .dashboard-todo--done .dashboard-arcade-copy strong, .dashboard-todo--done .dashboard-arcade-copy > span { line-height: 11px; }
+}

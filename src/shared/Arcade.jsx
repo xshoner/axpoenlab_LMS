@@ -3,7 +3,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom'
 import { IconDeviceGamepad2, IconArrowLeft, IconPlus } from '@tabler/icons-react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from './auth'
-import { Dialog, Loading, useToast } from './ui'
+import { ConfirmDialog, Dialog, Loading, useToast } from './ui'
 import './arcade.css'
 
 export default function Arcade() {
@@ -18,7 +18,9 @@ export default function Arcade() {
   const [retry, setRetry] = useState(0)
   const [open, setOpen] = useState(false)
   const [busy, setBusy] = useState(false)
-  const [form, setForm] = useState({ url: '', name: '', description: '' })
+  const [form, setForm] = useState({ url: '', name: '', description: '', developer: '' })
+  const [editingId, setEditingId] = useState(null)
+  const [deleting, setDeleting] = useState(null)
   const [gamePlaying, setGamePlaying] = useState(false)
   const gameFrame = useRef(null)
   useEffect(() => {
@@ -46,25 +48,43 @@ export default function Arcade() {
     window.addEventListener('message', onDisplayMessage)
     return () => window.removeEventListener('message', onDisplayMessage)
   }, [])
+  function editGame(game) {
+    setEditingId(game?.id || null)
+    setForm({ url: game?.url || '', name: game?.name || '', description: game?.description || '', developer: game?.developer || '' })
+    setOpen(true)
+  }
+  async function deleteGame() {
+    if (!admin || busy || !deleting) return
+    setBusy(true)
+    try {
+      const { data, error } = await supabase.from('arcade_games').delete().eq('id', deleting.id).select('id').single()
+      if (error) throw error
+      setGames(prev => prev.filter(game => game.id !== data.id))
+      setDeleting(null)
+      toast('게임을 삭제했습니다.')
+    } catch { toast('게임을 삭제하지 못했습니다. 다시 시도해 주세요.', 'error') }
+    finally { setBusy(false) }
+  }
   async function save(e) {
     e.preventDefault()
-    if (busy) return
+    if (!admin || busy) return
     let url
     try {
       url = new URL(form.url.trim())
       if (url.protocol !== 'https:' || url.username || url.password || url.origin === window.location.origin) throw new Error()
     } catch { toast('외부 웹 게임의 올바른 HTTPS URL을 입력해 주세요.', 'error'); return }
-    const values = { url: url.href, name: form.name.trim(), description: form.description.trim() }
+    const values = { url: url.href, name: form.name.trim(), description: form.description.trim(), developer: form.developer.trim() }
     if (!values.name || !values.description) { toast('게임이름과 게임설명을 입력해 주세요.', 'error'); return }
     setBusy(true)
     try {
-      const { data, error } = await supabase.from('arcade_games').insert(values).select().single()
+      const query = supabase.from('arcade_games')
+      const { data, error } = await (editingId ? query.update(values).eq('id', editingId) : query.insert(values)).select().single()
       if (error) throw error
-      setGames(prev => [...prev, data])
+      setGames(prev => editingId ? prev.map(game => game.id === editingId ? data : game) : [...prev, data])
       setOpen(false)
-      setForm({ url: '', name: '', description: '' })
-      toast('게임을 추가했습니다.')
-      navigate(`/arcade/${data.id}`)
+      setForm({ url: '', name: '', description: '', developer: '' })
+      toast(editingId ? '게임을 수정했습니다.' : '게임을 추가했습니다.')
+      if (!editingId) navigate(`/arcade/${data.id}`)
     } catch { toast('게임을 저장하지 못했습니다. 다시 시도해 주세요.', 'error') }
     finally { setBusy(false) }
   }
@@ -76,7 +96,7 @@ export default function Arcade() {
   if (id) return <section className={`arcade arcade-player-page${gamePlaying ? ' arcade-player-page--playing' : ''}`}>
       <Link to="/arcade" className="btn btn-white btn-sm" onClick={() => setGamePlaying(false)}><IconArrowLeft size={16} /> 게임 목록</Link>
     {game ? <>
-      <div className="arcade-player-heading"><h1 className="t-h2">{game.name}</h1><p className="muted">{game.description}</p></div>
+      <div className="arcade-player-heading"><h1 className="t-h2">{game.name}</h1><p className="muted">{game.description}</p>{game.developer && <p className="t-muted-sm">개발자 · {game.developer}</p>}</div>
       <div className={`arcade-player${playUrl.hostname === 'jellyrungo.vercel.app' ? ' arcade-player--jellyrun' : ''}${gamePlaying ? ' arcade-player--playing' : ''}`}><iframe ref={gameFrame} key={game.id} src={playUrl.href} onLoad={() => setGamePlaying(false)} title={`${game.name} 게임 화면`} sandbox="allow-scripts allow-same-origin allow-pointer-lock allow-forms" allow="autoplay; gamepad" referrerPolicy="no-referrer" /></div>
       <p className="t-muted-sm mt-8">게임 화면을 눌러 시작하세요. 방향키·터치 조작은 게임 안내를 따라 주세요.</p>
       <details className="t-muted-sm mt-8"><summary>게임 화면이 보이지 않나요?</summary>게임 제공 사이트가 프레임 실행을 허용해야 합니다. 관리자에게 URL 확인을 요청해 주세요.</details>
@@ -84,24 +104,26 @@ export default function Arcade() {
   </section>
   return <section className="arcade">
     <div className="arcade-heading"><div><h1 className="t-h2">오락실</h1><p className="muted mt-8">잠깐 쉬어 가는 시간, 마음에 드는 게임을 골라 보세요.</p></div>
-      {admin && <button className="btn btn-primary" onClick={() => setOpen(true)}><IconPlus size={18} /> 추가하기</button>}
+      {admin && <button className="btn btn-primary" onClick={() => editGame(null)}><IconPlus size={18} /> 추가하기</button>}
     </div>
     <div className="arcade-list">{games.map((g, index) => <article className="arcade-card" key={g.id}>
       <Link to={`/arcade/${g.id}`} onClick={() => setGamePlaying(false)} className={`arcade-thumbnail arcade-tone-${index % 3}`} aria-label={`${g.name} 실행`}>
         <IconDeviceGamepad2 size={62} stroke={1.4} /><span>{g.name}</span><span className="arcade-play">PLAY →</span>
         <img src={g.url.startsWith('https://jellyrungo.vercel.app/') ? '/arcade-jellyrun.png' : `https://s.wordpress.com/mshots/v1/${encodeURIComponent(g.url)}?w=600&h=375`} alt="" loading="lazy" onError={e => { e.currentTarget.hidden = true }} />
       </Link>
-      <div className="arcade-card-body"><span className="t-micro muted">WEB GAME · {String(index + 1).padStart(2, '0')}</span><h2 className="t-h3"><Link to={`/arcade/${g.id}`} onClick={() => setGamePlaying(false)}>{g.name}</Link></h2><p className="muted">{g.description}</p><Link className="arcade-start" to={`/arcade/${g.id}`} onClick={() => setGamePlaying(false)}>게임 시작 →</Link></div>
+      <div className="arcade-card-body"><span className="t-micro muted">WEB GAME · {String(index + 1).padStart(2, '0')}</span><h2 className="t-h3"><Link to={`/arcade/${g.id}`} onClick={() => setGamePlaying(false)}>{g.name}</Link></h2><p className="muted">{g.description}</p>{g.developer && <p className="t-muted-sm">개발자 · {g.developer}</p>}<Link className="arcade-start" to={`/arcade/${g.id}`} onClick={() => setGamePlaying(false)}>게임 시작 →</Link>{admin && <div className="arcade-admin-actions"><button className="btn btn-white btn-sm" onClick={() => editGame(g)}>수정</button><button className="btn btn-danger btn-sm" onClick={() => setDeleting(g)}>삭제</button></div>}</div>
     </article>)}</div>
     {!games.length && <p>아직 등록된 게임이 없습니다.</p>}
-    <Dialog open={open} title="오락실 게임 추가" onClose={() => { if (!busy) setOpen(false) }}>
+    <Dialog open={open} title={editingId ? '오락실 게임 수정' : '오락실 게임 추가'} onClose={() => { if (!busy) setOpen(false) }}>
       <form onSubmit={save}>
         <div className="field"><label htmlFor="arcade-url">URL</label><input id="arcade-url" className="input" type="url" required maxLength={2048} placeholder="https://example.com/game" value={form.url} onChange={e => setForm({ ...form, url: e.target.value })} /></div>
         <div className="field"><label htmlFor="arcade-name">게임이름</label><input id="arcade-name" className="input" required maxLength={100} value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} /></div>
+        <div className="field"><label htmlFor="arcade-developer">개발자</label><input id="arcade-developer" className="input" maxLength={100} placeholder="개발자 이름 또는 팀명" value={form.developer} onChange={e => setForm({ ...form, developer: e.target.value })} /></div>
         <div className="field"><label htmlFor="arcade-description">게임설명</label><textarea id="arcade-description" className="input" required rows={4} maxLength={2000} value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} /></div>
         <p className="t-muted-sm">프레임 실행을 허용하는 HTTPS 웹 게임을 등록해 주세요.</p>
         <div className="dialog-actions"><button type="button" className="btn btn-white" disabled={busy} onClick={() => setOpen(false)}>취소</button><button className="btn btn-primary" disabled={busy}>{busy ? '저장 중…' : '확정'}</button></div>
       </form>
     </Dialog>
+    <ConfirmDialog open={!!deleting} title="게임 삭제" message={`'${deleting?.name || ''}' 게임을 삭제하시겠습니까? 삭제 후에는 되돌릴 수 없습니다.`} danger confirmLabel="삭제" onConfirm={deleteGame} onClose={() => { if (!busy) setDeleting(null) }} busy={busy} />
   </section>
 }

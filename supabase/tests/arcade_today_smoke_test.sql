@@ -34,6 +34,30 @@ do $$ begin
 end $$;
 reset role;
 set local request.jwt.claims = '{}';
+-- Management permissions and developer persistence.
+set local role authenticated;
+set local request.jwt.claims = '{"sub":"a1400000-0000-4000-8000-000000000002","role":"authenticated"}';
+insert into public.arcade_games (id, url, name, description, developer)
+values ('a1400000-0000-4000-8000-000000000010', 'https://example.com/game', 'managed', 'description', 'original developer');
+update public.arcade_games set developer = 'updated developer', name = 'edited'
+where id = 'a1400000-0000-4000-8000-000000000010';
+do $$ begin
+  if not exists (select 1 from public.arcade_games where id = 'a1400000-0000-4000-8000-000000000010' and developer = 'updated developer' and name = 'edited') then raise exception 'admin update failed'; end if;
+end $$;
+set local request.jwt.claims = '{"sub":"a1400000-0000-4000-8000-000000000001","role":"authenticated"}';
+do $$ begin
+  update public.arcade_games set name = 'forbidden' where id = 'a1400000-0000-4000-8000-000000000010';
+  if found then raise exception 'student updated game'; end if;
+  delete from public.arcade_games where id = 'a1400000-0000-4000-8000-000000000010';
+  if found then raise exception 'student deleted game'; end if;
+end $$;
+set local request.jwt.claims = '{"sub":"a1400000-0000-4000-8000-000000000002","role":"authenticated"}';
+do $$ begin
+  delete from public.arcade_games where id = 'a1400000-0000-4000-8000-000000000010';
+  if not found then raise exception 'admin delete failed'; end if;
+end $$;
+reset role;
+set local request.jwt.claims = '{}';
 update public.profiles set status = 'inactive' where id = 'a1400000-0000-4000-8000-000000000002';
 set local role authenticated;
 set local request.jwt.claims = '{"sub":"a1400000-0000-4000-8000-000000000002","role":"authenticated"}';
