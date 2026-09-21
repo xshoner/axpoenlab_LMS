@@ -1,11 +1,14 @@
 import { useEffect, useRef, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
-import { IconPlus, IconTrash, IconFile, IconDownload, IconPaperclip, IconPencil, IconExternalLink } from '@tabler/icons-react'
+import {
+  IconPlus, IconTrash, IconFile, IconDownload, IconPaperclip, IconPencil,
+  IconExternalLink, IconArrowsMove, IconCopy, IconFolder, IconEye, IconEyeOff,
+} from '@tabler/icons-react'
 import { supabase } from '../../lib/supabase'
 import { useCohort } from '../cohortContext'
 import RichEditor from '../../shared/RichEditor'
 import RichBody from '../../shared/RichBody'
-import { ConfirmDialog, EmptyState, Loading, StatusPill, StarRating, useToast } from '../../shared/ui'
+import { ConfirmDialog, Dialog, EmptyState, Loading, StatusPill, StarRating, useToast } from '../../shared/ui'
 import { fmtBytes, fmtDate, pad2, downloadFile, uploadFile, storageSafeName } from '../../lib/helpers'
 import { useDraft, DraftBadge } from '../../shared/draft'
 
@@ -45,103 +48,117 @@ export default function CoursesAdmin() {
 function MasterCourses({ detailId, onOpen, onClose }) {
   const toast = useToast()
   const [rows, setRows] = useState(null)
+  const [groups, setGroups] = useState(null)
+  const [groupId, setGroupId] = useState('')
   const [editing, setEditing] = useState(null)
   const [mode, setMode] = useState('view') // view | edit — 기존 강좌는 읽기 화면이 기본
   const [deleteTarget, setDeleteTarget] = useState(null)
+  const [moveTarget, setMoveTarget] = useState(null)
   const [busy, setBusy] = useState(false)
-  const [ratingMap, setRatingMap] = useState({})
   const dragIdx = useRef(null)
 
+  async function loadGroups(preferredId) {
+    const { data, error } = await supabase.from('master_course_groups').select('*').order('sort_order').order('created_at')
+    if (error) { toast('강좌 그룹을 불러오지 못했습니다.', 'error'); setGroups([]); return }
+    const next = data || []
+    setGroups(next)
+    setGroupId((current) => {
+      if (preferredId && next.some((group) => group.id === preferredId)) return preferredId
+      if (current && next.some((group) => group.id === current)) return current
+      return next.find((group) => group.is_default)?.id || next[0]?.id || ''
+    })
+  }
+  useEffect(() => { loadGroups() }, [])
+
   async function load() {
-    const [{ data }, { data: stats }] = await Promise.all([
-      supabase.from('master_courses').select('*, master_attachments(*)').order('sort_order'),
-      supabase.from('course_rating_stats').select('master_course_id, avg_rating, rating_count')
-        .not('master_course_id', 'is', null),
-    ])
-    // course_rating_stats 뷰가 마스터 강좌 단위로 전 기수 통합 평균을 제공한다 —
-    // 같은 마스터의 기수 강좌 행들은 동일한 값이므로 첫 행만 사용
-    const map = {}
-    for (const s of stats || []) {
-      if (s.master_course_id && !map[s.master_course_id]) {
-        map[s.master_course_id] = { avg: Number(s.avg_rating), count: s.rating_count }
-      }
-    }
-    setRatingMap(map)
+    if (!groupId) { setRows([]); return }
+    setRows(null)
+    const { data, error } = await supabase.rpc('admin_master_course_list', { p_group_id: groupId })
+    if (error) { toast('강좌 목록을 불러오지 못했습니다.', 'error'); setRows([]); return }
     setRows(data || [])
   }
-  useEffect(() => { load() }, [])
+  useEffect(() => { if (groupId) load() }, [groupId])
 
   useEffect(() => {
     if (!detailId) {
       setEditing((current) => current === 'new' ? current : null)
       return
     }
-    const course = rows?.find((row) => row.id === detailId)
-    if (course) {
+    let alive = true
+    ;(async () => {
+      const { data, error } = await supabase.from('master_courses')
+        .select('*, master_attachments(*)').eq('id', detailId).single()
+      if (!alive) return
+      if (error || !data) { toast('강좌 상세 정보를 불러오지 못했습니다.', 'error'); onClose(); return }
+      if (data.group_id) setGroupId(data.group_id)
       setMode('view')
-      setEditing(course)
-    }
-  }, [detailId, rows])
+      setEditing(data)
+    })()
+    return () => { alive = false }
+  }, [detailId])
 
   async function remove() {
     setBusy(true)
     const { error } = await supabase.from('master_courses').delete().eq('id', deleteTarget.id)
     setBusy(false)
     if (error) toast('삭제 실패', 'error')
-    else { toast('마스터 강좌가 삭제되었습니다. 기존 기수 강좌는 유지됩니다.'); setDeleteTarget(null); load() }
-  }
-
-  // 현재 나열 순서대로 sort_order를 다시 부여 (변경된 행만 갱신 — 번호는 표시하지 않음)
-  async function persistOrder(list) {
-    const updates = list
-      .map((c, i) => ({ id: c.id, so: i + 1, changed: c.sort_order !== i + 1 }))
-      .filter((u) => u.changed)
-    if (updates.length === 0) return
-    await Promise.all(updates.map((u) =>
-      supabase.from('master_courses').update({ sort_order: u.so }).eq('id', u.id)))
+    else {
+      toast('마스터 강좌가 삭제되었습니다. 기존 기수 강좌는 유지됩니다.')
+      setRows((current) => (current || []).filter((row) => row.id !== deleteTarget.id))
+      setDeleteTarget(null)
+    }
   }
 
   async function dropAt(to) {
     const from = dragIdx.current
     dragIdx.current = null
     if (from == null || from === to) return
-    const list = [...rows]
+    const previous = rows
+    const list = [...previous]
     const [moved] = list.splice(from, 1)
     list.splice(to, 0, moved)
-    setRows(list.map((c, i) => ({ ...c, sort_order: i + 1 }))) // 낙관적 반영
-    await persistOrder(list)
-    load()
+    const optimistic = list.map((course, index) => ({ ...course, sort_order: index + 1 }))
+    setRows(optimistic)
+    const { error } = await supabase.rpc('admin_reorder_master_courses', {
+      p_group_id: groupId, p_ids: optimistic.map((course) => course.id),
+    })
+    if (error) { setRows(previous); toast('강좌 순서를 저장하지 못했습니다.', 'error') }
   }
 
-  if (!rows) return <Loading />
+  if (!groups || (detailId && !editing)) return <Loading />
 
   if (editing) {
     if (editing !== 'new' && mode === 'view') {
       return <CourseAdminView
         isMaster course={editing}
-        onBack={() => { setEditing(null); onClose(); load() }}
+        onBack={() => { setEditing(null); onClose() }}
         onEdit={() => setMode('edit')}
       />
     }
     return <CourseEditor
-      isMaster course={editing === 'new' ? null : editing}
+      isMaster groupId={groupId}
+      nextNo={rows?.length ? Math.max(...rows.map((row) => row.sort_order)) + 1 : 1}
+      course={editing === 'new' ? null : editing}
       onDone={() => { setEditing(null); onClose(); load() }}
     />
   }
 
   return (
     <>
+      <CourseGroupBar
+        scope="master" groups={groups} groupId={groupId} onSelect={setGroupId}
+        onChanged={loadGroups}
+      />
       <div className="row-between">
-        <p className="t-muted-sm">재사용 가능한 강좌 라이브러리입니다. 기수 배정 시 과제·설문·퀴즈 구성과 함께 스냅샷으로 복제되며, 마스터 수정은 기배포 기수에 반영되지 않습니다. 카드를 드래그하면 배정 시 기본 순서가 바뀝니다.</p>
+        <p className="t-muted-sm">선택한 그룹의 재사용 가능한 강좌입니다. 기수 배정 시 그룹과 세부 강좌 구성이 함께 복제됩니다.</p>
         <button className="btn btn-primary btn-sm" onClick={() => { setMode('edit'); setEditing('new') }}><IconPlus size={14} stroke={1.75} /> 새 마스터 강좌</button>
       </div>
-      {rows.length === 0 ? (
+      {!rows ? <Loading /> : rows.length === 0 ? (
         <EmptyState title="마스터 강좌가 없습니다" description="새 마스터 강좌를 만들어 라이브러리를 구성해 보세요."
           action={<button className="btn btn-primary btn-sm" onClick={() => { setMode('edit'); setEditing('new') }}>새 마스터 강좌</button>} />
       ) : (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 20 }}>
+        <div className="course-grid">
           {rows.map((c, idx) => {
-            const stat = ratingMap[c.id]
             return (
               <div key={c.id} className={`card-course theme-${idx % 6}`} onClick={() => { setMode('view'); onOpen(c) }}
                 draggable title="드래그하여 순서 변경"
@@ -152,6 +169,10 @@ function MasterCourses({ detailId, onOpen, onClose }) {
                   <span className="badge-role-soft">마스터</span>
                   <div className="row" style={{ gap: 4 }}>
                     {c.assignment_enabled && <StatusPill kind="neutral">과제</StatusPill>}
+                    <button className="icon-btn" title="다른 그룹으로 이동 또는 복사" aria-label={`${c.title} 이동 또는 복사`}
+                      onClick={(e) => { e.stopPropagation(); setMoveTarget(c) }}>
+                      <IconArrowsMove size={16} stroke={1.75} />
+                    </button>
                     <button className="icon-btn danger" onClick={(e) => { e.stopPropagation(); setDeleteTarget(c) }}>
                       <IconTrash size={16} stroke={1.75} />
                     </button>
@@ -160,12 +181,12 @@ function MasterCourses({ detailId, onOpen, onClose }) {
                 <div className="t-h3 mb-8">{c.title}</div>
                 <div className="t-muted-sm" style={{ minHeight: 40 }}>{c.summary}</div>
                 <div className="card-course-meta">
-                  {(c.master_attachments || []).length > 0 && (
-                    <span className="pill pill-neutral"><IconPaperclip size={12} stroke={1.75} /> 첨부 {c.master_attachments.length}</span>
+                  {c.attachment_count > 0 && (
+                    <span className="pill pill-neutral"><IconPaperclip size={12} stroke={1.75} /> 첨부 {c.attachment_count}</span>
                   )}
-                  {stat ? (
+                  {c.rating_count > 0 ? (
                     <span className="row" style={{ gap: 4 }} title="모든 기수 만족도 평균">
-                      <StarRating value={stat.avg} size={13} showValue count={stat.count} />
+                      <StarRating value={Number(c.avg_rating)} size={13} showValue count={c.rating_count} />
                       <span className="t-caption muted-soft">전 기수 평균</span>
                     </span>
                   ) : (
@@ -180,6 +201,8 @@ function MasterCourses({ detailId, onOpen, onClose }) {
       <ConfirmDialog open={!!deleteTarget} danger busy={busy} title="마스터 강좌 삭제"
         message={`'${deleteTarget?.title}' 마스터 강좌를 삭제합니다. 이미 기수에 배정된 강좌는 유지됩니다.`}
         confirmLabel="삭제" onConfirm={remove} onClose={() => setDeleteTarget(null)} />
+      <MoveCourseDialog scope="master" course={moveTarget} groups={groups} currentGroupId={groupId}
+        onClose={() => setMoveTarget(null)} onDone={() => { setMoveTarget(null); load() }} />
     </>
   )
 }
@@ -189,86 +212,105 @@ function CohortCourses({ detailId, onOpen, onClose }) {
   const { selectedId, selected } = useCohort()
   const toast = useToast()
   const [rows, setRows] = useState(null)
+  const [groups, setGroups] = useState(null)
+  const [groupId, setGroupId] = useState('')
   const [editing, setEditing] = useState(null)
   const [mode, setMode] = useState('view') // view | edit — 기존 강좌는 읽기 화면이 기본
   const [deleteTarget, setDeleteTarget] = useState(null)
+  const [moveTarget, setMoveTarget] = useState(null)
   const [busy, setBusy] = useState(false)
   const dragIdx = useRef(null)
 
-  const [ratingMap, setRatingMap] = useState({})
+  async function loadGroups(preferredId) {
+    if (!selectedId) { setGroups([]); setGroupId(''); return }
+    const { data, error } = await supabase.from('cohort_course_groups').select('*')
+      .eq('cohort_id', selectedId).order('sort_order').order('created_at')
+    if (error) { toast('강좌 그룹을 불러오지 못했습니다.', 'error'); setGroups([]); return }
+    const next = data || []
+    setGroups(next)
+    setGroupId((current) => {
+      if (preferredId && next.some((group) => group.id === preferredId)) return preferredId
+      if (current && next.some((group) => group.id === current)) return current
+      return next.find((group) => group.is_default)?.id || next[0]?.id || ''
+    })
+  }
+  useEffect(() => { setRows(null); setEditing(null); loadGroups() }, [selectedId])
 
   async function load() {
-    if (!selectedId) { setRows([]); return }
-    const [{ data }, { data: stats }] = await Promise.all([
-      supabase.from('cohort_courses').select('*, cohort_attachments(*)')
-        .eq('cohort_id', selectedId).order('course_no'),
-      supabase.from('course_rating_stats').select('cohort_course_id, avg_rating, rating_count')
-        .eq('cohort_id', selectedId),
-    ])
-    const map = {}
-    for (const s of stats || []) map[s.cohort_course_id] = s
-    setRatingMap(map)
+    if (!selectedId || !groupId) { setRows([]); return }
+    setRows(null)
+    const { data, error } = await supabase.rpc('admin_cohort_course_list', {
+      p_cohort_id: selectedId, p_group_id: groupId,
+    })
+    if (error) { toast('강좌 목록을 불러오지 못했습니다.', 'error'); setRows([]); return }
     setRows(data || [])
   }
-  useEffect(() => { load() }, [selectedId])
+  useEffect(() => { if (selectedId && groupId) load() }, [selectedId, groupId])
 
   useEffect(() => {
     if (!detailId) {
       setEditing((current) => current === 'new' ? current : null)
       return
     }
-    const course = rows?.find((row) => row.id === detailId)
-    if (course) {
+    let alive = true
+    ;(async () => {
+      const { data, error } = await supabase.from('cohort_courses')
+        .select('*, cohort_attachments(*)').eq('id', detailId).single()
+      if (!alive) return
+      if (error || !data) { toast('강좌 상세 정보를 불러오지 못했습니다.', 'error'); onClose(); return }
+      if (data.group_id) setGroupId(data.group_id)
       setMode('view')
-      setEditing(course)
-    }
-  }, [detailId, rows])
-
-  // 현재 나열 순서대로 course_no를 1부터 다시 부여 (변경된 행만 갱신)
-  async function persistOrder(list) {
-    const updates = list
-      .map((c, i) => ({ id: c.id, no: i + 1, changed: c.course_no !== i + 1 }))
-      .filter((u) => u.changed)
-    if (updates.length === 0) return
-    await Promise.all(updates.map((u) =>
-      supabase.from('cohort_courses').update({ course_no: u.no }).eq('id', u.id)))
-  }
+      setEditing(data)
+    })()
+    return () => { alive = false }
+  }, [detailId])
 
   async function remove() {
     setBusy(true)
     const { error } = await supabase.from('cohort_courses').delete().eq('id', deleteTarget.id)
-    if (!error) await persistOrder(rows.filter((r) => r.id !== deleteTarget.id))
+    if (!error) {
+      const remaining = rows.filter((row) => row.id !== deleteTarget.id)
+      await supabase.rpc('admin_reorder_cohort_courses', {
+        p_group_id: groupId, p_ids: remaining.map((row) => row.id),
+      })
+      setRows(remaining.map((row, index) => ({ ...row, course_no: index + 1 })))
+    }
     setBusy(false)
     if (error) toast('삭제 실패', 'error')
-    else { toast('강좌가 삭제되었습니다. 남은 강좌 번호가 순서대로 재정렬되었습니다.'); setDeleteTarget(null); load() }
+    else { toast('강좌가 삭제되었습니다. 남은 강좌 번호가 순서대로 재정렬되었습니다.'); setDeleteTarget(null) }
   }
 
   async function dropAt(to) {
     const from = dragIdx.current
     dragIdx.current = null
     if (from == null || from === to) return
-    const list = [...rows]
+    const previous = rows
+    const list = [...previous]
     const [moved] = list.splice(from, 1)
     list.splice(to, 0, moved)
-    setRows(list.map((c, i) => ({ ...c, course_no: i + 1 }))) // 낙관적 반영
-    await persistOrder(list)
-    load()
+    const optimistic = list.map((course, index) => ({ ...course, course_no: index + 1 }))
+    setRows(optimistic)
+    const { error } = await supabase.rpc('admin_reorder_cohort_courses', {
+      p_group_id: groupId, p_ids: optimistic.map((course) => course.id),
+    })
+    if (error) { setRows(previous); toast('강좌 순서를 저장하지 못했습니다.', 'error') }
   }
 
   if (!selectedId) return <EmptyState title="기수를 선택해 주세요" description="상단의 기수 선택 드롭다운에서 기수를 선택하면 해당 기수의 강좌가 표시됩니다." />
-  if (!rows) return <Loading />
+  if (!groups || (detailId && !editing)) return <Loading />
 
   if (editing) {
     if (editing !== 'new' && mode === 'view') {
       return <CourseAdminView
         course={editing}
-        onBack={() => { setEditing(null); onClose(); load() }}
+        onBack={() => { setEditing(null); onClose() }}
         onEdit={() => setMode('edit')}
       />
     }
     return <CourseEditor
       cohortId={selectedId}
-      nextNo={rows.length ? Math.max(...rows.map((r) => r.course_no)) + 1 : 1}
+      groupId={groupId}
+      nextNo={rows?.length ? Math.max(...rows.map((r) => r.course_no)) + 1 : 1}
       course={editing === 'new' ? null : editing}
       onDone={() => { setEditing(null); onClose(); load() }}
     />
@@ -276,17 +318,20 @@ function CohortCourses({ detailId, onOpen, onClose }) {
 
   return (
     <>
+      <CourseGroupBar
+        scope="cohort" cohortId={selectedId} groups={groups} groupId={groupId}
+        onSelect={setGroupId} onChanged={loadGroups}
+      />
       <div className="row-between">
-        <p className="t-muted-sm">{selected?.name}의 강좌입니다. 여기서의 수정·삭제는 다른 기수와 마스터에 영향을 주지 않습니다. 카드를 드래그하면 순서가 바뀌고 강좌 번호가 자동으로 재부여됩니다.</p>
+        <p className="t-muted-sm">{selected?.name}의 선택한 강좌 그룹입니다. 그룹별로 공개 여부와 모듈 순서를 관리할 수 있습니다.</p>
         <button className="btn btn-primary btn-sm" onClick={() => { setMode('edit'); setEditing('new') }}><IconPlus size={14} stroke={1.75} /> 새 강좌</button>
       </div>
-      {rows.length === 0 ? (
+      {!rows ? <Loading /> : rows.length === 0 ? (
         <EmptyState title="이 기수에 강좌가 없습니다" description="기수 관리에서 마스터 강좌를 배정하거나 새 강좌를 직접 만들 수 있습니다."
           action={<button className="btn btn-primary btn-sm" onClick={() => { setMode('edit'); setEditing('new') }}>새 강좌</button>} />
       ) : (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 20 }}>
+        <div className="course-grid">
           {rows.map((c, idx) => {
-            const stat = ratingMap[c.id]
             const theme = ((Number(c.course_no) || idx + 1) - 1) % 6
             return (
               <div key={c.id} className={`card-course theme-${theme}`} onClick={() => { setMode('view'); onOpen(c) }}
@@ -299,6 +344,10 @@ function CohortCourses({ detailId, onOpen, onClose }) {
                   <span className="badge-course-no">{pad2(c.course_no)}</span>
                   <div className="row" style={{ gap: 4 }}>
                     {c.assignment_enabled && <StatusPill kind="neutral">과제</StatusPill>}
+                    <button className="icon-btn" title="다른 그룹으로 이동 또는 복사" aria-label={`${c.title} 이동 또는 복사`}
+                      onClick={(e) => { e.stopPropagation(); setMoveTarget(c) }}>
+                      <IconArrowsMove size={16} stroke={1.75} />
+                    </button>
                     <button className="icon-btn danger" onClick={(e) => { e.stopPropagation(); setDeleteTarget(c) }}>
                       <IconTrash size={16} stroke={1.75} />
                     </button>
@@ -307,12 +356,12 @@ function CohortCourses({ detailId, onOpen, onClose }) {
                 <div className="t-h3 mb-8">{c.title}</div>
                 <div className="t-muted-sm" style={{ minHeight: 40 }}>{c.summary}</div>
                 <div className="card-course-meta">
-                  {(c.cohort_attachments || []).length > 0 && (
-                    <span className="pill pill-neutral"><IconPaperclip size={12} stroke={1.75} /> 첨부 {c.cohort_attachments.length}</span>
+                  {c.attachment_count > 0 && (
+                    <span className="pill pill-neutral"><IconPaperclip size={12} stroke={1.75} /> 첨부 {c.attachment_count}</span>
                   )}
-                  {stat ? (
+                  {c.rating_count > 0 ? (
                     <span className="row" style={{ gap: 4 }} title="전 기수 통합 만족도 평균">
-                      <StarRating value={stat.avg_rating} size={13} showValue count={stat.rating_count} />
+                      <StarRating value={Number(c.avg_rating)} size={13} showValue count={c.rating_count} />
                     </span>
                   ) : (
                     <span className="t-caption muted-soft">만족도 평가 없음</span>
@@ -326,7 +375,149 @@ function CohortCourses({ detailId, onOpen, onClose }) {
       <ConfirmDialog open={!!deleteTarget} danger busy={busy} title="강좌 삭제"
         message={`'${deleteTarget?.title}' 강좌를 이 기수에서 삭제합니다. 학생들의 열람·제출 기록도 함께 삭제됩니다.`}
         confirmLabel="삭제" onConfirm={remove} onClose={() => setDeleteTarget(null)} />
+      <MoveCourseDialog scope="cohort" course={moveTarget} groups={groups} currentGroupId={groupId}
+        onClose={() => setMoveTarget(null)} onDone={() => { setMoveTarget(null); load() }} />
     </>
+  )
+}
+
+function CourseGroupBar({ scope, cohortId, groups, groupId, onSelect, onChanged }) {
+  const toast = useToast()
+  const [dialog, setDialog] = useState(null)
+  const [name, setName] = useState('')
+  const [busy, setBusy] = useState(false)
+  const current = groups.find((group) => group.id === groupId)
+  const table = scope === 'master' ? 'master_course_groups' : 'cohort_course_groups'
+
+  function openCreate() {
+    setName('')
+    setDialog('create')
+  }
+
+  function openRename() {
+    setName(current?.name || '')
+    setDialog('rename')
+  }
+
+  async function saveGroup() {
+    const trimmed = name.trim()
+    if (!trimmed) return
+    setBusy(true)
+    const maxOrder = groups.reduce((max, group) => Math.max(max, Number(group.sort_order) || 0), 0)
+    const result = dialog === 'create'
+      ? await supabase.from(table).insert(scope === 'master'
+        ? { name: trimmed, sort_order: maxOrder + 1 }
+        : { cohort_id: cohortId, name: trimmed, sort_order: maxOrder + 1, is_published: false })
+        .select('id').single()
+      : await supabase.from(table).update({ name: trimmed }).eq('id', groupId).select('id').single()
+    setBusy(false)
+    if (result.error) { toast('강좌 그룹을 저장하지 못했습니다.', 'error'); return }
+    toast(dialog === 'create' ? '새 강좌 그룹이 추가되었습니다.' : '강좌 그룹명이 변경되었습니다.')
+    setDialog(null)
+    onChanged(result.data?.id || groupId)
+  }
+
+  async function togglePublished() {
+    if (!current) return
+    const next = !current.is_published
+    const { error } = await supabase.from('cohort_course_groups').update({ is_published: next }).eq('id', current.id)
+    if (error) { toast('공개 설정을 변경하지 못했습니다.', 'error'); return }
+    toast(next ? '학생에게 강좌 그룹을 공개했습니다.' : '학생 화면에서 강좌 그룹을 숨겼습니다.')
+    onChanged(current.id)
+  }
+
+  return (
+    <>
+      <div className="course-group-bar">
+        <div className="course-group-picker">
+          <IconFolder size={18} stroke={1.75} />
+          <label htmlFor={`${scope}-course-group`}>강좌 그룹</label>
+          <select id={`${scope}-course-group`} className="select-sm" value={groupId} onChange={(event) => onSelect(event.target.value)}>
+            {groups.map((group) => <option key={group.id} value={group.id}>{group.name}</option>)}
+          </select>
+        </div>
+        <div className="row" style={{ gap: 8 }}>
+          {scope === 'cohort' && current && (
+            <button className={`btn btn-sm ${current.is_published ? 'btn-white' : 'btn-primary'}`} onClick={togglePublished}>
+              {current.is_published ? <IconEye size={14} stroke={1.75} /> : <IconEyeOff size={14} stroke={1.75} />}
+              {current.is_published ? '학생 공개 중' : '학생에게 공개'}
+            </button>
+          )}
+          <button className="btn btn-white btn-sm" onClick={openRename} disabled={!current}><IconPencil size={14} stroke={1.75} /> 그룹명 변경</button>
+          <button className="btn btn-white btn-sm" onClick={openCreate}><IconPlus size={14} stroke={1.75} /> 그룹 추가</button>
+        </div>
+      </div>
+      <Dialog open={!!dialog} title={dialog === 'create' ? '새 강좌 그룹' : '강좌 그룹명 변경'} onClose={() => setDialog(null)}
+        actions={<>
+          <button className="btn btn-white btn-sm" onClick={() => setDialog(null)} disabled={busy}>취소</button>
+          <button className="btn btn-primary btn-sm" onClick={saveGroup} disabled={busy || !name.trim()}>{busy ? '저장 중…' : '저장'}</button>
+        </>}>
+        <div className="field" style={{ marginBottom: 0 }}>
+          <label>그룹명</label>
+          <input className="input" value={name} maxLength={80} autoFocus onChange={(event) => setName(event.target.value)}
+            onKeyDown={(event) => { if (event.key === 'Enter') saveGroup() }} placeholder="예: 심화 과정" />
+        </div>
+      </Dialog>
+    </>
+  )
+}
+
+function MoveCourseDialog({ scope, course, groups, currentGroupId, onClose, onDone }) {
+  const toast = useToast()
+  const [targetGroupId, setTargetGroupId] = useState('')
+  const [copy, setCopy] = useState(false)
+  const [busy, setBusy] = useState(false)
+
+  useEffect(() => {
+    if (!course) return
+    setTargetGroupId(groups.find((group) => group.id !== currentGroupId)?.id || '')
+    setCopy(false)
+  }, [course, groups, currentGroupId])
+
+  async function run() {
+    if (!targetGroupId) return
+    setBusy(true)
+    const rpc = scope === 'master' ? 'admin_transfer_master_course' : 'admin_transfer_cohort_course'
+    const { error } = await supabase.rpc(rpc, {
+      p_course_id: course.id, p_target_group_id: targetGroupId, p_copy: copy,
+    })
+    setBusy(false)
+    if (error) { toast(`강좌 ${copy ? '복사' : '이동'}에 실패했습니다.`, 'error'); return }
+    toast(`강좌를 ${copy ? '복사' : '이동'}했습니다.`)
+    onDone()
+  }
+
+  const targets = groups.filter((group) => group.id !== currentGroupId)
+  return (
+    <Dialog open={!!course} title={`강좌 이동·복사 — ${course?.title || ''}`} onClose={onClose}
+      actions={<>
+        <button className="btn btn-white btn-sm" onClick={onClose} disabled={busy}>취소</button>
+        <button className="btn btn-primary btn-sm" onClick={run} disabled={busy || !targetGroupId}>
+          {busy ? '처리 중…' : copy ? '복사' : '이동'}
+        </button>
+      </>}>
+      {targets.length === 0 ? <EmptyState title="이동할 다른 강좌 그룹이 없습니다" description="먼저 새 강좌 그룹을 추가해 주세요." /> : <>
+        <div className="field">
+          <label>대상 그룹</label>
+          <select className="select" value={targetGroupId} onChange={(event) => setTargetGroupId(event.target.value)}>
+            {targets.map((group) => <option key={group.id} value={group.id}>{group.name}</option>)}
+          </select>
+        </div>
+        <div className="field" style={{ marginBottom: 0 }}>
+          <label>작업 방식</label>
+          <div className="transfer-options">
+            <label className={`choice-row ${!copy ? 'selected' : ''}`}>
+              <input type="radio" checked={!copy} onChange={() => setCopy(false)} />
+              <span><strong><IconArrowsMove size={15} /> 이동</strong><br /><span className="t-caption muted-soft">현재 그룹에서 빼고 대상 그룹으로 옮깁니다.</span></span>
+            </label>
+            <label className={`choice-row ${copy ? 'selected' : ''}`}>
+              <input type="radio" checked={copy} onChange={() => setCopy(true)} />
+              <span><strong><IconCopy size={15} /> 복사</strong><br /><span className="t-caption muted-soft">현재 강좌는 유지하고 구성 전체를 복제합니다.</span></span>
+            </label>
+          </div>
+        </div>
+      </>}
+    </Dialog>
   )
 }
 
@@ -411,7 +602,7 @@ function CourseAdminView({ isMaster, course, onBack, onEdit }) {
 }
 
 /* ============ 강좌 편집기 (마스터/기수 공용) ============ */
-function CourseEditor({ isMaster, cohortId, nextNo, course, onDone }) {
+function CourseEditor({ isMaster, cohortId, groupId, nextNo, course, onDone }) {
   const toast = useToast()
   const [form, setForm] = useState({
     title: course?.title || '',
@@ -450,7 +641,8 @@ function CourseEditor({ isMaster, cohortId, nextNo, course, onDone }) {
           const { error } = await supabase.from('master_courses').update(base).eq('id', courseId)
           if (error) throw error
         } else {
-          const { data, error } = await supabase.from('master_courses').insert(base).select('id').single()
+          const { data, error } = await supabase.from('master_courses')
+            .insert({ ...base, group_id: groupId, sort_order: Number(nextNo) || 1 }).select('id').single()
           if (error) throw error
           courseId = data.id
         }
@@ -464,7 +656,8 @@ function CourseEditor({ isMaster, cohortId, nextNo, course, onDone }) {
           const { error } = await supabase.from('cohort_courses').update(extended).eq('id', courseId)
           if (error) throw error
         } else {
-          const { data, error } = await supabase.from('cohort_courses').insert({ ...extended, cohort_id: cohortId }).select('id').single()
+          const { data, error } = await supabase.from('cohort_courses')
+            .insert({ ...extended, cohort_id: cohortId, group_id: groupId }).select('id').single()
           if (error) throw error
           courseId = data.id
         }

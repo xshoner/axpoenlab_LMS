@@ -103,8 +103,8 @@ export default function Members() {
   }
 
   return (
-    <div className="stack" style={{ gap: 16 }}>
-      <div className="row-between">
+    <div className="stack members-page" style={{ gap: 16 }}>
+      <div className="row-between members-toolbar">
         <h2 className="t-h2">회원 관리 <span className="t-muted-sm tnum">({filtered.length}명)</span></h2>
         <div className="row" style={{ gap: 8 }}>
           <div className="row" style={{ position: 'relative' }}>
@@ -119,8 +119,8 @@ export default function Members() {
       {filtered.length === 0 ? (
         <EmptyState title="조건에 맞는 회원이 없습니다" />
       ) : (
-        <div className="table-wrap">
-          <table className="data-table">
+        <div className="table-wrap members-table-wrap">
+          <table className="data-table members-table">
             <thead>
               <tr><th>성명</th><th>소속</th><th>메일</th><th>기수</th><th>가입일</th><th>최근 접속</th><th>상태</th><th style={{ width: 280 }}>작업</th></tr>
             </thead>

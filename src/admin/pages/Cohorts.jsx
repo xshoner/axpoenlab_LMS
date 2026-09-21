@@ -249,17 +249,19 @@ function SnapshotDialog({ cohort, onClose }) {
   const toast = useToast()
   const [masters, setMasters] = useState(null)
   const [checked, setChecked] = useState([])
+  const [publish, setPublish] = useState(true)
   const [busy, setBusy] = useState(false)
 
   useEffect(() => {
-    supabase.from('master_courses').select('id, title, summary').order('sort_order')
+    supabase.from('master_courses').select('id, title, summary, group_id, master_course_groups(name, sort_order)')
+      .order('sort_order')
       .then(({ data }) => setMasters(data || []))
   }, [])
 
   async function run() {
     setBusy(true)
     const { data, error } = await supabase.rpc('snapshot_courses_to_cohort', {
-      p_cohort_id: cohort.id, p_master_ids: checked,
+      p_cohort_id: cohort.id, p_master_ids: checked, p_publish: publish,
     })
     setBusy(false)
     if (error) toast('강좌 배정에 실패했습니다.', 'error')
@@ -288,12 +290,16 @@ function SnapshotDialog({ cohort, onClose }) {
               {checked.length === masters.length ? '전체 해제' : '전체 선택'}
             </button>
           </div>
+          <label className="choice-row selected mb-16">
+            <input type="checkbox" checked={publish} onChange={(event) => setPublish(event.target.checked)} />
+            <span><strong>학생에게 공개</strong><br /><span className="t-caption muted-soft">배정과 동시에 해당 강좌 그룹을 학생의 ‘내 교육과정’에 표시합니다.</span></span>
+          </label>
           <div className="stack" style={{ gap: 8, maxHeight: 320, overflowY: 'auto' }}>
           {masters.map((m) => (
             <label key={m.id} className={`choice-row ${checked.includes(m.id) ? 'selected' : ''}`}>
               <input type="checkbox" checked={checked.includes(m.id)}
                 onChange={() => setChecked((c) => c.includes(m.id) ? c.filter((x) => x !== m.id) : [...c, m.id])} />
-              <span>{m.title}<br /><span className="t-caption muted-soft">{m.summary}</span></span>
+              <span><span className="pill pill-neutral" style={{ marginRight: 8 }}>{m.master_course_groups?.name || '기본 강좌'}</span>{m.title}<br /><span className="t-caption muted-soft">{m.summary}</span></span>
             </label>
           ))}
           </div>
@@ -305,30 +311,52 @@ function SnapshotDialog({ cohort, onClose }) {
 
 function ReorderDialog({ cohort, onClose }) {
   const toast = useToast()
+  const [groups, setGroups] = useState(null)
+  const [groupId, setGroupId] = useState('')
   const [courses, setCourses] = useState(null)
 
+  useEffect(() => {
+    supabase.from('cohort_course_groups').select('id, name, sort_order, is_default')
+      .eq('cohort_id', cohort.id).order('sort_order')
+      .then(({ data }) => {
+        const next = data || []
+        setGroups(next)
+        setGroupId(next.find((group) => group.is_default)?.id || next[0]?.id || '')
+      })
+  }, [cohort.id])
+
   async function load() {
+    if (!groupId) { setCourses([]); return }
     const { data } = await supabase.from('cohort_courses').select('id, course_no, title')
-      .eq('cohort_id', cohort.id).order('course_no')
+      .eq('cohort_id', cohort.id).eq('group_id', groupId).order('course_no')
     setCourses(data || [])
   }
-  useEffect(() => { load() }, [cohort.id])
+  useEffect(() => { if (groupId) load() }, [groupId])
 
   async function move(i, dir) {
     const j = i + dir
     if (j < 0 || j >= courses.length) return
-    const a = courses[i], b = courses[j]
-    await Promise.all([
-      supabase.from('cohort_courses').update({ course_no: b.course_no }).eq('id', a.id),
-      supabase.from('cohort_courses').update({ course_no: a.course_no }).eq('id', b.id),
-    ])
-    load()
+    const next = [...courses]
+    ;[next[i], next[j]] = [next[j], next[i]]
+    const reordered = next.map((course, index) => ({ ...course, course_no: index + 1 }))
+    setCourses(reordered)
+    const { error } = await supabase.rpc('admin_reorder_cohort_courses', {
+      p_group_id: groupId, p_ids: reordered.map((course) => course.id),
+    })
+    if (error) { toast('강좌 순서를 저장하지 못했습니다.', 'error'); load() }
   }
 
   return (
     <Dialog open title={`${cohort.name} — 강좌 순서`} onClose={onClose}
       actions={<button className="btn btn-primary btn-sm" onClick={onClose}>완료</button>}>
-      {!courses ? <Loading /> : courses.length === 0 ? (
+      {!groups || !courses ? <Loading /> : <>
+        <div className="field">
+          <label>강좌 그룹</label>
+          <select className="select" value={groupId} onChange={(event) => setGroupId(event.target.value)}>
+            {groups.map((group) => <option key={group.id} value={group.id}>{group.name}</option>)}
+          </select>
+        </div>
+      {courses.length === 0 ? (
         <div className="t-muted-sm">이 기수에 배정된 강좌가 없습니다.</div>
       ) : (
         <div className="stack" style={{ gap: 6, maxHeight: 360, overflowY: 'auto' }}>
@@ -341,7 +369,7 @@ function ReorderDialog({ cohort, onClose }) {
             </div>
           ))}
         </div>
-      )}
+      )}</>}
     </Dialog>
   )
 }

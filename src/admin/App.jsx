@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { lazy, Suspense, useEffect, useState } from 'react'
 import { Routes, Route, NavLink, Navigate, useLocation } from 'react-router-dom'
 import {
   IconDeviceGamepad2, IconLayoutDashboard, IconUsersGroup, IconBook2, IconClipboardText, IconChecklist,
@@ -6,7 +6,6 @@ import {
   IconShieldLock, IconSettings, IconLogout, IconMenu2, IconMessages, IconRocket, IconEye, IconHandStop,
 } from '@tabler/icons-react'
 import { supabase } from '../lib/supabase'
-import Arcade from '../shared/Arcade'
 import { InactiveAccount, useAuth, signOut } from '../shared/auth'
 import { Aurora, Dialog, FooterBar, Loading, StatusPill, VisitorCounter, useToast } from '../shared/ui'
 import { CohortProvider, useCohort } from './cohortContext'
@@ -14,21 +13,22 @@ import { useOnlineStudentCount, useOpenInquiryCount } from '../shared/presence'
 import { AdminPushComposer } from '../shared/push'
 import { useHelpQueueCount } from '../shared/help'
 import { COHORT_STATUS } from '../lib/helpers'
-import AdminDashboard from './pages/AdminDashboard'
-import Cohorts from './pages/Cohorts'
-import CoursesAdmin from './pages/CoursesAdmin'
-import AssignmentMatrix from './pages/AssignmentMatrix'
-import SurveysAdmin from './pages/SurveysAdmin'
-import QuizzesAdmin from './pages/QuizzesAdmin'
-import NoticesAdmin from './pages/NoticesAdmin'
-import Members from './pages/Members'
-import InquiriesAdmin from './pages/InquiriesAdmin'
-import BoardAdmin from './pages/BoardAdmin'
-import HackathonAdmin from './pages/HackathonAdmin'
-import AdminAccounts from './pages/AdminAccounts'
-import SystemSettings from './pages/SystemSettings'
-import StudentPreview from './pages/StudentPreview'
-import HelpQueue from './pages/HelpQueue'
+const Arcade = lazy(() => import('../shared/Arcade'))
+const AdminDashboard = lazy(() => import('./pages/AdminDashboard'))
+const Cohorts = lazy(() => import('./pages/Cohorts'))
+const CoursesAdmin = lazy(() => import('./pages/CoursesAdmin'))
+const AssignmentMatrix = lazy(() => import('./pages/AssignmentMatrix'))
+const SurveysAdmin = lazy(() => import('./pages/SurveysAdmin'))
+const QuizzesAdmin = lazy(() => import('./pages/QuizzesAdmin'))
+const NoticesAdmin = lazy(() => import('./pages/NoticesAdmin'))
+const Members = lazy(() => import('./pages/Members'))
+const InquiriesAdmin = lazy(() => import('./pages/InquiriesAdmin'))
+const BoardAdmin = lazy(() => import('./pages/BoardAdmin'))
+const HackathonAdmin = lazy(() => import('./pages/HackathonAdmin'))
+const AdminAccounts = lazy(() => import('./pages/AdminAccounts'))
+const SystemSettings = lazy(() => import('./pages/SystemSettings'))
+const StudentPreview = lazy(() => import('./pages/StudentPreview'))
+const HelpQueue = lazy(() => import('./pages/HelpQueue'))
 
 const MENU = [
   { to: '/', label: '대시보드', icon: IconLayoutDashboard, end: true },
@@ -80,6 +80,8 @@ function AdminShell({ profile }) {
   const [nickOpen, setNickOpen] = useState(false)
   const [nick, setNick] = useState('')
   const [nickBusy, setNickBusy] = useState(false)
+  const [password, setPassword] = useState({ current: '', next: '', confirm: '' })
+  const [passwordBusy, setPasswordBusy] = useState(false)
   const isSuper = profile.role === 'super_admin'
   const displayName = profile.nickname || profile.name
 
@@ -91,6 +93,29 @@ function AdminShell({ profile }) {
     toast('닉네임이 저장되었습니다. 학생 문의 답변에 이 이름이 표시됩니다.')
     setNickOpen(false)
     refresh()
+  }
+
+  async function changePassword(event) {
+    event.preventDefault()
+    if (password.next.length < 8 || !/[A-Za-z]/.test(password.next) || !/[0-9]/.test(password.next)) {
+      toast('새 비밀번호는 8자 이상, 영문과 숫자를 함께 사용해 주세요.', 'error')
+      return
+    }
+    if (password.next !== password.confirm) { toast('새 비밀번호가 일치하지 않습니다.', 'error'); return }
+    setPasswordBusy(true)
+    const { error: verifyError } = await supabase.auth.signInWithPassword({
+      email: profile.email, password: password.current,
+    })
+    if (verifyError) {
+      setPasswordBusy(false)
+      toast('현재 비밀번호가 올바르지 않습니다.', 'error')
+      return
+    }
+    const { error } = await supabase.auth.updateUser({ password: password.next })
+    setPasswordBusy(false)
+    if (error) { toast('비밀번호 변경에 실패했습니다.', 'error'); return }
+    toast('슈퍼관리자 비밀번호가 변경되었습니다.')
+    setPassword({ current: '', next: '', confirm: '' })
   }
 
   useEffect(() => { setDrawerOpen(false) }, [location.pathname])
@@ -167,30 +192,61 @@ function AdminShell({ profile }) {
               </span>
               <VisitorCounter admin />
               <button className="row" style={{ gap: 8, background: 'transparent', border: 'none', padding: 0 }}
-                title="클릭하여 닉네임 설정" onClick={() => { setNick(profile.nickname || ''); setNickOpen(true) }}>
+                title="마이프로필" onClick={() => { setNick(profile.nickname || ''); setPassword({ current: '', next: '', confirm: '' }); setNickOpen(true) }}>
                 <span className="avatar">{(displayName || '?').slice(0, 1)}</span>
                 <span className="t-label">{displayName}</span>
               </button>
             </div>
           </header>
-          <Dialog open={nickOpen} title="닉네임 설정" onClose={() => setNickOpen(false)}
+          <Dialog open={nickOpen} title="마이프로필" onClose={() => setNickOpen(false)}
             actions={
-              <>
-                <button className="btn btn-white btn-sm" onClick={() => setNickOpen(false)} disabled={nickBusy}>취소</button>
-                <button className="btn btn-primary btn-sm" onClick={saveNickname} disabled={nickBusy}>
-                  {nickBusy ? '저장 중…' : '저장'}
-                </button>
-              </>
+              <button className="btn btn-primary btn-sm" onClick={() => setNickOpen(false)} disabled={nickBusy || passwordBusy}>닫기</button>
             }>
-            <div className="field" style={{ marginBottom: 0 }}>
-              <label>닉네임</label>
-              <input className="input" value={nick} maxLength={20} placeholder="예: AX운영팀"
-                onChange={(e) => setNick(e.target.value)} />
-              <span className="hint">학생 화면의 문의 답변·게시판에 실명 대신 이 닉네임이 표시됩니다. 비워 두면 이름이 표시됩니다.</span>
+            <div className="stack" style={{ gap: 24 }}>
+              <section>
+                <div className="t-h3 mb-16">프로필 정보</div>
+                <div className="field">
+                  <label>이메일</label>
+                  <input className="input" value={profile.email} disabled style={{ background: 'var(--surface)' }} />
+                </div>
+                <div className="field" style={{ marginBottom: 12 }}>
+                  <label>닉네임</label>
+                  <input className="input" value={nick} maxLength={20} placeholder="예: AX운영팀"
+                    onChange={(e) => setNick(e.target.value)} />
+                  <span className="hint">학생 화면의 문의 답변·게시판에 실명 대신 표시됩니다.</span>
+                </div>
+                <button className="btn btn-white btn-sm" onClick={saveNickname} disabled={nickBusy}>
+                  {nickBusy ? '저장 중…' : '닉네임 저장'}
+                </button>
+              </section>
+              {isSuper && <section className="profile-password-section">
+                <div className="t-h3 mb-16">슈퍼관리자 비밀번호 변경</div>
+                <form onSubmit={changePassword}>
+                  <div className="field">
+                    <label>현재 비밀번호</label>
+                    <input className="input" type="password" autoComplete="current-password" value={password.current}
+                      onChange={(e) => setPassword({ ...password, current: e.target.value })} required />
+                  </div>
+                  <div className="field">
+                    <label>새 비밀번호</label>
+                    <input className="input" type="password" autoComplete="new-password" value={password.next}
+                      onChange={(e) => setPassword({ ...password, next: e.target.value })} required />
+                    <span className="hint">8자 이상, 영문+숫자 조합</span>
+                  </div>
+                  <div className="field">
+                    <label>새 비밀번호 확인</label>
+                    <input className="input" type="password" autoComplete="new-password" value={password.confirm}
+                      onChange={(e) => setPassword({ ...password, confirm: e.target.value })} required />
+                  </div>
+                  <button className="btn btn-primary btn-sm" disabled={passwordBusy}>
+                    {passwordBusy ? '변경 중…' : '비밀번호 변경'}
+                  </button>
+                </form>
+              </section>}
             </div>
           </Dialog>
           <main className="content wide" style={{ maxWidth: 1440 }}>
-            <Routes>
+            <Suspense fallback={<Loading />}><Routes>
               <Route path="/arcade" element={<Arcade />} />
               <Route path="/arcade/:id" element={<Arcade />} />
               <Route path="/" element={<AdminDashboard />} />
@@ -209,7 +265,7 @@ function AdminShell({ profile }) {
               {isSuper && <Route path="/admins" element={<AdminAccounts />} />}
               {isSuper && <Route path="/settings" element={<SystemSettings />} />}
               <Route path="*" element={<Navigate to="/" replace />} />
-            </Routes>
+            </Routes></Suspense>
           </main>
           <FooterBar />
         </div>

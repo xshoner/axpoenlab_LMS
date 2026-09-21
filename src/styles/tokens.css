@@ -185,6 +185,13 @@ input, textarea, select { font-family: inherit; }
 }
 .card-course:hover .card-course-watermark { color: var(--cc-light); }
 .card-course > *:not(.card-course-watermark) { position: relative; z-index: 1; }
+.course-grid {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 20px;
+}
+.course-grid .card-course {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 220px;
+}
 /* 카드 컬러 테마 (course_no 순환) */
 .card-course.theme-0 { --cc: #1a3356; --cc-2: #3d5f8f; --cc-tint: #f0f4f9; --cc-light: #d5e0ee; }
 .card-course.theme-1 { --cc: #a67d33; --cc-2: #d4ad5f; --cc-tint: #faf4e6; --cc-light: #f0e2c2; }
@@ -256,6 +263,18 @@ input, textarea, select { font-family: inherit; }
 .profile-link:hover { background: var(--neutral-wash); }
 .content { flex: 1; width: 100%; max-width: 1280px; margin: 0 auto; padding: 32px; position: relative; }
 .content.wide { max-width: none; }
+.course-group-bar, .student-course-group-picker {
+  display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap;
+  padding: 16px 18px; border: 1px solid var(--border); border-radius: 14px;
+  background: var(--surface);
+}
+.course-group-picker { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.course-group-picker label { font-size: 13px; font-weight: 700; color: var(--muted); white-space: nowrap; }
+.course-group-picker .select-sm { min-width: 220px; }
+.student-course-group-picker .select { width: min(100%, 320px); height: 44px; }
+.transfer-options { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.transfer-options .choice-row strong { display: inline-flex; align-items: center; gap: 6px; }
+.profile-password-section { border-top: 1px solid var(--border); padding-top: 24px; }
 
 .live-pill {
   display: inline-flex; align-items: center; gap: 8px; background: var(--success-wash);
@@ -508,6 +527,15 @@ input, textarea, select { font-family: inherit; }
 .data-table tbody tr:hover { background: var(--primary-tint); }
 .data-table .sticky-col { position: sticky; left: 0; background: var(--background); z-index: 1; }
 .data-table thead .sticky-col { background: var(--surface); z-index: 3; }
+.members-page { min-width: 0; width: 100%; }
+.members-table-wrap { width: 100%; max-width: 100%; overscroll-behavior-x: contain; }
+.members-table { min-width: 1160px; }
+.members-table th:last-child, .members-table td:last-child {
+  position: sticky; right: 0; z-index: 1; background: var(--background);
+  box-shadow: -12px 0 18px -18px rgba(26, 51, 86, 0.55);
+}
+.members-table th:last-child { z-index: 3; background: var(--surface); }
+.members-table tbody tr:hover td:last-child { background: var(--primary-tint); }
 .matrix-cell { text-align: center; font-size: 14px; }
 .matrix-cell.submitted { background: var(--success-wash); color: var(--success); }
 .matrix-cell.missing { color: var(--muted-soft); }
@@ -677,6 +705,14 @@ input, textarea, select { font-family: inherit; }
   .grid-2 { grid-template-columns: 1fr; }
   .t-display { font-size: 28px; }
   .t-hero { font-size: 36px; }
+}
+@media (max-width: 640px) {
+  .course-group-picker { width: 100%; flex-wrap: wrap; }
+  .course-group-picker .select-sm { flex: 1; min-width: 180px; }
+  .student-course-group-picker .select { width: 100%; }
+  .transfer-options { grid-template-columns: 1fr; }
+  .members-toolbar > .row { width: 100%; flex-wrap: wrap; }
+  .members-toolbar .input { width: 100% !important; }
 }
 
 /* ---------- 유튜브 동영상 임베드 (rich body) ---------- */

@@ -18,13 +18,27 @@ insert into public.cohorts (id, name, code) values
   ('10000000-0000-0000-0000-000000000001', '테스트1기', 'T1'),
   ('10000000-0000-0000-0000-000000000002', '테스트2기', 'T2');
 
+update public.cohort_course_groups set is_published = true
+where cohort_id in (
+  '10000000-0000-0000-0000-000000000001',
+  '10000000-0000-0000-0000-000000000002'
+);
+
 insert into public.cohort_members (cohort_id, user_id) values
   ('10000000-0000-0000-0000-000000000001', '00000000-0000-0000-0000-00000000000a'),
   ('10000000-0000-0000-0000-000000000002', '00000000-0000-0000-0000-00000000000b');
 
-insert into public.cohort_courses (id, cohort_id, course_no, title) values
-  ('20000000-0000-0000-0000-000000000001', '10000000-0000-0000-0000-000000000001', 1, '1기 강좌'),
-  ('20000000-0000-0000-0000-000000000002', '10000000-0000-0000-0000-000000000002', 1, '2기 강좌');
+insert into public.cohort_courses (id, cohort_id, group_id, course_no, title)
+select '20000000-0000-0000-0000-000000000001', cohort.id, grp.id, 1, '1기 강좌'
+from public.cohorts as cohort
+join public.cohort_course_groups as grp on grp.cohort_id = cohort.id and grp.is_default
+where cohort.id = '10000000-0000-0000-0000-000000000001';
+
+insert into public.cohort_courses (id, cohort_id, group_id, course_no, title)
+select '20000000-0000-0000-0000-000000000002', cohort.id, grp.id, 1, '2기 강좌'
+from public.cohorts as cohort
+join public.cohort_course_groups as grp on grp.cohort_id = cohort.id and grp.is_default
+where cohort.id = '10000000-0000-0000-0000-000000000002';
 
 -- ---------- 학생 A 관점 ----------
 set local role authenticated;

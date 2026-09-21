@@ -17,19 +17,36 @@ const THEME_ICONS = [IconBook2, IconBulb, IconRocket, IconChartDots, IconPuzzle,
    열람 기록·응답·별점은 남지 않는다. 학생에게 숨겨지는 항목(초안)은 회색으로 표시한다. */
 export default function StudentPreview() {
   const { selectedId, selected } = useCohort()
+  const [groups, setGroups] = useState(null)
+  const [groupId, setGroupId] = useState('')
   const [rows, setRows] = useState(null)
   const [openId, setOpenId] = useState(null)
 
   useEffect(() => {
-    if (!selectedId) { setRows([]); return }
+    if (!selectedId) { setGroups([]); setRows([]); return }
+    let alive = true
+    setGroups(null); setRows(null); setOpenId(null)
+    supabase.from('cohort_course_groups').select('id, name, sort_order, is_default')
+      .eq('cohort_id', selectedId).eq('is_published', true).order('sort_order')
+      .then(({ data }) => {
+        if (!alive) return
+        const next = data || []
+        setGroups(next)
+        setGroupId(next.find((group) => group.is_default)?.id || next[0]?.id || '')
+      })
+    return () => { alive = false }
+  }, [selectedId])
+
+  useEffect(() => {
+    if (!selectedId || !groupId) { if (groups) setRows([]); return }
     let alive = true
     setRows(null); setOpenId(null)
     supabase.from('cohort_courses')
       .select('*, cohort_attachments(*), surveys(id, title, status, allow_edit), quizzes(id, title, status, reveal_answers)')
-      .eq('cohort_id', selectedId).order('course_no')
+      .eq('cohort_id', selectedId).eq('group_id', groupId).order('course_no')
       .then(({ data }) => { if (alive) setRows(data || []) })
     return () => { alive = false }
-  }, [selectedId])
+  }, [selectedId, groupId])
 
   if (!selectedId) {
     return (
@@ -37,7 +54,7 @@ export default function StudentPreview() {
         description="상단의 기수 선택 드롭다운에서 기수를 고르면 그 기수 학생에게 보이는 화면을 미리 볼 수 있습니다." />
     )
   }
-  if (!rows) return <Loading />
+  if (!groups || !rows) return <Loading />
 
   const current = rows.find((r) => r.id === openId)
 
@@ -58,6 +75,13 @@ export default function StudentPreview() {
           </button>
         )}
       </div>
+
+      {groups.length > 0 && <div className="student-course-group-picker">
+        <div><div className="t-caption muted-soft">강좌 그룹</div><div className="t-h2">{groups.find((group) => group.id === groupId)?.name}</div></div>
+        <select className="select" value={groupId} onChange={(event) => setGroupId(event.target.value)} aria-label="미리보기 강좌 그룹 선택">
+          {groups.map((group) => <option key={group.id} value={group.id}>{group.name}</option>)}
+        </select>
+      </div>}
 
       <div className="preview-frame">
         {current

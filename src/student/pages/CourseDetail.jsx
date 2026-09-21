@@ -29,14 +29,14 @@ export default function CourseDetail() {
         supabase.from('cohort_courses')
           .select('*, cohort_attachments(*), surveys(id, title, status, allow_edit), quizzes(id, title, status, reveal_answers)')
           .eq('id', id).single(),
-        supabase.from('cohort_courses').select('id, course_no').order('course_no'),
+        supabase.from('cohort_courses').select('id, group_id, course_no').order('course_no'),
         supabase.from('course_ratings').select('rating').eq('cohort_course_id', id).eq('user_id', profile.id).maybeSingle(),
         supabase.from('course_rating_stats').select('avg_rating, rating_count').eq('cohort_course_id', id).maybeSingle(),
       ])
       if (!alive) return
       if (!cQ.data) { setCourse(false); return }
       setCourse(cQ.data)
-      setSiblings(allQ.data || [])
+      setSiblings((allQ.data || []).filter((sibling) => sibling.group_id === cQ.data.group_id))
       setMyRating(rQ.data?.rating || 0)
       setRatingStats(rsQ.data || null)
       const openSurveys = (cQ.data.surveys || []).filter((s) => s.status !== 'draft')
