@@ -247,16 +247,40 @@ function CohortDialog({ cohort, busy, onSave, onClose }) {
 
 function SnapshotDialog({ cohort, onClose }) {
   const toast = useToast()
+  const [groups, setGroups] = useState(null)
+  const [groupId, setGroupId] = useState('')
   const [masters, setMasters] = useState(null)
   const [checked, setChecked] = useState([])
   const [publish, setPublish] = useState(true)
   const [busy, setBusy] = useState(false)
 
   useEffect(() => {
-    supabase.from('master_courses').select('id, title, summary, group_id, master_course_groups(name, sort_order)')
-      .order('sort_order')
-      .then(({ data }) => setMasters(data || []))
+    let alive = true
+    supabase.from('master_course_groups').select('id, name, sort_order, is_default').order('sort_order').order('created_at')
+      .then(({ data, error }) => {
+        if (!alive) return
+        if (error) { setGroups([]); toast('강좌 그룹을 불러오지 못했습니다.', 'error'); return }
+        const next = data || []
+        setGroups(next)
+        setGroupId(next.find((group) => group.is_default)?.id || next[0]?.id || '')
+      })
+    return () => { alive = false }
   }, [])
+
+  useEffect(() => {
+    if (!groupId) { if (groups) setMasters([]); return }
+    let alive = true
+    setMasters(null)
+    setChecked([])
+    supabase.from('master_courses').select('id, title, summary, sort_order')
+      .eq('group_id', groupId).order('sort_order').order('created_at')
+      .then(({ data, error }) => {
+        if (!alive) return
+        if (error) { setMasters([]); toast('강좌 모듈을 불러오지 못했습니다.', 'error'); return }
+        setMasters(data || [])
+      })
+    return () => { alive = false }
+  }, [groupId])
 
   async function run() {
     setBusy(true)
@@ -269,7 +293,7 @@ function SnapshotDialog({ cohort, onClose }) {
   }
 
   return (
-    <Dialog open title={`${cohort.name} — 강좌 배정 (스냅샷 복제)`} onClose={onClose}
+    <Dialog open extraWide title={`${cohort.name} — 강좌 배정`} onClose={onClose}
       actions={
         <>
           <button className="btn btn-white btn-sm" onClick={onClose}>취소</button>
@@ -278,33 +302,48 @@ function SnapshotDialog({ cohort, onClose }) {
           </button>
         </>
       }>
-      <p className="t-muted-sm mb-16">선택한 마스터 강좌가 본문·첨부·과제·설문·퀴즈 구성과 함께 이 기수 전용 복사본으로 생성됩니다. 이후 수정해도 다른 기수와 마스터에 영향을 주지 않습니다.</p>
-      {!masters ? <Loading /> : masters.length === 0 ? (
-        <div className="t-muted-sm">마스터 강좌가 없습니다. 강좌 관리에서 먼저 만들어 주세요.</div>
-      ) : (
+      <p className="t-muted-sm mb-16">강좌 그룹을 고른 뒤 배정할 세부 모듈을 선택하세요. 본문·첨부·과제·설문·퀴즈가 기수 전용 복사본으로 생성됩니다.</p>
+      {!groups ? <Loading /> : groups.length === 0 ? (
+        <EmptyState title="강좌 그룹이 없습니다" description="강좌 관리에서 먼저 그룹과 강좌를 만들어 주세요." />
+      ) : <>
+        <div className="snapshot-toolbar">
+          <div className="field snapshot-group-field">
+            <label>1. 강좌 그룹 선택</label>
+            <select className="select" value={groupId} onChange={(event) => setGroupId(event.target.value)}>
+              {groups.map((group) => <option key={group.id} value={group.id}>{group.name}</option>)}
+            </select>
+          </div>
+          <label className={`snapshot-publish ${publish ? 'active' : ''}`}>
+            <input type="checkbox" checked={publish} onChange={(event) => setPublish(event.target.checked)} />
+            <span><strong>학생에게 공개</strong><small>배정 즉시 ‘내 교육과정’에 표시</small></span>
+          </label>
+        </div>
+        {!masters ? <Loading /> : masters.length === 0 ? (
+          <EmptyState title="이 그룹에 강좌 모듈이 없습니다" description="다른 그룹을 선택하거나 강좌 관리에서 모듈을 추가해 주세요." />
+        ) : (
         <>
-          <div className="row-between mb-8">
-            <span className="t-caption muted-soft tnum">전체 {masters.length}개 중 {checked.length}개 선택</span>
+          <div className="row-between snapshot-selection-head">
+            <div>
+              <div className="t-label">2. 세부 강좌 모듈 선택</div>
+              <span className="t-caption muted-soft tnum">현재 그룹 {masters.length}개 중 {checked.length}개 선택</span>
+            </div>
             <button className="btn btn-white btn-sm"
               onClick={() => setChecked(checked.length === masters.length ? [] : masters.map((m) => m.id))}>
               {checked.length === masters.length ? '전체 해제' : '전체 선택'}
             </button>
           </div>
-          <label className="choice-row selected mb-16">
-            <input type="checkbox" checked={publish} onChange={(event) => setPublish(event.target.checked)} />
-            <span><strong>학생에게 공개</strong><br /><span className="t-caption muted-soft">배정과 동시에 해당 강좌 그룹을 학생의 ‘내 교육과정’에 표시합니다.</span></span>
-          </label>
-          <div className="stack" style={{ gap: 8, maxHeight: 320, overflowY: 'auto' }}>
+          <div className="snapshot-course-grid">
           {masters.map((m) => (
-            <label key={m.id} className={`choice-row ${checked.includes(m.id) ? 'selected' : ''}`}>
+            <label key={m.id} className={`snapshot-course-choice ${checked.includes(m.id) ? 'selected' : ''}`}>
               <input type="checkbox" checked={checked.includes(m.id)}
                 onChange={() => setChecked((c) => c.includes(m.id) ? c.filter((x) => x !== m.id) : [...c, m.id])} />
-              <span><span className="pill pill-neutral" style={{ marginRight: 8 }}>{m.master_course_groups?.name || '기본 강좌'}</span>{m.title}<br /><span className="t-caption muted-soft">{m.summary}</span></span>
+              <span><strong>{m.title}</strong><small>{m.summary || '요약 없음'}</small></span>
             </label>
           ))}
           </div>
         </>
-      )}
+        )}
+      </>}
     </Dialog>
   )
 }

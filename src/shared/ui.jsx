@@ -39,11 +39,11 @@ export function useToast() {
 }
 
 /* ---------- Dialog ---------- */
-export function Dialog({ open, title, danger, children, onClose, actions, wide }) {
+export function Dialog({ open, title, danger, children, onClose, actions, wide, extraWide }) {
   if (!open) return null
   return (
     <div className="dialog-overlay" onMouseDown={(e) => e.target === e.currentTarget && onClose?.()}>
-      <div className={`dialog ${wide ? 'dialog-wide' : ''}`} role="dialog" aria-modal="true">
+      <div className={`dialog ${extraWide ? 'dialog-extra-wide' : wide ? 'dialog-wide' : ''}`} role="dialog" aria-modal="true">
         <div className="row mb-16" style={{ gap: 8 }}>
           {danger && <IconAlertTriangle size={20} color="var(--danger)" stroke={1.75} />}
           <h2 className="t-h2">{title}</h2>
@@ -156,7 +156,7 @@ export function VisitorCounter({ admin = false }) {
     <>
     <span className="visitor-counter" title="오늘 방문자 · 누적 방문자">
       <UsersIcon />
-      {admin ? <button type="button" aria-haspopup="dialog" aria-expanded={visitsOpen} onClick={() => setVisitsOpen(true)}>오늘 {Number(stats.today).toLocaleString()}</button>
+      {admin ? <button type="button" className="visitor-counter-button" aria-haspopup="dialog" aria-expanded={visitsOpen} onClick={() => setVisitsOpen(true)}>오늘 {Number(stats.today).toLocaleString()}</button>
         : <span className="vc-full">오늘 {Number(stats.today).toLocaleString()}</span>}
       <span className="vsep" />
       <span>누적 {Number(stats.total).toLocaleString()}</span>

@@ -26,12 +26,12 @@ export default function TodayVisits({ onClose }) {
     window.addEventListener('keydown', escape)
     return () => { alive = false; clearInterval(timer); window.removeEventListener('keydown', escape) }
   }, [retry, onClose])
-  return createPortal(<Dialog open title="오늘 접속한 계정" onClose={onClose}>
+  return createPortal(<Dialog open wide title="오늘 접속한 계정" onClose={onClose}>
     <p className="t-muted-sm mb-16">한국 시간 기준 · 전체 기수 · 계정별 마지막 접속만 표시 · 게스트 제외</p>
     {busy ? <Loading /> : error ? <div role="alert">접속 기록을 불러오지 못했습니다. <button className="btn btn-white btn-sm" onClick={() => setRetry(retry + 1)}>다시 시도</button></div>
       : rows.length === 0 ? <p>오늘 접속한 계정이 없습니다.</p> : <>
         <p className="mb-16">총 {rows.length}개 계정</p>
-        <div className="today-visits-table"><table><thead><tr><th>ID (이메일)</th><th>소속</th><th>이름</th><th>시간</th></tr></thead>
+        <div className="table-wrap today-visits-table"><table className="data-table"><thead><tr><th>ID (이메일)</th><th>소속</th><th>이름</th><th>시간</th></tr></thead>
           <tbody>{rows.map(row => <tr key={row.id}><td>{row.email}</td><td>{row.org || '—'}</td><td>{row.name || '—'}</td><td className="tnum">{new Date(row.last_login_at).toLocaleTimeString('en-GB', { timeZone: 'Asia/Seoul', hour12: false })}</td></tr>)}</tbody>
         </table></div>
       </>}
