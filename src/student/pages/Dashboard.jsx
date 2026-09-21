@@ -59,13 +59,13 @@ export default function Dashboard() {
         courses,
         groups: groupsQ.data || [],
         viewedSet,
+        subSet,
+        surveys,
+        quizzes,
+        respSet,
+        quizSet,
         notices: noticesQ.data || [],
         boardPosts: boardQ.data || [],
-        todo: {
-          assignments: courses.filter((c) => c.assignment_enabled && !subSet.has(c.id)).length,
-          surveys: surveys.filter((s) => !respSet.has(s.id)).length,
-          quizzes: quizzes.filter((q) => !quizSet.has(q.id)).length,
-        },
       })
     })()
     return () => { alive = false }
@@ -73,11 +73,20 @@ export default function Dashboard() {
 
   if (!data) return <Loading />
 
-  const { courses: allCourses, groups, viewedSet, notices, boardPosts, todo } = data
+  const {
+    courses: allCourses, groups, viewedSet, subSet, surveys, quizzes, respSet, quizSet,
+    notices, boardPosts,
+  } = data
   const activeGroupId = groups.some((group) => group.id === heatmapGroupId)
     ? heatmapGroupId
     : groups.find((group) => group.is_default)?.id || groups[0]?.id || ''
   const courses = allCourses.filter((course) => course.group_id === activeGroupId)
+  const activeCourseIds = new Set(courses.map((course) => course.id))
+  const todo = {
+    assignments: courses.filter((course) => course.assignment_enabled && !subSet.has(course.id)).length,
+    surveys: surveys.filter((survey) => activeCourseIds.has(survey.cohort_course_id) && !respSet.has(survey.id)).length,
+    quizzes: quizzes.filter((quiz) => activeCourseIds.has(quiz.cohort_course_id) && !quizSet.has(quiz.id)).length,
+  }
   const viewed = courses.filter((c) => viewedSet.has(c.id)).length
   const pct = courses.length ? Math.round((viewed / courses.length) * 100) : 0
   const allDone = todo.assignments === 0 && todo.surveys === 0 && todo.quizzes === 0
