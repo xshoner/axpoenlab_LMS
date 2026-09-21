@@ -12,14 +12,15 @@ export default function Dashboard() {
   const { profile, cohort } = useAuth()
   const nav = useNavigate()
   const [data, setData] = useState(null)
-  const [tooltip, setTooltip] = useState(null)
+  const [heatmapGroupId, setHeatmapGroupId] = useState('')
 
   useEffect(() => {
     let alive = true
     ;(async () => {
       const uid = profile.id
-      const [coursesQ, viewsQ, subsQ, noticesQ, boardQ, arcadeQ] = await Promise.all([
-        supabase.from('cohort_courses').select('id, course_no, title, assignment_enabled, assignment_due').order('course_no'),
+      const [coursesQ, groupsQ, viewsQ, subsQ, noticesQ, boardQ, arcadeQ] = await Promise.all([
+        supabase.from('cohort_courses').select('id, group_id, course_no, title, assignment_enabled, assignment_due').order('course_no'),
+        supabase.from('cohort_course_groups').select('id, name, sort_order, is_default').order('sort_order').order('created_at'),
         supabase.from('course_views').select('cohort_course_id').eq('user_id', uid),
         supabase.from('submissions').select('cohort_course_id').eq('user_id', uid),
         supabase.from('notices').select('id, title, created_at, pinned').order('pinned', { ascending: false }).order('created_at', { ascending: false }).limit(5),
@@ -56,6 +57,7 @@ export default function Dashboard() {
         arcade: arcadeQ.data?.[0] || null,
         arcadeError: !!arcadeQ.error,
         courses,
+        groups: groupsQ.data || [],
         viewedSet,
         notices: noticesQ.data || [],
         boardPosts: boardQ.data || [],
@@ -67,11 +69,15 @@ export default function Dashboard() {
       })
     })()
     return () => { alive = false }
-  }, [profile.id])
+  }, [profile.id, cohort?.id])
 
   if (!data) return <Loading />
 
-  const { courses, viewedSet, notices, boardPosts, todo } = data
+  const { courses: allCourses, groups, viewedSet, notices, boardPosts, todo } = data
+  const activeGroupId = groups.some((group) => group.id === heatmapGroupId)
+    ? heatmapGroupId
+    : groups.find((group) => group.is_default)?.id || groups[0]?.id || ''
+  const courses = allCourses.filter((course) => course.group_id === activeGroupId)
   const viewed = courses.filter((c) => viewedSet.has(c.id)).length
   const pct = courses.length ? Math.round((viewed / courses.length) * 100) : 0
   const allDone = todo.assignments === 0 && todo.surveys === 0 && todo.quizzes === 0
@@ -86,12 +92,20 @@ export default function Dashboard() {
       <section className="card-panel">
         <div className="row-between mb-16">
           <h2 className="t-h2">강좌 열람 히트맵</h2>
-          <span className="t-label tnum">
-            {viewed} / {courses.length} 강좌 열람 <span className="muted">({pct}%)</span>
-            {pct === 100 && courses.length > 0 && (
-              <span className="pill pill-done" style={{ marginLeft: 8 }}><span className="dot" />전 강좌 열람 완료</span>
+          <div className="dashboard-heatmap-controls">
+            {groups.length > 0 && (
+              <select className="select-sm dashboard-heatmap-group-select" value={activeGroupId}
+                onChange={(event) => setHeatmapGroupId(event.target.value)} aria-label="히트맵 강좌 그룹 선택">
+                {groups.map((group) => <option key={group.id} value={group.id}>{group.name}</option>)}
+              </select>
             )}
-          </span>
+            <span className="t-label tnum">
+              {viewed} / {courses.length} 강좌 열람 <span className="muted">({pct}%)</span>
+              {pct === 100 && courses.length > 0 && (
+                <span className="pill pill-done" style={{ marginLeft: 8 }}><span className="dot" />전 강좌 열람 완료</span>
+              )}
+            </span>
+          </div>
         </div>
         <div className="progress-track mb-16">
           <div className={`progress-fill ${pct === 100 ? 'complete' : ''}`} style={{ width: `${pct}%` }} />
@@ -109,8 +123,6 @@ export default function Dashboard() {
                   aria-label={`${pad2(c.course_no)}강 ${c.title} ${isViewed ? '열람 완료' : '미열람'}`}
                   title={c.title}
                   onClick={() => nav(`/courses/${c.id}`)}
-                  onMouseEnter={() => setTooltip(c.id)}
-                  onMouseLeave={() => setTooltip(null)}
                 >
                   {pad2(c.course_no)}
                 </button>
