@@ -533,6 +533,9 @@ input, textarea, select { font-family: inherit; }
 }
 .data-table td { height: 52px; padding: 8px 16px; border-top: 1px solid var(--border); white-space: nowrap; }
 .data-table tbody tr:hover { background: var(--primary-tint); }
+.hall-of-fame-table th { font-size: 12px; }
+.hall-of-fame-table th.hall-emphasis-head { font-size: 13px; }
+.hall-of-fame-table .hall-rank-cell, .hall-of-fame-table .hall-date-cell { font-size: 13px; }
 .data-table .sticky-col { position: sticky; left: 0; background: var(--background); z-index: 1; }
 .data-table thead .sticky-col { background: var(--surface); z-index: 3; }
 .members-page { min-width: 0; width: 100%; }

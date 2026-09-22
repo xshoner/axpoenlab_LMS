@@ -55,30 +55,32 @@ function HallList() {
           description="해커톤이 마감되면 상위 3개 결과물이 자동으로 이곳에 기록됩니다." />
       ) : (
         <div className="table-wrap">
-          <table className="data-table">
+          <table className="data-table hall-of-fame-table">
             <thead>
               <tr>
+                <th className="hall-emphasis-head" style={{ width: 150 }}>순위</th>
                 <th>웹앱 제목</th>
-                <th style={{ width: 110 }}>기수</th>
-                <th style={{ width: 150 }}>순위</th>
-                <th style={{ width: 110 }}>날짜</th>
                 <th style={{ width: 130 }}>소속</th>
                 <th style={{ width: 110 }}>이름</th>
+                <th style={{ width: 110 }}>기수</th>
+                <th style={{ width: 170 }}>최종 별점</th>
+                <th className="hall-emphasis-head" style={{ width: 110 }}>등재일</th>
               </tr>
             </thead>
             <tbody>
               {rows.map((r) => (
                 <tr key={r.id}>
+                  <td className="hall-rank-cell"><RankBadge rank={r.rank} /></td>
                   <td>
                     <Link to={r.id} style={{ textDecoration: 'none', color: 'var(--foreground)', fontWeight: r.rank === 1 ? 700 : 400 }}>
                       {r.title}
                     </Link>
                   </td>
-                  <td className="t-muted-sm">{r.cohort_name || '-'}</td>
-                  <td><RankBadge rank={r.rank} avg={r.avg_rating} /></td>
-                  <td className="tnum">{fmtDate(r.created_at)}</td>
                   <td className="t-muted-sm">{r.author_org || '-'}</td>
                   <td className="t-muted-sm">{r.author_name}</td>
+                  <td className="t-muted-sm">{r.cohort_name || '-'}</td>
+                  <td><StarRating value={r.avg_rating} size={13} showValue count={r.rating_count} /></td>
+                  <td className="tnum hall-date-cell">{fmtDate(r.created_at)}</td>
                 </tr>
               ))}
             </tbody>

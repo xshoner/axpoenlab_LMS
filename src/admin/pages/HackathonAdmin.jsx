@@ -332,26 +332,27 @@ export default function HackathonAdmin() {
             description="각 기수 해커톤을 마감하면 별점 상위 TOP 3가 자동으로 등재됩니다." />
         ) : (
           <div className="table-wrap">
-            <table className="data-table">
+            <table className="data-table hall-of-fame-table">
               <thead>
                 <tr>
-                  <th>웹앱 제목</th><th style={{ width: 120 }}>기수</th><th style={{ width: 120 }}>순위</th>
-                  <th>소속</th><th>이름</th><th style={{ width: 170 }}>최종 별점</th>
-                  <th style={{ width: 130 }}>등재일</th><th style={{ width: 60 }}></th>
+                  <th className="hall-emphasis-head" style={{ width: 120 }}>순위</th><th>웹앱 제목</th>
+                  <th>소속</th><th>이름</th><th style={{ width: 120 }}>기수</th>
+                  <th style={{ width: 170 }}>최종 별점</th><th className="hall-emphasis-head" style={{ width: 130 }}>등재일</th>
+                  <th style={{ width: 60 }}></th>
                 </tr>
               </thead>
               <tbody>
                 {hall.map((row) => (
                   <tr key={row.id}>
+                    <td className="hall-rank-cell"><span style={{ fontWeight: 700 }}>{RANK_LABEL[row.rank] || `TOP ${row.rank}`}</span></td>
                     <td className="t-emph">
                       {row.url ? <a href={row.url} target="_blank" rel="noreferrer" style={{ color: 'inherit' }}>{row.title}</a> : row.title}
                     </td>
-                    <td className="t-muted-sm">{row.cohort_name || cohortName(row.cohort_id)}</td>
-                    <td><span style={{ fontWeight: 700 }}>{RANK_LABEL[row.rank] || `TOP ${row.rank}`}</span></td>
                     <td className="t-muted-sm">{row.author_org || '-'}</td>
                     <td className="t-muted-sm">{row.author_name}</td>
+                    <td className="t-muted-sm">{row.cohort_name || cohortName(row.cohort_id)}</td>
                     <td><StarRating value={row.avg_rating} size={13} showValue count={row.rating_count} /></td>
-                    <td className="tnum">{fmtDate(row.created_at)}</td>
+                    <td className="tnum hall-date-cell">{fmtDate(row.created_at)}</td>
                     <td>
                       <button className="icon-btn danger" title="등재 삭제" onClick={() => setDeleteTarget({ hall: row })}>
                         <IconTrash size={16} stroke={1.75} />
