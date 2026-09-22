@@ -550,6 +550,13 @@ input, textarea, select { font-family: inherit; }
 
 /* ============ 차트·통계 ============ */
 .chart-panel { background: var(--background); border: 1px solid var(--border); border-radius: 16px; padding: 24px; }
+.dashboard-course-view-panel { min-width: 0; align-self: start; }
+.dashboard-course-group-select { min-width: 180px; max-width: 240px; }
+.dashboard-course-view-scroll {
+  max-height: 320px; overflow-y: auto; overflow-x: hidden; padding-right: 6px;
+  scrollbar-gutter: stable;
+}
+.dashboard-course-view-empty { min-height: 220px; padding: 72px 16px; }
 .kpi-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; }
 .hbar-row { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; }
 .hbar-label { width: 160px; flex-shrink: 0; font-size: 14px; text-align: right; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

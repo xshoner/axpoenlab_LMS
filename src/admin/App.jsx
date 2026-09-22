@@ -118,7 +118,10 @@ function AdminShell({ profile }) {
     setPassword({ current: '', next: '', confirm: '' })
   }
 
-  useEffect(() => { setDrawerOpen(false) }, [location.pathname])
+  useEffect(() => {
+    setDrawerOpen(false)
+    if (location.pathname === '/hackathon') select('')
+  }, [location.pathname])
 
   return (
     <>

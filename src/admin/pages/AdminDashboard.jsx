@@ -16,6 +16,7 @@ export default function AdminDashboard() {
   const { cohorts, selectedId, selected } = useCohort()
   const [global_, setGlobal] = useState(null)
   const [cohortStats, setCohortStats] = useState(null)
+  const [courseGroupId, setCourseGroupId] = useState('')
   const [visitRange, setVisitRange] = useState('month') // 'month': 최근 30일(일별) | 'year': 최근 1년(월별)
 
   // 전역 통계
@@ -61,11 +62,17 @@ export default function AdminDashboard() {
     let alive = true
     ;(async () => {
       setCohortStats(undefined)
-      const { data: members } = await supabase.from('cohort_members')
-        .select('user_id, profiles(name, status)').eq('cohort_id', selectedId)
+      const [membersQ, coursesQ, groupsQ] = await Promise.all([
+        supabase.from('cohort_members').select('user_id, profiles(name, status)').eq('cohort_id', selectedId),
+        supabase.from('cohort_courses').select('id, group_id, course_no, title, assignment_enabled')
+          .eq('cohort_id', selectedId).order('course_no'),
+        supabase.from('cohort_course_groups').select('id, name, sort_order, is_default')
+          .eq('cohort_id', selectedId).order('sort_order').order('created_at'),
+      ])
+      const members = membersQ.data || []
+      const courses = coursesQ.data || []
+      const courseGroups = groupsQ.data || []
       const userIds = (members || []).map((m) => m.user_id)
-      const { data: courses } = await supabase.from('cohort_courses')
-        .select('id, course_no, title, assignment_enabled').eq('cohort_id', selectedId).order('course_no')
       const courseIds = (courses || []).map((c) => c.id)
 
       let views = [], subs = [], surveys = [], quizzes = [], responses = [], quizSubs = [], inquiries = [], ratings = []
@@ -98,6 +105,7 @@ export default function AdminDashboard() {
       const n = userIds.length
       const courseViewRates = (courses || []).map((c) => ({
         name: `${pad2(c.course_no)}. ${c.title.slice(0, 12)}`,
+        groupId: c.group_id,
         열람률: n ? Math.round((views.filter((v) => v.cohort_course_id === c.id).length / n) * 100) : 0,
       }))
       const assignCourses = (courses || []).filter((c) => c.assignment_enabled)
@@ -117,10 +125,17 @@ export default function AdminDashboard() {
         .filter((r) => r.course)
         .sort((a, b) => Number(b.avg_rating) - Number(a.avg_rating) || b.rating_count - a.rating_count)
         .slice(0, 5)
+      const defaultCourseGroupId = courseGroups.find((group) => group.name.trim() === '기본 정규 강좌')?.id
+        || courseGroups.find((group) => group.is_default)?.id
+        || courseGroups.find((group) => group.name.includes('기본') || group.name.includes('정규'))?.id
+        || courseGroups[0]?.id || ''
 
+      setCourseGroupId((current) => courseGroups.some((group) => group.id === current) ? current : defaultCourseGroupId)
       setCohortStats({
         students: n,
         active: (members || []).filter((m) => m.profiles?.status === 'active').length,
+        courseGroups,
+        defaultCourseGroupId,
         courseViewRates, topRated, submitRate, surveyRate, quizRate, avgScore, inquiries,
       })
     })()
@@ -143,6 +158,11 @@ export default function AdminDashboard() {
     return Object.keys(byMonth).sort()
       .map((key) => ({ date: key.slice(2).replace('-', '.'), 방문: byMonth[key] }))
   }, [global_, visitRange])
+
+  const visibleCourseViewRates = useMemo(() => {
+    if (!cohortStats) return []
+    return cohortStats.courseViewRates.filter((course) => course.groupId === courseGroupId)
+  }, [cohortStats, courseGroupId])
 
   if (!global_) return <Loading />
 
@@ -242,10 +262,21 @@ export default function AdminDashboard() {
                 <StatCard label="퀴즈 평균 점수" value={cohortStats.avgScore} caption="채점 완료 기준" />
               </div>
               <div className="grid-2">
-                <div className="chart-panel">
-                  <h3 className="t-h3 mb-16">강좌별 열람률</h3>
-                  <ResponsiveContainer width="100%" height={Math.max(200, cohortStats.courseViewRates.length * 34)}>
-                    <BarChart data={cohortStats.courseViewRates} layout="vertical">
+                <div className="chart-panel dashboard-course-view-panel">
+                  <div className="row-between mb-16" style={{ gap: 12, flexWrap: 'wrap' }}>
+                    <h3 className="t-h3">강좌별 열람률</h3>
+                    <select className="select-sm dashboard-course-group-select" value={courseGroupId}
+                      onChange={(event) => setCourseGroupId(event.target.value)} aria-label="열람률 강좌 그룹 선택">
+                      {cohortStats.courseGroups.map((group) => (
+                        <option key={group.id} value={group.id}>{group.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                  {visibleCourseViewRates.length === 0 ? (
+                    <div className="empty-state dashboard-course-view-empty">선택한 그룹에 등록된 강좌가 없습니다.</div>
+                  ) : <div className="dashboard-course-view-scroll">
+                  <ResponsiveContainer width="100%" height={Math.max(220, visibleCourseViewRates.length * 34)}>
+                    <BarChart data={visibleCourseViewRates} layout="vertical">
                       <defs>
                         {/* 가로 막대 — 두께 방향(위→아래) 그라디언트로 원통형 입체감 */}
                         <linearGradient id="barGradView" x1="0" y1="0" x2="0" y2="1">
@@ -262,6 +293,7 @@ export default function AdminDashboard() {
                         label={{ position: 'right', fontSize: 11, formatter: (v) => `${v}%` }} isAnimationActive={false} />
                     </BarChart>
                   </ResponsiveContainer>
+                  </div>}
                 </div>
                 <div className="stack">
                   <div className="chart-panel">
