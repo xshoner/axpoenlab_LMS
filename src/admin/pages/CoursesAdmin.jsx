@@ -14,12 +14,14 @@ import { fmtBytes, fmtDate, pad2, downloadFile, uploadFile, storageSafeName } fr
 import { useDraft, DraftBadge } from '../../shared/draft'
 
 export default function CoursesAdmin() {
+  const { profile } = useAuth()
+  const isSuper = profile.role === 'super_admin' && !getAdminView()
   const location = useLocation()
   const navigate = useNavigate()
   const detailMatch = location.pathname.match(/^\/courses\/(master|mine|cohort)\/([^/]+)$/)
-  const detailType = detailMatch?.[1] || null
+  const detailType = isSuper && detailMatch?.[1] === 'mine' ? 'master' : detailMatch?.[1] || null
   const detailId = detailMatch?.[2] || null
-  const [tab, setTab] = useState(detailType || 'cohort') // cohort | master
+  const [tab, setTab] = useState(detailType || (isSuper ? 'master' : 'mine'))
 
   useEffect(() => {
     if (detailType) setTab(detailType)
@@ -35,9 +37,11 @@ export default function CoursesAdmin() {
   return (
     <div className="stack" style={{ gap: 24 }}>
       <div className="row" style={{ gap: 8 }}>
+        {isSuper
+          ? <button className={`btn btn-sm ${tab === 'master' ? 'btn-primary' : 'btn-white'}`} onClick={() => selectTab('master')}>마스터 강좌</button>
+          : <button className={`btn btn-sm ${tab === 'mine' ? 'btn-primary' : 'btn-white'}`} onClick={() => selectTab('mine')}>내 강좌</button>}
         <button className={`btn btn-sm ${tab === 'cohort' ? 'btn-primary' : 'btn-white'}`} onClick={() => selectTab('cohort')}>기수별 강좌</button>
-        <button className={`btn btn-sm ${tab === 'mine' ? 'btn-primary' : 'btn-white'}`} onClick={() => selectTab('mine')}>내 강좌</button>
-        <button className={`btn btn-sm ${tab === 'master' ? 'btn-primary' : 'btn-white'}`} onClick={() => selectTab('master')}>마스터 강좌 라이브러리</button>
+        {!isSuper && <button className={`btn btn-sm ${tab === 'master' ? 'btn-primary' : 'btn-white'}`} onClick={() => selectTab('master')}>마스터 강좌 라이브러리</button>}
       </div>
       {tab === 'cohort'
         ? <CohortCourses detailId={detailType === 'cohort' ? detailId : null} onOpen={(course) => openCourse('cohort', course)} onClose={closeCourse} />
@@ -52,6 +56,7 @@ function MasterCourses({ library, detailId, onOpen, onClose }) {
   const view = getAdminView()
   const ownerId = view?.id || profile.id
   const readOnly = !!view || (library && profile.role !== 'super_admin')
+  const canCopyToMine = library && !view && profile.role !== 'super_admin'
   async function copyToMine(course) {
     setBusy(true)
     const { error } = await supabase.rpc('copy_master_to_my_courses', { p_course_id: course.id })
@@ -74,12 +79,11 @@ function MasterCourses({ library, detailId, onOpen, onClose }) {
       const { error } = await supabase.rpc('ensure_my_course_group')
       if (error) { toast('내 강좌를 준비하지 못했습니다.', 'error'); setGroups([]); setRows([]); return }
     }
-    let query = supabase.from('master_course_groups').select('*').order('sort_order').order('created_at')
-    if (!library) query = query.eq('owner_admin_id', ownerId)
-    else query = query.is('owner_admin_id', null)
+    const query = library ? supabase.rpc('master_library_group_list')
+      : supabase.from('master_course_groups').select('*').eq('owner_admin_id', ownerId).order('sort_order').order('created_at')
     const { data, error } = await query
     if (error) { toast('강좌 그룹을 불러오지 못했습니다.', 'error'); setGroups([]); return }
-    const next = data || []
+    const next = (data || []).map((g) => library && g.owner_admin_id && g.name === '내 강좌' ? { ...g, name: '마스터 강좌' } : g)
     setGroups(next)
     setGroupId((current) => {
       if (preferredId && next.some((group) => group.id === preferredId)) return preferredId
@@ -153,7 +157,7 @@ function MasterCourses({ library, detailId, onOpen, onClose }) {
         isMaster course={editing}
         onBack={() => { setEditing(null); onClose() }}
         onEdit={readOnly ? null : () => setMode('edit')}
-        onCopy={library && !view ? () => copyToMine(editing) : null}
+        onCopy={canCopyToMine ? () => copyToMine(editing) : null}
       />
     }
     return <CourseEditor
@@ -171,7 +175,7 @@ function MasterCourses({ library, detailId, onOpen, onClose }) {
         onChanged={loadGroups}
       />
       <div className="row-between">
-        <p className="t-muted-sm">{library ? '슈퍼관리자의 마스터 강좌입니다. 내 강좌로 복사하여 독립적으로 수정할 수 있습니다.' : '내 강좌는 자유롭게 수정·삭제하고 내 기수에 배정할 수 있습니다.'}</p>
+        <p className="t-muted-sm">{library ? (readOnly ? '슈퍼관리자의 마스터 강좌입니다. 내 강좌로 복사하여 독립적으로 수정할 수 있습니다.' : '마스터 강좌를 관리하고 기수에 배정할 수 있습니다.') : '내 강좌는 자유롭게 수정·삭제하고 내 기수에 배정할 수 있습니다.'}</p>
         {!readOnly && <button className="btn btn-primary btn-sm" onClick={() => { setMode('edit'); setEditing('new') }}><IconPlus size={14} stroke={1.75} /> {library ? '새 마스터 강좌' : '새 내 강좌'}</button>}
       </div>
       {!rows ? <Loading /> : rows.length === 0 ? (
@@ -197,7 +201,7 @@ function MasterCourses({ library, detailId, onOpen, onClose }) {
                     {!readOnly && <button className="icon-btn danger" onClick={(e) => { e.stopPropagation(); setDeleteTarget(c) }}>
                       <IconTrash size={16} stroke={1.75} />
                     </button>}
-                    {library && !view && <button className="btn btn-white btn-sm" disabled={busy}
+                    {canCopyToMine && <button className="btn btn-white btn-sm" disabled={busy}
                       onClick={(e) => { e.stopPropagation(); copyToMine(c) }}>내 강좌로 복사</button>}
                   </div>
                 </div>

@@ -41,12 +41,17 @@ reset role;
 select set_config('request.jwt.claims',jsonb_build_object('sub',student,'role','authenticated')::text,true) from tenant_test_ids;
 set local role authenticated;
 select public.join_cohort_by_code(ca::text) from tenant_test_ids;
+do $$ begin
+  if jsonb_array_length(public.student_dashboard()->'courses') <> 0 then raise exception 'student dashboard leaks unrelated courses'; end if;
+end $$;
 reset role;
 select set_config('request.jwt.claims',jsonb_build_object('sub',a,'role','authenticated')::text,true) from tenant_test_ids;
 set local role authenticated;
 do $$ begin
   if not exists(select 1 from public.profiles where id=(select student from tenant_test_ids)) then raise exception 'invited student missing'; end if;
   if (select count(*) from public.profiles where role='student') <> 1 then raise exception 'unrelated member visible'; end if;
+  if (public.admin_dashboard_overview()->>'totalStudents')::int <> 1 then raise exception 'admin dashboard member scope'; end if;
+  if exists(select 1 from public.master_library_group_list() where owner_admin_id=(select a from tenant_test_ids)) then raise exception 'personal admin group exposed as master'; end if;
 end $$;
 reset role;
 select set_config('request.jwt.claims',jsonb_build_object('sub',super,'role','authenticated')::text,true),
@@ -54,6 +59,7 @@ select set_config('request.jwt.claims',jsonb_build_object('sub',super,'role','au
 set local role authenticated;
 do $$ declare n int; begin
   if (select count(*) from public.cohorts) <> 1 then raise exception 'super preview not scoped'; end if;
+  if (public.admin_dashboard_overview()->>'totalStudents')::int <> 1 then raise exception 'preview dashboard not scoped'; end if;
   update public.cohorts set name='forbidden' where id=(select ca from tenant_test_ids);
   get diagnostics n=row_count;
   if n <> 0 then raise exception 'super preview write allowed'; end if;

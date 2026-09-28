@@ -12,65 +12,29 @@ export default function Dashboard() {
   const { profile, cohort } = useAuth()
   const nav = useNavigate()
   const [data, setData] = useState(null)
+  const [loadError, setLoadError] = useState(false)
   const [heatmapGroupId, setHeatmapGroupId] = useState('')
 
   useEffect(() => {
     let alive = true
-    ;(async () => {
-      const uid = profile.id
-      const [coursesQ, groupsQ, viewsQ, subsQ, noticesQ, boardQ, arcadeQ] = await Promise.all([
-        supabase.from('cohort_courses').select('id, group_id, course_no, title, assignment_enabled, assignment_due').order('course_no'),
-        supabase.from('cohort_course_groups').select('id, name, sort_order, is_default').order('sort_order').order('created_at'),
-        supabase.from('course_views').select('cohort_course_id').eq('user_id', uid),
-        supabase.from('submissions').select('cohort_course_id').eq('user_id', uid),
-        supabase.from('notices').select('id, title, created_at, pinned').order('pinned', { ascending: false }).order('created_at', { ascending: false }).limit(5),
-        supabase.from('board_posts')
-          .select('id, title, author_name, author_org, created_at, board_comments(count)')
-          .order('created_at', { ascending: false }).limit(5),
-        supabase.from('arcade_games').select('id, name, description, url').order('created_at', { ascending: false }).order('id', { ascending: false }).limit(1),
-      ])
-      const courses = coursesQ.data || []
-      const courseIds = courses.map((c) => c.id)
-      let surveys = [], quizzes = [], myResponses = [], myQuizSubs = []
-      if (courseIds.length) {
-        const [sv, qz] = await Promise.all([
-          supabase.from('surveys').select('id, cohort_course_id, status').in('cohort_course_id', courseIds).eq('status', 'open'),
-          supabase.from('quizzes').select('id, cohort_course_id, status').in('cohort_course_id', courseIds).eq('status', 'open'),
-        ])
-        surveys = sv.data || []
-        quizzes = qz.data || []
-        if (surveys.length) {
-          const { data: r } = await supabase.from('survey_responses').select('survey_id').eq('user_id', uid)
-          myResponses = r || []
-        }
-        if (quizzes.length) {
-          const { data: r } = await supabase.from('quiz_submissions').select('quiz_id').eq('user_id', uid)
-          myQuizSubs = r || []
-        }
-      }
+    setData(null)
+    setLoadError(false)
+    supabase.rpc('student_dashboard').then(({ data: snapshot, error }) => {
       if (!alive) return
-      const viewedSet = new Set((viewsQ.data || []).map((v) => v.cohort_course_id))
-      const subSet = new Set((subsQ.data || []).map((s) => s.cohort_course_id))
-      const respSet = new Set(myResponses.map((r) => r.survey_id))
-      const quizSet = new Set(myQuizSubs.map((r) => r.quiz_id))
+      if (error) { setLoadError(true); return }
       setData({
-        arcade: arcadeQ.data?.[0] || null,
-        arcadeError: !!arcadeQ.error,
-        courses,
-        groups: groupsQ.data || [],
-        viewedSet,
-        subSet,
-        surveys,
-        quizzes,
-        respSet,
-        quizSet,
-        notices: noticesQ.data || [],
-        boardPosts: boardQ.data || [],
+        ...snapshot,
+        viewedSet: new Set(snapshot.views),
+        subSet: new Set(snapshot.submissions),
+        respSet: new Set(snapshot.responses),
+        quizSet: new Set(snapshot.quizSubmissions),
+        arcadeError: false,
       })
-    })()
+    })
     return () => { alive = false }
   }, [profile.id, cohort?.id])
 
+  if (loadError) return <EmptyState title="대시보드를 불러오지 못했습니다" action={<button className="btn btn-white" onClick={() => window.location.reload()}>다시 시도</button>} />
   if (!data) return <Loading />
 
   const {

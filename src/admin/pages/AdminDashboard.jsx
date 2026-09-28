@@ -8,53 +8,36 @@ import { IconPin, IconNotes, IconSpeakerphone, IconTrash, IconMessages } from '@
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../shared/auth'
 import { useCohort } from '../cohortContext'
-import { Loading, StatCard, StarRating, useToast } from '../../shared/ui'
+import { Loading, EmptyState, StatCard, StarRating, useToast } from '../../shared/ui'
 import { fmtDate, pad2 } from '../../lib/helpers'
 import { AiBookmarks } from '../../shared/bookmarks'
 
 export default function AdminDashboard() {
   const { cohorts, selectedId, selected } = useCohort()
+  const { profile } = useAuth()
+  const [loadError, setLoadError] = useState(false)
   const [global_, setGlobal] = useState(null)
   const [cohortStats, setCohortStats] = useState(null)
   const [courseGroupId, setCourseGroupId] = useState('')
   const [visitRange, setVisitRange] = useState('month') // 'month': 최근 30일(일별) | 'year': 최근 1년(월별)
 
-  // 전역 통계
+  // One RLS-protected snapshot; cohort metadata loading must not refetch it.
   useEffect(() => {
     let alive = true
-    ;(async () => {
-      const [membersQ, coursesQ, subsQ, inqQ, visitsQ, visitSeriesQ, noticesQ, boardQ] = await Promise.all([
-        supabase.from('cohort_members').select('cohort_id'),
-        supabase.from('cohort_courses').select('id', { count: 'exact', head: true }),
-        supabase.from('submissions').select('id', { count: 'exact', head: true }),
-        supabase.from('inquiries').select('id', { count: 'exact', head: true }).eq('status', 'open'),
-        supabase.rpc('visit_stats'),
-        supabase.rpc('visit_series', { p_days: 365 }),
-        supabase.from('notices').select('id, title, pinned, created_at, cohort_id')
-          .order('pinned', { ascending: false }).order('created_at', { ascending: false }).limit(6),
-        supabase.from('board_posts')
-          .select('id, title, author_name, author_org, is_guest, created_at, board_comments(count)')
-          .order('created_at', { ascending: false }).limit(5),
-      ])
+    setGlobal(null)
+    setLoadError(false)
+    supabase.rpc('admin_dashboard_overview').then(({ data, error }) => {
       if (!alive) return
-      const perCohort = cohorts.map((c) => ({
-        name: c.name,
-        학생수: (membersQ.data || []).filter((m) => m.cohort_id === c.id).length,
-      }))
-      setGlobal({
-        totalStudents: (membersQ.data || []).length,
-        totalCourses: coursesQ.count || 0,
-        totalSubmissions: subsQ.count || 0,
-        unanswered: inqQ.count || 0,
-        visits: visitsQ.data || { today: 0, total: 0 },
-        visitSeriesRaw: visitSeriesQ.data || [],
-        perCohort,
-        notices: noticesQ.data || [],
-        boardPosts: boardQ.data || [],
-      })
-    })()
+      if (error) { setLoadError(true); return }
+      setGlobal(data)
+    })
     return () => { alive = false }
-  }, [cohorts])
+  }, [profile.id])
+
+  const perCohort = useMemo(() => {
+    const counts = new Map((global_?.memberCounts || []).map((m) => [m.cohort_id, Number(m.count)]))
+    return cohorts.map((c) => ({ name: c.name, 학생수: counts.get(c.id) || 0 }))
+  }, [cohorts, global_])
 
   // 선택 기수 통계
   useEffect(() => {
@@ -69,11 +52,16 @@ export default function AdminDashboard() {
         supabase.from('cohort_course_groups').select('id, name, sort_order, is_default')
           .eq('cohort_id', selectedId).order('sort_order').order('created_at'),
       ])
+      if (!alive) return
       const members = membersQ.data || []
       const courses = coursesQ.data || []
       const courseGroups = groupsQ.data || []
       const userIds = (members || []).map((m) => m.user_id)
       const courseIds = (courses || []).map((c) => c.id)
+      const inquiryRequest = Promise.resolve(supabase.from('inquiries')
+        .select('id, title, status, created_at, profiles!inquiries_user_id_fkey(name)')
+        .in('user_id', userIds.length ? userIds : ['00000000-0000-0000-0000-000000000000'])
+        .order('status', { ascending: false }).order('created_at', { ascending: false }).limit(10))
 
       let views = [], subs = [], surveys = [], quizzes = [], responses = [], quizSubs = [], inquiries = [], ratings = []
       if (courseIds.length) {
@@ -84,21 +72,17 @@ export default function AdminDashboard() {
           supabase.from('quizzes').select('id, status').in('cohort_course_id', courseIds).neq('status', 'draft'),
           supabase.from('course_rating_stats').select('cohort_course_id, avg_rating, rating_count').eq('cohort_id', selectedId),
         ])
+        if (!alive) return
         views = vQ.data || []; subs = sQ.data || []; surveys = svQ.data || []; quizzes = qzQ.data || []
         ratings = rtQ.data || []
-        if (surveys.length) {
-          const { data } = await supabase.from('survey_responses').select('survey_id, user_id').in('survey_id', surveys.map((s) => s.id))
-          responses = data || []
-        }
-        if (quizzes.length) {
-          const { data } = await supabase.from('quiz_submissions').select('quiz_id, user_id, total_score, graded').in('quiz_id', quizzes.map((q) => q.id))
-          quizSubs = data || []
-        }
+        const [responseQ, quizSubmissionQ] = await Promise.all([
+          surveys.length ? supabase.from('survey_responses').select('survey_id, user_id').in('survey_id', surveys.map((s) => s.id)) : Promise.resolve({ data: [] }),
+          quizzes.length ? supabase.from('quiz_submissions').select('quiz_id, user_id, total_score, graded').in('quiz_id', quizzes.map((q) => q.id)) : Promise.resolve({ data: [] }),
+        ])
+        responses = responseQ.data || []
+        quizSubs = quizSubmissionQ.data || []
       }
-      const { data: inq } = await supabase.from('inquiries')
-        .select('id, title, status, created_at, profiles!inquiries_user_id_fkey(name)')
-        .in('user_id', userIds.length ? userIds : ['00000000-0000-0000-0000-000000000000'])
-        .order('status', { ascending: false }).order('created_at', { ascending: false }).limit(10)
+      const { data: inq } = await inquiryRequest
       inquiries = inq || []
 
       if (!alive) return
@@ -164,6 +148,7 @@ export default function AdminDashboard() {
     return cohortStats.courseViewRates.filter((course) => course.groupId === courseGroupId)
   }, [cohortStats, courseGroupId])
 
+  if (loadError) return <EmptyState title="대시보드를 불러오지 못했습니다" action={<button className="btn btn-white" onClick={() => window.location.reload()}>다시 시도</button>} />
   if (!global_) return <Loading />
 
   return (
@@ -181,7 +166,7 @@ export default function AdminDashboard() {
           <div className="chart-panel">
             <h3 className="t-h3 mb-16">기수별 학생 수</h3>
             <ResponsiveContainer width="100%" height={150}>
-              <BarChart data={global_.perCohort}>
+              <BarChart data={perCohort}>
                 <defs>
                   <linearGradient id="barGradCohort" x1="0" y1="0" x2="0" y2="1">
                     <stop offset="0%" stopColor="#3d6db3" />
