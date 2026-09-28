@@ -80,3 +80,12 @@ GitHub push만으로 Vercel에 자동 배포되지 않는다 (`PROJECT_LINKS.md`
 - `supabase/tests/admin_tenant_smoke.sql`을 운영 PostgreSQL에서 실행하여 관리자 간 격리,
   코드 가입 후 회원 조회, 마스터 보호·독립 복사, 슈퍼관리자 전체 조회·읽기 전용 화면을 확인했다.
   테스트 계정과 데이터는 하나의 트랜잭션 안에서 생성하고 전부 롤백했다.
+- 배포 소스 커밋: `b4cfa7c0eeeb7a4a48e3112bfcf0059e6d04eed9` (GitHub CI 성공).
+- Edge Functions: `signup` v3, `admin-users` v4 활성 상태 확인.
+- Vercel 배포: `dpl_FKgWKojTX1KGKzR3v4Kssga6Pajs`, 프로덕션 READY.
+  운영 주소 `https://lms-axopenlab.vercel.app`, 배포 고유 주소
+  `https://lms-axopenlab-3q922alt3-xshoner-3375s-projects.vercel.app`.
+- 실제 운영 HTML·참조 에셋 HTTP 200, 새 관리자 번들 `admin-FaTTOK9Q.js`, Edge Function의
+  입력 검증·미인증 거절 및 PostgREST 문의/프로필 관계 확인 완료.
+- 로그인된 브라우저가 연결되어 있지 않아 계정별 화면 클릭 검증은 수행하지 않았다.
+  계정별 권한과 데이터 흐름은 운영 DB의 인증 역할 테스트와 로컬 자동 테스트로 검증했다.
