@@ -22,36 +22,45 @@ export default function CourseDetail() {
 
   useEffect(() => {
     let alive = true
+    setCourse(null)
+    setSiblings([])
+    setSurveyStates([])
+    setQuizStates([])
+    setMyRating(0)
+    setRatingStats(null)
     ;(async () => {
       // 열람 판정: 페이지 진입 즉시 (Q6)
       supabase.rpc('record_course_view', { p_course_id: id }).then(() => {})
-      const [cQ, allQ, rQ, rsQ] = await Promise.all([
-        supabase.from('cohort_courses')
+      const cQ = await supabase.from('cohort_courses')
           .select('*, cohort_attachments(*), surveys(id, title, status, allow_edit), quizzes(id, title, status, reveal_answers)')
-          .eq('id', id).single(),
-        supabase.from('cohort_courses').select('id, group_id, course_no').order('course_no'),
-        supabase.from('course_ratings').select('rating').eq('cohort_course_id', id).eq('user_id', profile.id).maybeSingle(),
-        supabase.from('course_rating_stats').select('avg_rating, rating_count').eq('cohort_course_id', id).maybeSingle(),
-      ])
+          .eq('id', id).single()
       if (!alive) return
       if (!cQ.data) { setCourse(false); return }
+      // Render the lesson immediately; navigation/ratings must not hold up its body.
       setCourse(cQ.data)
-      setSiblings((allQ.data || []).filter((sibling) => sibling.group_id === cQ.data.group_id))
-      setMyRating(rQ.data?.rating || 0)
-      setRatingStats(rsQ.data || null)
       const openSurveys = (cQ.data.surveys || []).filter((s) => s.status !== 'draft')
       const openQuizzes = (cQ.data.quizzes || []).filter((q) => q.status !== 'draft')
-      if (openSurveys.length) {
-        const { data: r } = await supabase.from('survey_responses').select('survey_id').eq('user_id', profile.id)
-          .in('survey_id', openSurveys.map((s) => s.id))
-        if (alive) setSurveyStates((r || []).map((x) => x.survey_id))
-      }
-      if (openQuizzes.length) {
-        const { data: r } = await supabase.from('quiz_submissions').select('quiz_id, graded').eq('user_id', profile.id)
-          .in('quiz_id', openQuizzes.map((q) => q.id))
-        if (alive) setQuizStates(r || [])
-      }
+      const [allQ, surveyQ, quizQ] = await Promise.all([
+        supabase.from('cohort_courses').select('id, course_no')
+          .eq('group_id', cQ.data.group_id).order('course_no'),
+        openSurveys.length ? supabase.from('survey_responses').select('survey_id').eq('user_id', profile.id)
+          .in('survey_id', openSurveys.map((s) => s.id)) : Promise.resolve({ data: [] }),
+        openQuizzes.length ? supabase.from('quiz_submissions').select('quiz_id, graded').eq('user_id', profile.id)
+          .in('quiz_id', openQuizzes.map((q) => q.id)) : Promise.resolve({ data: [] }),
+      ])
+      if (!alive) return
+      setSiblings(allQ.data || [])
+      setSurveyStates((surveyQ.data || []).map((x) => x.survey_id))
+      setQuizStates(quizQ.data || [])
     })()
+    Promise.all([
+      supabase.from('course_ratings').select('rating').eq('cohort_course_id', id).eq('user_id', profile.id).maybeSingle(),
+      supabase.from('course_rating_stats').select('avg_rating, rating_count').eq('cohort_course_id', id).maybeSingle(),
+    ]).then(([rQ, rsQ]) => {
+      if (!alive) return
+      setMyRating(rQ.data?.rating || 0)
+      setRatingStats(rsQ.data || null)
+    })
     return () => { alive = false }
   }, [id, profile.id])
 

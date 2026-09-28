@@ -221,9 +221,44 @@ for (const table of ['submissions','submission_logs','course_views','survey_resp
 assert.equal((await scalar('select public.rate_hackathon($1,1)',[entry])).ok,false)
 assert.equal(await scalar('select count(*)::int from public.hackathon_rating_stats'),0)
 console.log('PASS: student learning flows, grading, hackathon close and all derived records isolated')
+await as('a')
+const aCourseGroup = await scalar('select group_id from public.cohort_courses where id=$1',[aCourse])
+await db.query('update public.cohort_course_groups set is_published=false where id=$1',[aCourseGroup])
+await as('sa')
+assert.equal(await scalar('select count(*)::int from public.cohort_courses where id=$1',[aCourse]),0)
+assert.equal(await scalar('select count(*)::int from public.cohort_attachments where cohort_course_id=$1',[aCourse]),0)
+assert.equal(await scalar('select count(*)::int from public.student_course_list($1)',[aCourseGroup]),0)
+assert.equal(await scalar('select count(*)::int from public.quiz_questions_student where quiz_id=$1',[aQuiz]),0)
+console.log('PASS: optimized tenant sets retain student publication and attachment/quiz restrictions')
+
+// Compare optimized predicates with the original full-row implementation across
+// every fixture and role, including rows RLS would normally hide from the caller.
+await system()
+const originalTenantSql = fs.readFileSync('supabase/migrations/20260928010000_admin_tenant_isolation.sql', 'utf8')
+const referenceTenantFunction = originalTenantSql.slice(originalTenantSql.indexOf('create function private.tenant_row('), originalTenantSql.indexOf('-- A restrictive boundary'))
+  .replaceAll('private.tenant_row(', 'private.tenant_row_reference(')
+await db.exec(referenceTenantFunction)
+await db.exec(`create function private.assert_tenant_policy_equivalence() returns void
+language plpgsql security definer set search_path='' as $$
+declare p record; mismatch bigint; writing boolean; expression text;
+begin
+  for p in select * from pg_policies where schemaname='public' and policyname in ('tenant_read','tenant_insert','tenant_update','tenant_delete') loop
+    writing := p.policyname <> 'tenant_read';
+    expression := coalesce(p.qual,p.with_check);
+    execute format('select count(*) from public.%I where coalesce(private.tenant_row_reference(%L,to_jsonb(%I),%L),false) is distinct from coalesce((%s),false)',
+      p.tablename,p.tablename,p.tablename,writing,expression) into mismatch;
+    if mismatch <> 0 then raise exception 'Authorization changed for %.% (% rows)',p.tablename,p.policyname,mismatch; end if;
+  end loop;
+end $$;`)
+for (const [who, view] of [['super'],['a'],['b'],['sa'],['sb'],['super','a'],['a','b']]) {
+  await as(who,view)
+  await db.query('select private.assert_tenant_policy_equivalence()')
+}
+console.log('PASS: optimized read/write policies match original authorization for all fixtures and roles')
 await system()
 await db.query(`update public.profiles set status='inactive' where id=$1`, [ids.a])
 await as('a')
+await db.query('select private.assert_tenant_policy_equivalence()')
 assert.equal(await scalar('select count(*)::int from public.cohorts'), 0)
 await denied('select public.copy_master_to_my_courses($1)', [ids.master])
 console.log('PASS: scoped online/visit counts and inactive-account denial')

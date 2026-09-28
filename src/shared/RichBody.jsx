@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useMemo, useRef } from 'react'
 import { sanitizeRichBody } from '../lib/helpers'
 
 /* 본문(rich body) 렌더러 — 복사 블록(.copy-block)의 [복사] 버튼을 동작시킨다.
@@ -22,6 +22,7 @@ export async function copyText(text) {
 
 export default function RichBody({ html, className = '', style }) {
   const ref = useRef(null)
+  const safeHtml = useMemo(() => sanitizeRichBody(html || ''), [html])
 
   useEffect(() => {
     const el = ref.current
@@ -45,6 +46,6 @@ export default function RichBody({ html, className = '', style }) {
 
   return (
     <div ref={ref} className={`rich-body ${className}`} style={style}
-      dangerouslySetInnerHTML={{ __html: sanitizeRichBody(html || '') }} />
+      dangerouslySetInnerHTML={{ __html: safeHtml }} />
   )
 }
