@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { IconPlus, IconTrash } from '@tabler/icons-react'
-import { supabase, FUNCTIONS_URL } from '../../lib/supabase'
+import { getAdminView, supabase, FUNCTIONS_URL, openAdminView } from '../../lib/supabase'
 import { useAuth } from '../../shared/auth'
 import { ConfirmDialog, Dialog, EmptyState, Loading, StatusPill, useToast } from '../../shared/ui'
 import { fmtDate, ROLE_LABEL } from '../../lib/helpers'
@@ -25,7 +25,7 @@ export default function AdminAccounts() {
     const { data: { session } } = await supabase.auth.getSession()
     const res = await fetch(`${FUNCTIONS_URL}/admin-users`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
+      headers: { 'Content-Type': 'application/json', ...(getAdminView() ? { 'x-admin-view': getAdminView().id } : {}), Authorization: `Bearer ${session.access_token}` },
       body: JSON.stringify(body),
     })
     return res.json()
@@ -52,7 +52,7 @@ export default function AdminAccounts() {
     setBusy(true)
     try {
       const json = await callFn({ action: 'delete_user', user_id: deleteTarget.id })
-      if (!json.ok) { toast('삭제에 실패했습니다.', 'error'); return }
+      if (!json.ok) { toast(json.error === 'admin_has_data' ? '운영 데이터가 있는 관리자는 삭제할 수 없습니다. 비활성화를 이용해 주세요.' : '삭제에 실패했습니다.', 'error'); return }
       toast('관리자 계정이 삭제되었습니다.')
       setDeleteTarget(null)
       load()
@@ -90,7 +90,7 @@ export default function AdminAccounts() {
           <tbody>
             {rows.map((r) => (
               <tr key={r.id}>
-                <td className="t-emph">{r.name}</td>
+                <td className="t-emph">{r.role === 'admin' ? <button className="btn btn-text" onClick={() => openAdminView(r)}>{r.name} · 화면 보기</button> : r.name}</td>
                 <td className="t-muted-sm">{r.email}</td>
                 <td>{r.role === 'super_admin' ? <span className="badge-role">슈퍼관리자</span> : <span className="badge-role-soft">관리자</span>}</td>
                 <td>{r.status === 'active' ? <StatusPill kind="done">활성</StatusPill> : <StatusPill kind="closed">비활성</StatusPill>}</td>

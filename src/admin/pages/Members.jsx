@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { IconFileSpreadsheet, IconSearch } from '@tabler/icons-react'
-import { AUTH_REDIRECT_URL, supabase, FUNCTIONS_URL } from '../../lib/supabase'
+import { AUTH_REDIRECT_URL, supabase, FUNCTIONS_URL, getAdminView } from '../../lib/supabase'
 import { useCohort } from '../cohortContext'
 import { ConfirmDialog, Dialog, EmptyState, Loading, StatusPill, useToast } from '../../shared/ui'
 import { fmtDate, downloadCsv, asOne } from '../../lib/helpers'
@@ -67,7 +67,7 @@ export default function Members() {
       const { data: { session } } = await supabase.auth.getSession()
       const res = await fetch(`${FUNCTIONS_URL}/admin-users`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session?.access_token}` },
+        headers: { 'Content-Type': 'application/json', ...(getAdminView() ? { 'x-admin-view': getAdminView().id } : {}), Authorization: `Bearer ${session?.access_token}` },
         body: JSON.stringify({ action: 'set_status', user_id: user.id, status: next }),
       })
       const json = await res.json()

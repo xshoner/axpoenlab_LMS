@@ -5,7 +5,7 @@ import {
   IconPencilQuestion, IconSpeakerphone, IconUsers, IconMessageCircleQuestion,
   IconShieldLock, IconSettings, IconLogout, IconMenu2, IconMessages, IconRocket, IconEye, IconHandStop,
 } from '@tabler/icons-react'
-import { supabase } from '../lib/supabase'
+import { supabase, getAdminView, closeAdminView } from '../lib/supabase'
 import { InactiveAccount, useAuth, signOut } from '../shared/auth'
 import { Aurora, Dialog, FooterBar, Loading, StatusPill, VisitorCounter, useToast } from '../shared/ui'
 import { CohortProvider, useCohort } from './cohortContext'
@@ -54,7 +54,9 @@ export default function AdminApp() {
     window.location.replace('/')
     return <Loading label="로그인 페이지로 이동 중…" />
   }
-  if (!profile) return <Loading />
+  if (!profile) return getAdminView()
+    ? <div className="card-panel"><p>관리자 화면 정보를 확인할 수 없습니다.</p><button className="btn btn-white" onClick={closeAdminView}>슈퍼관리자 화면으로 돌아가기</button></div>
+    : <Loading />
   if (profile.status !== 'active') return <InactiveAccount />
   if (profile.role === 'student') {
     window.location.replace('/')
@@ -82,7 +84,8 @@ function AdminShell({ profile }) {
   const [nickBusy, setNickBusy] = useState(false)
   const [password, setPassword] = useState({ current: '', next: '', confirm: '' })
   const [passwordBusy, setPasswordBusy] = useState(false)
-  const isSuper = profile.role === 'super_admin'
+  const adminView = profile.role === 'super_admin' ? getAdminView() : null
+  const isSuper = profile.role === 'super_admin' && !adminView
   const displayName = profile.nickname || profile.name
 
   async function saveNickname() {
@@ -249,6 +252,10 @@ function AdminShell({ profile }) {
             </div>
           </Dialog>
           <main className="content wide" style={{ maxWidth: 1440 }}>
+            {adminView && <div className="card-panel row-between mb-16" role="status">
+              <span><strong>{adminView.name}</strong> 관리자 화면 · 읽기 전용</span>
+              <button className="btn btn-white btn-sm" onClick={closeAdminView}>슈퍼관리자 화면으로 돌아가기</button>
+            </div>}
             <Suspense fallback={<Loading />}><Routes>
               <Route path="/arcade" element={<Arcade />} />
               <Route path="/arcade/:id" element={<Arcade />} />

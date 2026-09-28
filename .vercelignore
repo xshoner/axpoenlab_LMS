@@ -1,0 +1,8 @@
+.bkit/
+.git/
+.env*
+node_modules/
+dist/
+supabase/
+docs/
+scripts/

@@ -11,6 +11,7 @@ export function AuthProvider({ children }) {
   const loadProfile = useCallback(async (uid) => {
     if (!uid) { setProfile(null); setCohort(null); return }
     const { data: p } = await supabase.from('profiles').select('*').eq('id', uid).single()
+    if (p && p.role !== 'super_admin') sessionStorage.removeItem('ax-admin-view')
     setProfile(p || null)
     const { data: m } = await supabase
       .from('cohort_members')
@@ -80,6 +81,7 @@ export function InactiveAccount() {
 }
 
 export async function signOut() {
+  sessionStorage.removeItem('ax-admin-view')
   await supabase.auth.signOut()
   window.location.href = '/'
 }

@@ -4,7 +4,7 @@ import react from 'eslint-plugin-react'
 import reactHooks from 'eslint-plugin-react-hooks'
 
 export default [
-  { ignores: ['dist', 'node_modules', 'supabase/functions'] },
+  { ignores: ['dist', 'node_modules', '.bkit', 'supabase/functions'] },
   {
     files: ['src/**/*.{js,jsx}', 'vite.config.js', 'eslint.config.js'],
     languageOptions: {

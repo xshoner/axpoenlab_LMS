@@ -4,7 +4,8 @@ import {
   IconPlus, IconTrash, IconFile, IconDownload, IconPaperclip, IconPencil,
   IconExternalLink, IconArrowsMove, IconCopy, IconFolder, IconEye, IconEyeOff,
 } from '@tabler/icons-react'
-import { supabase } from '../../lib/supabase'
+import { supabase, getAdminView } from '../../lib/supabase'
+import { useAuth } from '../../shared/auth'
 import { useCohort } from '../cohortContext'
 import RichEditor from '../../shared/RichEditor'
 import RichBody from '../../shared/RichBody'
@@ -15,10 +16,10 @@ import { useDraft, DraftBadge } from '../../shared/draft'
 export default function CoursesAdmin() {
   const location = useLocation()
   const navigate = useNavigate()
-  const detailMatch = location.pathname.match(/^\/courses\/(master|cohort)\/([^/]+)$/)
+  const detailMatch = location.pathname.match(/^\/courses\/(master|mine|cohort)\/([^/]+)$/)
   const detailType = detailMatch?.[1] || null
   const detailId = detailMatch?.[2] || null
-  const [tab, setTab] = useState(detailType || 'master') // cohort | master
+  const [tab, setTab] = useState(detailType || 'cohort') // cohort | master
 
   useEffect(() => {
     if (detailType) setTab(detailType)
@@ -35,17 +36,28 @@ export default function CoursesAdmin() {
     <div className="stack" style={{ gap: 24 }}>
       <div className="row" style={{ gap: 8 }}>
         <button className={`btn btn-sm ${tab === 'cohort' ? 'btn-primary' : 'btn-white'}`} onClick={() => selectTab('cohort')}>기수별 강좌</button>
+        <button className={`btn btn-sm ${tab === 'mine' ? 'btn-primary' : 'btn-white'}`} onClick={() => selectTab('mine')}>내 강좌</button>
         <button className={`btn btn-sm ${tab === 'master' ? 'btn-primary' : 'btn-white'}`} onClick={() => selectTab('master')}>마스터 강좌 라이브러리</button>
       </div>
       {tab === 'cohort'
         ? <CohortCourses detailId={detailType === 'cohort' ? detailId : null} onOpen={(course) => openCourse('cohort', course)} onClose={closeCourse} />
-        : <MasterCourses detailId={detailType === 'master' ? detailId : null} onOpen={(course) => openCourse('master', course)} onClose={closeCourse} />}
+        : <MasterCourses key={tab} library={tab === 'master'} detailId={detailType === tab ? detailId : null} onOpen={(course) => openCourse(tab, course)} onClose={closeCourse} />}
     </div>
   )
 }
 
 /* ============ 마스터 강좌 ============ */
-function MasterCourses({ detailId, onOpen, onClose }) {
+function MasterCourses({ library, detailId, onOpen, onClose }) {
+  const { profile } = useAuth()
+  const view = getAdminView()
+  const ownerId = view?.id || profile.id
+  const readOnly = !!view || (library && profile.role !== 'super_admin')
+  async function copyToMine(course) {
+    setBusy(true)
+    const { error } = await supabase.rpc('copy_master_to_my_courses', { p_course_id: course.id })
+    setBusy(false)
+    toast(error ? '복사에 실패했습니다.' : '내 강좌로 복사했습니다. 내 강좌 탭에서 수정할 수 있습니다.', error ? 'error' : 'success')
+  }
   const toast = useToast()
   const [rows, setRows] = useState(null)
   const [groups, setGroups] = useState(null)
@@ -58,7 +70,14 @@ function MasterCourses({ detailId, onOpen, onClose }) {
   const dragIdx = useRef(null)
 
   async function loadGroups(preferredId) {
-    const { data, error } = await supabase.from('master_course_groups').select('*').order('sort_order').order('created_at')
+    if (!library && !view) {
+      const { error } = await supabase.rpc('ensure_my_course_group')
+      if (error) { toast('내 강좌를 준비하지 못했습니다.', 'error'); setGroups([]); setRows([]); return }
+    }
+    let query = supabase.from('master_course_groups').select('*').order('sort_order').order('created_at')
+    if (!library) query = query.eq('owner_admin_id', ownerId)
+    else query = query.is('owner_admin_id', null)
+    const { data, error } = await query
     if (error) { toast('강좌 그룹을 불러오지 못했습니다.', 'error'); setGroups([]); return }
     const next = data || []
     setGroups(next)
@@ -77,7 +96,7 @@ function MasterCourses({ detailId, onOpen, onClose }) {
     if (error) { toast('강좌 목록을 불러오지 못했습니다.', 'error'); setRows([]); return }
     setRows(data || [])
   }
-  useEffect(() => { if (groupId) load() }, [groupId])
+  useEffect(() => { load() }, [groupId])
 
   useEffect(() => {
     if (!detailId) {
@@ -90,6 +109,7 @@ function MasterCourses({ detailId, onOpen, onClose }) {
         .select('*, master_attachments(*)').eq('id', detailId).single()
       if (!alive) return
       if (error || !data) { toast('강좌 상세 정보를 불러오지 못했습니다.', 'error'); onClose(); return }
+      if (!library && data.owner_admin_id !== ownerId) { toast('내 강좌가 아닙니다.', 'error'); onClose(); return }
       if (data.group_id) setGroupId(data.group_id)
       setMode('view')
       setEditing(data)
@@ -132,7 +152,8 @@ function MasterCourses({ detailId, onOpen, onClose }) {
       return <CourseAdminView
         isMaster course={editing}
         onBack={() => { setEditing(null); onClose() }}
-        onEdit={() => setMode('edit')}
+        onEdit={readOnly ? null : () => setMode('edit')}
+        onCopy={library && !view ? () => copyToMine(editing) : null}
       />
     }
     return <CourseEditor
@@ -146,36 +167,38 @@ function MasterCourses({ detailId, onOpen, onClose }) {
   return (
     <>
       <CourseGroupBar
-        scope="master" groups={groups} groupId={groupId} onSelect={setGroupId}
+        scope="master" ownerId={library ? null : ownerId} readOnly={readOnly} groups={groups} groupId={groupId} onSelect={setGroupId}
         onChanged={loadGroups}
       />
       <div className="row-between">
-        <p className="t-muted-sm">선택한 그룹의 재사용 가능한 강좌입니다. 기수 배정 시 그룹과 세부 강좌 구성이 함께 복제됩니다.</p>
-        <button className="btn btn-primary btn-sm" onClick={() => { setMode('edit'); setEditing('new') }}><IconPlus size={14} stroke={1.75} /> 새 마스터 강좌</button>
+        <p className="t-muted-sm">{library ? '슈퍼관리자의 마스터 강좌입니다. 내 강좌로 복사하여 독립적으로 수정할 수 있습니다.' : '내 강좌는 자유롭게 수정·삭제하고 내 기수에 배정할 수 있습니다.'}</p>
+        {!readOnly && <button className="btn btn-primary btn-sm" onClick={() => { setMode('edit'); setEditing('new') }}><IconPlus size={14} stroke={1.75} /> {library ? '새 마스터 강좌' : '새 내 강좌'}</button>}
       </div>
       {!rows ? <Loading /> : rows.length === 0 ? (
         <EmptyState title="마스터 강좌가 없습니다" description="새 마스터 강좌를 만들어 라이브러리를 구성해 보세요."
-          action={<button className="btn btn-primary btn-sm" onClick={() => { setMode('edit'); setEditing('new') }}>새 마스터 강좌</button>} />
+          action={!readOnly && <button className="btn btn-primary btn-sm" onClick={() => { setMode('edit'); setEditing('new') }}>새 마스터 강좌</button>} />
       ) : (
         <div className="course-grid">
           {rows.map((c, idx) => {
             return (
               <div key={c.id} className={`card-course theme-${idx % 6}`} onClick={() => { setMode('view'); onOpen(c) }}
-                draggable title="드래그하여 순서 변경"
+                draggable={!readOnly} title={readOnly ? '읽기 전용 마스터 강좌' : '드래그하여 순서 변경'}
                 onDragStart={() => { dragIdx.current = idx }}
                 onDragOver={(e) => e.preventDefault()}
-                onDrop={() => dropAt(idx)}>
+                onDrop={() => { if (!readOnly) dropAt(idx) }}>
                 <div className="row-between mb-8">
-                  <span className="badge-role-soft">마스터</span>
+                  <span className="badge-role-soft">{library ? '마스터' : '내 강좌'}</span>
                   <div className="row" style={{ gap: 4 }}>
                     {c.assignment_enabled && <StatusPill kind="neutral">과제</StatusPill>}
-                    <button className="icon-btn" title="다른 그룹으로 이동 또는 복사" aria-label={`${c.title} 이동 또는 복사`}
+                    {!readOnly && <button className="icon-btn" title="다른 그룹으로 이동 또는 복사" aria-label={`${c.title} 이동 또는 복사`}
                       onClick={(e) => { e.stopPropagation(); setMoveTarget(c) }}>
                       <IconArrowsMove size={16} stroke={1.75} />
-                    </button>
-                    <button className="icon-btn danger" onClick={(e) => { e.stopPropagation(); setDeleteTarget(c) }}>
+                    </button>}
+                    {!readOnly && <button className="icon-btn danger" onClick={(e) => { e.stopPropagation(); setDeleteTarget(c) }}>
                       <IconTrash size={16} stroke={1.75} />
-                    </button>
+                    </button>}
+                    {library && !view && <button className="btn btn-white btn-sm" disabled={busy}
+                      onClick={(e) => { e.stopPropagation(); copyToMine(c) }}>내 강좌로 복사</button>}
                   </div>
                 </div>
                 <div className="t-h3 mb-8">{c.title}</div>
@@ -381,7 +404,7 @@ function CohortCourses({ detailId, onOpen, onClose }) {
   )
 }
 
-function CourseGroupBar({ scope, cohortId, groups, groupId, onSelect, onChanged }) {
+function CourseGroupBar({ readOnly = false, ownerId, scope, cohortId, groups, groupId, onSelect, onChanged }) {
   const toast = useToast()
   const [dialog, setDialog] = useState(null)
   const [name, setName] = useState('')
@@ -406,7 +429,7 @@ function CourseGroupBar({ scope, cohortId, groups, groupId, onSelect, onChanged 
     const maxOrder = groups.reduce((max, group) => Math.max(max, Number(group.sort_order) || 0), 0)
     const result = dialog === 'create'
       ? await supabase.from(table).insert(scope === 'master'
-        ? { name: trimmed, sort_order: maxOrder + 1 }
+        ? { name: trimmed, sort_order: maxOrder + 1, owner_admin_id: ownerId || null }
         : { cohort_id: cohortId, name: trimmed, sort_order: maxOrder + 1, is_published: false })
         .select('id').single()
       : await supabase.from(table).update({ name: trimmed }).eq('id', groupId).select('id').single()
@@ -443,8 +466,8 @@ function CourseGroupBar({ scope, cohortId, groups, groupId, onSelect, onChanged 
               {current.is_published ? '학생 공개 중' : '학생에게 공개'}
             </button>
           )}
-          <button className="btn btn-white btn-sm" onClick={openRename} disabled={!current}><IconPencil size={14} stroke={1.75} /> 그룹명 변경</button>
-          <button className="btn btn-white btn-sm" onClick={openCreate}><IconPlus size={14} stroke={1.75} /> 그룹 추가</button>
+          {!readOnly && <button className="btn btn-white btn-sm" onClick={openRename} disabled={!current}><IconPencil size={14} stroke={1.75} /> 그룹명 변경</button>}
+          {!readOnly && <button className="btn btn-white btn-sm" onClick={openCreate}><IconPlus size={14} stroke={1.75} /> 그룹 추가</button>}
         </div>
       </div>
       <Dialog open={!!dialog} title={dialog === 'create' ? '새 강좌 그룹' : '강좌 그룹명 변경'} onClose={() => setDialog(null)}
@@ -522,7 +545,7 @@ function MoveCourseDialog({ scope, course, groups, currentGroupId, onClose, onDo
 }
 
 /* ============ 강좌 읽기 화면 (마스터/기수 공용) — 학생 화면과 유사한 읽기 전용 뷰 ============ */
-function CourseAdminView({ isMaster, course, onBack, onEdit }) {
+function CourseAdminView({ isMaster, course, onBack, onEdit, onCopy }) {
   const toast = useToast()
   const attachments = (isMaster ? course.master_attachments : course.cohort_attachments) || []
 
@@ -537,7 +560,8 @@ function CourseAdminView({ isMaster, course, onBack, onEdit }) {
   const actionButtons = (
     <div className="row" style={{ gap: 8 }}>
       <button className="btn btn-white btn-sm" onClick={onBack}>목록으로</button>
-      <button className="btn btn-primary btn-sm" onClick={onEdit}><IconPencil size={14} stroke={1.75} /> 수정</button>
+      {onEdit && <button className="btn btn-primary btn-sm" onClick={onEdit}><IconPencil size={14} stroke={1.75} /> 수정</button>}
+      {onCopy && <button className="btn btn-primary btn-sm" onClick={onCopy}>내 강좌로 복사</button>}
     </div>
   )
 

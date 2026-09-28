@@ -8,6 +8,26 @@ const SUPABASE_KEY =
 
 const KEEP_FLAG = 'ax-lms-keep'
 
+export function getAdminView() {
+  if (!window.location.pathname.endsWith('/admin.html')) return null
+  try {
+    const view = JSON.parse(sessionStorage.getItem('ax-admin-view') || 'null')
+    return /^[0-9a-f-]{36}$/i.test(view?.id || '') ? view : null
+  } catch { return null }
+}
+
+export function openAdminView(admin) {
+  sessionStorage.setItem('ax-admin-view', JSON.stringify({ id: admin.id, name: admin.name }))
+  window.location.href = '/admin.html#/'
+  window.location.reload()
+}
+
+export function closeAdminView() {
+  sessionStorage.removeItem('ax-admin-view')
+  window.location.href = '/admin.html#/admins'
+  window.location.reload()
+}
+
 // "로그인 상태 유지" 미선택 시 sessionStorage에 세션 저장
 const dynamicStorage = {
   getItem: (key) =>
@@ -30,6 +50,26 @@ export function setKeepSignedIn(keep) {
 
 export const supabase = createClient(SUPABASE_URL, SUPABASE_KEY, {
   auth: { storage: dynamicStorage, persistSession: true, autoRefreshToken: true },
+  global: {
+    fetch: (url, options = {}) => {
+      const headers = new Headers(options.headers)
+      const view = getAdminView()
+      if (view?.id) {
+        headers.set('x-admin-view', view.id)
+        const path = new URL(url).pathname
+        const method = (options.method || 'GET').toUpperCase()
+        const readRpc = /\/rpc\/(admin_master_course_list|admin_cohort_course_list|visit_stats|record_visit|visit_series|today_account_visits|get_board_guest_token|online_student_count|get_forced_signup_cohort)$/.test(path)
+        const signedDownload = path.includes('/storage/v1/object/sign/')
+        if (!['GET', 'HEAD'].includes(method) &&
+            (path.includes('/rest/v1/') || path.includes('/storage/v1/') || path.includes('/functions/v1/')) &&
+            !readRpc && !signedDownload) {
+          return Promise.resolve(new Response(JSON.stringify({ message: '관리자 화면 확인 모드에서는 변경할 수 없습니다.', code: 'READ_ONLY_VIEW' }),
+            { status: 403, headers: { 'Content-Type': 'application/json' } }))
+        }
+      }
+      return fetch(url, { ...options, headers })
+    },
+  },
 })
 
 export const FUNCTIONS_URL = `${SUPABASE_URL}/functions/v1`

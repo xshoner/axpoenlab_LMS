@@ -193,8 +193,8 @@ function GuestQrPanel() {
   const [rotateOpen, setRotateOpen] = useState(false)
 
   useEffect(() => {
-    supabase.from('system_settings').select('value').eq('key', 'board_guest_token').maybeSingle()
-      .then(({ data }) => setToken(data ? data.value : null))
+    supabase.rpc('get_board_guest_token')
+      .then(({ data }) => setToken(data || null))
   }, [])
 
   const url = token ? `${window.location.origin}/#/guest-board?key=${token}` : null

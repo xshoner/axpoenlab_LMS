@@ -96,7 +96,7 @@ export default function AdminDashboard() {
         }
       }
       const { data: inq } = await supabase.from('inquiries')
-        .select('id, title, status, created_at, profiles(name)')
+        .select('id, title, status, created_at, profiles!inquiries_user_id_fkey(name)')
         .in('user_id', userIds.length ? userIds : ['00000000-0000-0000-0000-000000000000'])
         .order('status', { ascending: false }).order('created_at', { ascending: false }).limit(10)
       inquiries = inq || []

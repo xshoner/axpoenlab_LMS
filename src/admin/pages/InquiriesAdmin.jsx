@@ -18,7 +18,7 @@ export default function InquiriesAdmin() {
 
   async function load() {
     const { data } = await supabase.from('inquiries')
-      .select('*, profiles(id, name, org, cohort_members(cohort_id, cohorts(name))), cohort_courses(course_no, title), inquiry_replies(*, profiles(name, nickname, role))')
+      .select('*, profiles!inquiries_user_id_fkey(id, name, org, cohort_members(cohort_id, cohorts(name))), cohort_courses(course_no, title), inquiry_replies(*, profiles(name, nickname, role))')
       .order('created_at', { ascending: false })
     setRows(data || [])
   }

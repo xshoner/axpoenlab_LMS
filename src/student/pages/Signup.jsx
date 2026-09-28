@@ -28,7 +28,7 @@ export default function Signup() {
       const result = Array.isArray(data) ? data[0] : data
       const forced = result?.code ? result : null
       setForcedCohort(forced || null)
-      if (forced?.code) setForm((f) => ({ ...f, cohortCode: forced.code }))
+      if (forced?.code) setForm((f) => f.cohortCode ? f : ({ ...f, cohortCode: forced.code }))
       else if (previousForcedCode) {
         const releasedCode = previousForcedCode
         setForm((f) => f.cohortCode === releasedCode ? { ...f, cohortCode: '' } : f)
@@ -87,11 +87,13 @@ export default function Signup() {
           password: form.password,
           name: form.name.trim(),
           org: form.org.trim(),
+          cohort_code: form.cohortCode.trim(),
         }),
       })
       const json = await res.json()
       if (!json.ok) {
         if (json.error === 'email_exists') setErrors((e) => ({ ...e, email: '이미 가입된 메일주소입니다.' }))
+        else if (json.error === 'invalid_cohort_code') setTopError('기수 코드를 확인해 주세요.')
         else setTopError('가입에 실패했습니다. 잠시 후 다시 시도해 주세요.')
         setBusy(false)
         return
@@ -163,12 +165,11 @@ export default function Signup() {
             </div>
           </div>
           <div className="field">
-            <label>기수 코드 {forcedCohort ? <span className="req">(강제 적용)</span> : '(선택)'}</label>
+            <label>기수 코드 (관리자에게 받은 코드)</label>
             <input className="input" value={form.cohortCode} onChange={set('cohortCode')}
-              disabled={!!forcedCohort} placeholder="예: AX3-2026"
-              style={forcedCohort ? { background: 'var(--surface)' } : undefined} />
+              placeholder="예: AX3-2026" />
             <span className="hint">{forcedCohort
-              ? `${forcedCohort.name}에 자동 배정되며 기수 코드는 변경할 수 없습니다.`
+              ? `기본 안내 기수는 ${forcedCohort.name}입니다. 다른 관리자에게 받은 코드가 있으면 변경해 주세요.`
               : '미입력 시 미배정 상태로 가입되며 관리자가 배정합니다.'}</span>
           </div>
           <div className="checkbox-row">

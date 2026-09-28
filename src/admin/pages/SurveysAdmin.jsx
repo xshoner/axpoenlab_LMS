@@ -4,7 +4,8 @@ import {
   IconPencil, IconFileSpreadsheet, IconEye,
 } from '@tabler/icons-react'
 import { PieChart, Pie, Cell, Tooltip as RTooltip, ResponsiveContainer } from 'recharts'
-import { supabase } from '../../lib/supabase'
+import { supabase, getAdminView } from '../../lib/supabase'
+import { useAuth } from '../../shared/auth'
 import { useCohort } from '../cohortContext'
 import { ConfirmDialog, Dialog, Donut, EmptyState, HBar, Loading, StatusPill, useToast } from '../../shared/ui'
 import { pad2, downloadCsv, CONTENT_STATUS } from '../../lib/helpers'
@@ -16,6 +17,9 @@ const HEAT = ['var(--heat-0)', 'var(--heat-1)', 'var(--heat-2)', 'var(--heat-3)'
 const PIE_COLORS = ['#2a78d6', '#eb6834', '#1baf7a', '#eda100', '#e87ba4', '#008300', '#4a3aa7', '#e34948']
 
 export default function SurveysAdmin() {
+  const { profile } = useAuth()
+  const ownerId = getAdminView()?.id || profile.id
+  const isSuper = profile.role === 'super_admin' && !getAdminView()
   const { selectedId, selected } = useCohort()
   const toast = useToast()
   const [scope, setScope] = useState('cohort') // cohort | master
@@ -27,7 +31,9 @@ export default function SurveysAdmin() {
 
   async function load() {
     if (isMaster) {
-      const { data: cs } = await supabase.from('master_courses').select('id, title').order('sort_order')
+      let query = supabase.from('master_courses').select('id, title').order('sort_order')
+      if (!isSuper) query = query.eq('owner_admin_id', ownerId)
+      const { data: cs } = await query
       setCourses(cs || [])
       const ids = (cs || []).map((c) => c.id)
       if (!ids.length) { setRows([]); return }
@@ -76,7 +82,7 @@ export default function SurveysAdmin() {
   const scopeTabs = (
     <div className="row" style={{ gap: 8 }}>
       <button className={`btn btn-sm ${!isMaster ? 'btn-primary' : 'btn-white'}`} onClick={() => setScope('cohort')}>기수별 설문</button>
-      <button className={`btn btn-sm ${isMaster ? 'btn-primary' : 'btn-white'}`} onClick={() => setScope('master')}>마스터 강좌 설문</button>
+      <button className={`btn btn-sm ${isMaster ? 'btn-primary' : 'btn-white'}`} onClick={() => setScope('master')}>{isSuper ? '마스터 강좌 설문' : '내 강좌 설문'}</button>
     </div>
   )
 

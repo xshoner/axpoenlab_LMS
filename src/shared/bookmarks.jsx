@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { IconPlus, IconTrash, IconArrowUp, IconArrowDown } from '@tabler/icons-react'
-import { supabase } from '../lib/supabase'
+import { supabase, getAdminView } from '../lib/supabase'
 import { useAuth } from './auth'
 import { Dialog, useToast } from './ui'
 
@@ -57,6 +57,7 @@ function BookmarkLogo({ item, size = 26 }) {
 
 export function AiBookmarks() {
   const { profile } = useAuth()
+  const ownerId = getAdminView()?.id || profile?.id
   const toast = useToast()
   const [items, setItems] = useState(null)
   const [open, setOpen] = useState(false)
@@ -66,13 +67,13 @@ export function AiBookmarks() {
   useEffect(() => {
     if (!profile?.id) return
     let alive = true
-    supabase.from('user_bookmarks').select('items').eq('user_id', profile.id).maybeSingle()
+    supabase.from('user_bookmarks').select('items').eq('user_id', ownerId).maybeSingle()
       .then(({ data }) => {
         if (!alive) return
         setItems(withNewDefaults(data?.items))
       })
     return () => { alive = false }
-  }, [profile?.id])
+  }, [profile?.id, ownerId])
 
   function openEditor() {
     setDraft((items || DEFAULT_BOOKMARKS).map((b) => ({ ...b })))

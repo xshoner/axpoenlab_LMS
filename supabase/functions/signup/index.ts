@@ -17,7 +17,7 @@ Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
   if (req.method !== "POST") return err("method_not_allowed", 405);
   try {
-    const { email, password, name, org } = await req.json();
+    const { email, password, name, org, cohort_code } = await req.json();
     const admin = createClient(
       Deno.env.get("SUPABASE_URL")!,
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
@@ -35,6 +35,14 @@ Deno.serve(async (req: Request) => {
       if (!name || !String(name).trim()) return err("name_required");
     }
 
+    // Resolve the invitation before creating an account. An explicit code always
+    // takes precedence over the super-admin's default signup cohort.
+    const code = String(cohort_code ?? "").trim().toUpperCase();
+    let cohortQuery = admin.from("cohorts").select("id").is("deleted_at", null);
+    cohortQuery = code ? cohortQuery.eq("code", code) : cohortQuery.eq("signup_forced", true);
+    const { data: signupCohort, error: cohortError } = await cohortQuery.maybeSingle();
+    if (cohortError || (code && !signupCohort)) return err("invalid_cohort_code");
+
     const { data, error } = await admin.auth.admin.createUser({
       email: String(email).trim().toLowerCase(),
       password: String(password),
@@ -46,20 +54,9 @@ Deno.serve(async (req: Request) => {
       return err(msg, 400);
     }
 
-    // 강제 가입 기수는 클라이언트 입력을 신뢰하지 않고 서버에서 즉시 배정한다.
-    const { data: forcedCohort, error: forcedError } = await admin
-      .from("cohorts")
-      .select("id")
-      .eq("signup_forced", true)
-      .is("deleted_at", null)
-      .maybeSingle();
-    if (forcedError) {
-      await admin.auth.admin.deleteUser(data.user!.id);
-      return err("forced_cohort_lookup_failed", 500);
-    }
-    if (forcedCohort && data.user) {
+    if (signupCohort && data.user) {
       const { error: assignError } = await admin.from("cohort_members").insert({
-        cohort_id: forcedCohort.id,
+        cohort_id: signupCohort.id,
         user_id: data.user.id,
       });
       if (assignError) {

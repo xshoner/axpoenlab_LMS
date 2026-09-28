@@ -312,7 +312,9 @@ export default function RichEditor({ value, onChange, minHeight = 200, compact =
     if (file.size > 10 * 1024 * 1024) { alert('이미지는 최대 10MB까지 업로드할 수 있습니다.'); return }
     setUploading(true)
     try {
-      const path = `body/${storageSafeName(file.name)}`
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) throw new Error('로그인이 필요합니다.')
+      const path = `${user.id}/body/${storageSafeName(file.name)}`
       const { error } = await supabase.storage.from('course-images').upload(path, file, { upsert: true })
       if (error) throw error
       const { data } = supabase.storage.from('course-images').getPublicUrl(path)

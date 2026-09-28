@@ -2,7 +2,7 @@ import { createClient } from "npm:@supabase/supabase-js@2";
 
 const cors = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-admin-view",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
@@ -34,6 +34,7 @@ Deno.serve(async (req: Request) => {
     }
 
     const body = await req.json();
+    if (req.headers.get("x-admin-view")) return json({ ok: false, error: "read_only_view" }, 403);
     const action = body.action as string;
 
     if (action === "create_admin") {
@@ -66,6 +67,16 @@ Deno.serve(async (req: Request) => {
       const { data: target } = await admin.from("profiles").select("role").eq("id", targetId).single();
       if (!target) return json({ ok: false, error: "not_found" }, 404);
       if (target.role === "super_admin") return json({ ok: false, error: "cannot_delete_super_admin" }, 400);
+      if (target.role === "admin") {
+        const [cohorts, courses, groups] = await Promise.all([
+          admin.from("cohorts").select("id", { count: "exact", head: true }).eq("owner_admin_id", targetId),
+          admin.from("master_courses").select("id", { count: "exact", head: true }).eq("owner_admin_id", targetId),
+          admin.from("master_course_groups").select("id", { count: "exact", head: true }).eq("owner_admin_id", targetId),
+        ]);
+        if ([cohorts, courses, groups].some((r) => r.error || (r.count ?? 0) > 0)) {
+          return json({ ok: false, error: "admin_has_data" }, 409);
+        }
+      }
       const { error } = await admin.auth.admin.deleteUser(targetId);
       if (error) return json({ ok: false, error: error.message }, 400);
       return json({ ok: true });
@@ -81,6 +92,12 @@ Deno.serve(async (req: Request) => {
       if (!target) return json({ ok: false, error: "not_found" }, 404);
       if (target.role !== "student" && callerRole !== "super_admin") {
         return json({ ok: false, error: "forbidden" }, 403);
+      }
+      if (callerRole !== "super_admin") {
+        const { data: membership, error: membershipError } = await admin.from("cohort_members")
+          .select("cohorts!inner(owner_admin_id)").eq("user_id", targetId)
+          .eq("cohorts.owner_admin_id", caller.user.id).maybeSingle();
+        if (membershipError || !membership) return json({ ok: false, error: "forbidden" }, 403);
       }
       if (target.role === "super_admin") return json({ ok: false, error: "cannot_change_super_admin" }, 400);
       if (target.status === status) return json({ ok: true });

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { IconPlus, IconRefresh, IconTrash, IconArrowUp, IconArrowDown, IconBooks } from '@tabler/icons-react'
-import { supabase } from '../../lib/supabase'
+import { supabase, getAdminView } from '../../lib/supabase'
+import { useAuth } from '../../shared/auth'
 import { useCohort } from '../cohortContext'
 import { ConfirmDialog, Dialog, EmptyState, Loading, StatusPill, useToast } from '../../shared/ui'
 import { fmtDate, pad2, COHORT_STATUS } from '../../lib/helpers'
@@ -13,6 +14,8 @@ function genCode() {
 }
 
 export default function Cohorts() {
+  const { profile } = useAuth()
+  const isSuper = profile.role === 'super_admin' && !getAdminView()
   const { cohorts, reload } = useCohort()
   const toast = useToast()
   const [editTarget, setEditTarget] = useState(null) // null | {} | cohort
@@ -103,11 +106,11 @@ export default function Cohorts() {
                   <td className="tnum">{fmtDate(c.start_date)} ~ {fmtDate(c.end_date)}</td>
                   <td className="tnum"><code style={{ background: 'var(--surface)', padding: '2px 8px', borderRadius: 6 }}>{c.code}</code></td>
                   <td>
-                    <label className="checkbox-row" style={{ whiteSpace: 'nowrap' }}>
+                    {isSuper ? <label className="checkbox-row" style={{ whiteSpace: 'nowrap' }}>
                       <input type="checkbox" checked={!!c.signup_forced} disabled={busy}
                         onChange={() => toggleSignupForce(c)} />
                       <span>{c.signup_forced ? '강제 적용 중' : '기수 코드 강제'}</span>
-                    </label>
+                    </label> : <span className="t-muted-sm">기수 코드로 가입</span>}
                   </td>
                   <td><StatusPill kind={c.status === 'active' ? 'open' : c.status === 'closed' ? 'closed' : 'neutral'}>{COHORT_STATUS[c.status]}</StatusPill></td>
                   <td>

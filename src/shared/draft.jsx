@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { IconDeviceFloppy } from '@tabler/icons-react'
+import { useAuth } from './auth'
+import { getAdminView } from '../lib/supabase'
 
 /* 자동 임시저장 — 작성 중 폼 상태를 브라우저 localStorage에 디바운스 저장하고,
    재진입 시 복원한다. 서버 저장 후에는 clear()로 지운다. */
@@ -26,7 +28,9 @@ function fmtTime(ts) {
  * @param restore  (data) => void — 마운트 시 저장분이 있으면 호출
  * @param isEmpty  (data) => boolean — 비어 있으면 저장하지 않음(기존 저장분은 지움)
  */
-export function useDraft(key, data, restore, isEmpty) {
+export function useDraft(draftKey, data, restore, isEmpty) {
+  const { profile } = useAuth()
+  const key = profile?.id && draftKey && !getAdminView() ? `${profile.id}:${draftKey}` : null
   const [savedAt, setSavedAt] = useState(null)
   const [restored, setRestored] = useState(false)
   const ready = useRef(false)
