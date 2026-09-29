@@ -88,7 +88,7 @@ function MasterCourses({ library, detailId, onOpen, onClose }) {
     setGroupId((current) => {
       if (preferredId && next.some((group) => group.id === preferredId)) return preferredId
       if (current && next.some((group) => group.id === current)) return current
-      return (library && next.find((group) => group.name.replace(/\s/g, '').toLowerCase() === 'ai활용기본강좌')?.id)
+      return (library && next.find((group) => group.name.replace(/\s/g, '').toLowerCase() === 'ai활용기본과정')?.id)
         || next.find((group) => group.is_default)?.id || next[0]?.id || ''
     })
   }
@@ -416,6 +416,21 @@ function CourseGroupBar({ readOnly = false, ownerId, scope, cohortId, groups, gr
   const [busy, setBusy] = useState(false)
   const current = groups.find((group) => group.id === groupId)
   const table = scope === 'master' ? 'master_course_groups' : 'cohort_course_groups'
+  const [deleteOpen, setDeleteOpen] = useState(false)
+
+  async function deleteGroup() {
+    if (readOnly || !current || current.is_default || busy) return
+    setBusy(true)
+    const { error } = await supabase.from(table).delete().eq('id', current.id).select('id').single()
+    setBusy(false)
+    if (error) {
+      toast(error.code === '23503' ? '강좌가 있는 그룹은 삭제할 수 없습니다. 강좌를 다른 그룹으로 이동한 뒤 삭제해 주세요.' : '강좌 그룹을 삭제하지 못했습니다.', 'error')
+      return
+    }
+    setDeleteOpen(false)
+    toast('강좌 그룹이 삭제되었습니다.')
+    onChanged()
+  }
 
   function openCreate() {
     setName('')
@@ -472,9 +487,13 @@ function CourseGroupBar({ readOnly = false, ownerId, scope, cohortId, groups, gr
             </button>
           )}
           {!readOnly && <button className="btn btn-white btn-sm" onClick={openRename} disabled={!current}><IconPencil size={14} stroke={1.75} /> 그룹명 변경</button>}
+          {!readOnly && <button className="btn btn-danger btn-sm" disabled={!current || current.is_default || busy} onClick={() => setDeleteOpen(true)} title={current?.is_default ? '기본 그룹은 삭제할 수 없습니다.' : '강좌 그룹 삭제'}><IconTrash size={14} stroke={1.75} /> 그룹 삭제</button>}
           {!readOnly && <button className="btn btn-white btn-sm" onClick={openCreate}><IconPlus size={14} stroke={1.75} /> 그룹 추가</button>}
         </div>
       </div>
+      <ConfirmDialog open={deleteOpen} title="강좌 그룹 삭제" danger busy={busy}
+        message={`'${current?.name || ''}' 그룹을 삭제합니다. 강좌가 있는 그룹은 먼저 강좌를 다른 그룹으로 이동해야 합니다.`}
+        confirmLabel="삭제" onConfirm={deleteGroup} onClose={() => { if (!busy) setDeleteOpen(false) }} />
       <Dialog open={!!dialog} title={dialog === 'create' ? '새 강좌 그룹' : '강좌 그룹명 변경'} onClose={() => setDialog(null)}
         actions={<>
           <button className="btn btn-white btn-sm" onClick={() => setDialog(null)} disabled={busy}>취소</button>
