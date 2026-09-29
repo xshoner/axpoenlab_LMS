@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { IconTrash, IconTrophy, IconFlagCheck, IconListNumbers, IconLockOpen, IconRefresh } from '@tabler/icons-react'
 import { useUrlStatuses, UrlStatusDot } from '../../shared/urlcheck'
-import { supabase } from '../../lib/supabase'
+import { supabase, getAdminView } from '../../lib/supabase'
 import { useAuth } from '../../shared/auth'
 import { useCohort } from '../cohortContext'
 import { HackathonEntryView } from '../../shared/hackathonEntry'
@@ -19,6 +19,7 @@ function esc(s) {
 export default function HackathonAdmin() {
   const { cohorts, selectedId, selected } = useCohort()
   const { profile } = useAuth()
+  const canManageHall = profile.role === 'super_admin' && !getAdminView()
   const toast = useToast()
   const [view, setView] = useState('entries') // entries | hall
   const [rows, setRows] = useState([])
@@ -187,6 +188,7 @@ export default function HackathonAdmin() {
   }
 
   async function doDelete() {
+    if (deleteTarget?.hall && !canManageHall) return
     setBusy(true)
     try {
       if (deleteTarget.hall) {
@@ -259,11 +261,11 @@ export default function HackathonAdmin() {
               <button className="btn btn-white btn-sm" onClick={() => openRanking()}>
                 <IconListNumbers size={14} stroke={1.75} /> {closed ? '최종 순위표 보기' : '현재 순위표 보기'}
               </button>
-              {closed ? (
+              {closed ? (canManageHall && (
                 <button className="btn btn-white btn-sm" onClick={() => setReopenOpen(true)}>
                   <IconLockOpen size={14} stroke={1.75} /> 마감 해제
                 </button>
-              ) : (
+              )) : (
                 <button className="btn btn-primary btn-sm" onClick={() => setCloseOpen(true)}>
                   <IconFlagCheck size={14} stroke={1.75} /> 해커톤 마감
                 </button>
@@ -354,9 +356,9 @@ export default function HackathonAdmin() {
                     <td><StarRating value={row.avg_rating} size={13} showValue count={row.rating_count} /></td>
                     <td className="tnum hall-date-cell">{fmtDate(row.created_at)}</td>
                     <td>
-                      <button className="icon-btn danger" title="등재 삭제" onClick={() => setDeleteTarget({ hall: row })}>
+                      {canManageHall && <button className="icon-btn danger" title="등재 삭제" onClick={() => setDeleteTarget({ hall: row })}>
                         <IconTrash size={16} stroke={1.75} />
-                      </button>
+                      </button>}
                     </td>
                   </tr>
                 ))}

@@ -23,7 +23,7 @@ await db.exec(`
   alter default privileges in schema public grant usage, select on sequences to authenticated, service_role;
   alter default privileges in schema public grant execute on functions to authenticated, service_role;
 `)
-const files = fs.readdirSync('supabase/migrations').filter(f => f.endsWith('.sql')).sort()
+const files = fs.readdirSync('supabase/migrations').filter(f => f.endsWith('.sql') && f !== '20260929010000_shared_catalogs.sql').sort()
 let baseline
 async function fingerprint() {
   const tables = (await db.query("select tablename from pg_tables where schemaname='public' and tablename <> 'account_presence' order by tablename")).rows
@@ -294,4 +294,36 @@ await denied('select public.copy_master_to_my_courses($1)', [ids.master])
 await denied('select public.admin_dashboard_overview()')
 assert.equal((await scalar('select public.visit_stats()')).total,0)
 console.log('PASS: scoped online/visit counts and inactive-account denial')
+
+// Apply the catalog migration to populated data, after verifying legacy isolation.
+await system()
+await db.query("update public.profiles set status='active' where id=$1",[ids.a])
+const existingAIGroup = await scalar("insert into public.master_course_groups(name) values ('AI 활용 기본 강좌') returning id")
+const beforeCourses = (await db.query('select id,title,body,owner_admin_id from public.master_courses order by id')).rows
+await db.exec(fs.readFileSync('supabase/migrations/20260929010000_shared_catalogs.sql','utf8'))
+assert.deepEqual((await db.query('select id,title,body,owner_admin_id from public.master_courses order by id')).rows,beforeCourses)
+assert.equal(await scalar("select count(*)::int from public.master_course_groups where public.tenant_shared_owner(owner_admin_id) and name in ('마스터 강좌','내 강좌','기본 강좌')"),0)
+const defaultGroup=await scalar("select id from public.master_course_groups where name='AI 활용 기본 강좌' and is_default")
+assert.equal(defaultGroup,existingAIGroup)
+await as('super')
+assert.equal(await scalar('select public.ensure_my_course_group()'),defaultGroup)
+const game=await scalar("insert into public.arcade_games(name,url,description) values ('Shared game','https://example.com/game','Public catalog') returning id")
+await as('a')
+const ownGame=await scalar("insert into public.arcade_games(name,url,description) values ('Admin game','https://example.com/admin','Public catalog') returning id")
+for(const who of ['a','b','sa','sb']) {
+  await as(who)
+  assert.equal(await scalar('select count(*)::int from public.arcade_games where id in ($1,$2)',[game,ownGame]),2)
+  assert.ok(await scalar('select count(*)::int from public.hall_of_fame') > 0)
+  assert.equal((await db.query("update public.arcade_games set name='Forbidden' where id=$1 returning id",[game])).rows.length,0)
+  assert.equal((await db.query('delete from public.arcade_games where id=$1 returning id',[game])).rows.length,0)
+  assert.equal((await db.query("update public.hall_of_fame set title='Forbidden' returning id")).rows.length,0)
+  assert.equal((await db.query('delete from public.hall_of_fame returning id')).rows.length,0)
+}
+await as('a')
+await denied('select public.reopen_hackathon($1)',[ids.ca])
+assert.equal((await db.query("update public.arcade_games set name='My edited game' where id=$1 returning id",[ownGame])).rows.length,1)
+await as('super')
+assert.equal((await db.query('delete from public.arcade_games where id=$1 returning id',[game])).rows.length,1)
+assert.equal((await scalar('select public.reopen_hackathon($1)',[ids.ca])).ok,true)
+console.log('PASS: shared catalogs visible across tenants, protected writes denied, courses preserved and AI default selected')
 await db.close()

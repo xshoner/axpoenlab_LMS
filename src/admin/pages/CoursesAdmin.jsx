@@ -83,12 +83,13 @@ function MasterCourses({ library, detailId, onOpen, onClose }) {
       : supabase.from('master_course_groups').select('*').eq('owner_admin_id', ownerId).order('sort_order').order('created_at')
     const { data, error } = await query
     if (error) { toast('강좌 그룹을 불러오지 못했습니다.', 'error'); setGroups([]); return }
-    const next = (data || []).map((g) => library && g.owner_admin_id && g.name === '내 강좌' ? { ...g, name: '마스터 강좌' } : g)
+    const next = data || []
     setGroups(next)
     setGroupId((current) => {
       if (preferredId && next.some((group) => group.id === preferredId)) return preferredId
       if (current && next.some((group) => group.id === current)) return current
-      return next.find((group) => group.is_default)?.id || next[0]?.id || ''
+      return (library && next.find((group) => group.name.replace(/\s/g, '').toLowerCase() === 'ai활용기본강좌')?.id)
+        || next.find((group) => group.is_default)?.id || next[0]?.id || ''
     })
   }
   useEffect(() => { loadGroups() }, [])

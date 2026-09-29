@@ -1,14 +1,15 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { IconDeviceGamepad2, IconArrowLeft, IconPlus } from '@tabler/icons-react'
-import { supabase } from '../lib/supabase'
+import { supabase, getAdminView } from '../lib/supabase'
 import { useAuth } from './auth'
 import { ConfirmDialog, Dialog, Loading, useToast } from './ui'
 import './arcade.css'
 
 export default function Arcade() {
   const { profile } = useAuth()
-  const admin = ['admin', 'super_admin'].includes(profile?.role)
+  const admin = !getAdminView() && ['admin', 'super_admin'].includes(profile?.role)
+  const canManageGame = (game) => admin && (profile.role === 'super_admin' || game?.owner_admin_id === profile.id)
   const { id } = useParams()
   const navigate = useNavigate()
   const toast = useToast()
@@ -49,12 +50,13 @@ export default function Arcade() {
     return () => window.removeEventListener('message', onDisplayMessage)
   }, [])
   function editGame(game) {
+    if (!admin || (game && !canManageGame(game))) return
     setEditingId(game?.id || null)
     setForm({ url: game?.url || '', name: game?.name || '', description: game?.description || '', developer: game?.developer || '' })
     setOpen(true)
   }
   async function deleteGame() {
-    if (!admin || busy || !deleting) return
+    if (!deleting || !canManageGame(deleting) || busy) return
     setBusy(true)
     try {
       const { data, error } = await supabase.from('arcade_games').delete().eq('id', deleting.id).select('id').single()
@@ -67,7 +69,7 @@ export default function Arcade() {
   }
   async function save(e) {
     e.preventDefault()
-    if (!admin || busy) return
+    if (!admin || busy || (editingId && !canManageGame(games.find(game => game.id === editingId)))) return
     let url
     try {
       url = new URL(form.url.trim())
@@ -111,7 +113,7 @@ export default function Arcade() {
         <IconDeviceGamepad2 size={62} stroke={1.4} /><span>{g.name}</span><span className="arcade-play">PLAY →</span>
         <img src={g.url.startsWith('https://jellyrungo.vercel.app/') ? '/arcade-jellyrun.png' : `https://s.wordpress.com/mshots/v1/${encodeURIComponent(g.url)}?w=600&h=375`} alt="" loading="lazy" onError={e => { e.currentTarget.hidden = true }} />
       </Link>
-      <div className="arcade-card-body"><span className="t-micro muted">WEB GAME · {String(index + 1).padStart(2, '0')}</span><h2 className="t-h3"><Link to={`/arcade/${g.id}`} onClick={() => setGamePlaying(false)}>{g.name}</Link></h2><p className="muted">{g.description}</p>{g.developer && <p className="t-muted-sm">개발자 · {g.developer}</p>}<Link className="arcade-start" to={`/arcade/${g.id}`} onClick={() => setGamePlaying(false)}>게임 시작 →</Link>{admin && <div className="arcade-admin-actions"><button className="btn btn-white btn-sm" onClick={() => editGame(g)}>수정</button><button className="btn btn-danger btn-sm" onClick={() => setDeleting(g)}>삭제</button></div>}</div>
+      <div className="arcade-card-body"><span className="t-micro muted">WEB GAME · {String(index + 1).padStart(2, '0')}</span><h2 className="t-h3"><Link to={`/arcade/${g.id}`} onClick={() => setGamePlaying(false)}>{g.name}</Link></h2><p className="muted">{g.description}</p>{g.developer && <p className="t-muted-sm">개발자 · {g.developer}</p>}<Link className="arcade-start" to={`/arcade/${g.id}`} onClick={() => setGamePlaying(false)}>게임 시작 →</Link>{canManageGame(g) && <div className="arcade-admin-actions"><button className="btn btn-white btn-sm" onClick={() => editGame(g)}>수정</button><button className="btn btn-danger btn-sm" onClick={() => setDeleting(g)}>삭제</button></div>}</div>
     </article>)}</div>
     {!games.length && <p>아직 등록된 게임이 없습니다.</p>}
     <Dialog open={open} title={editingId ? '오락실 게임 수정' : '오락실 게임 추가'} onClose={() => { if (!busy) setOpen(false) }}>
