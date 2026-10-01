@@ -249,6 +249,8 @@ function CohortDialog({ cohort, busy, onSave, onClose }) {
 }
 
 function SnapshotDialog({ cohort, onClose }) {
+  const { profile } = useAuth()
+  const isSuper = profile.role === 'super_admin' && !getAdminView()
   const toast = useToast()
   const [groups, setGroups] = useState(null)
   const [groupId, setGroupId] = useState('')
@@ -259,7 +261,9 @@ function SnapshotDialog({ cohort, onClose }) {
 
   useEffect(() => {
     let alive = true
-    supabase.from('master_course_groups').select('id, name, sort_order, is_default').order('sort_order').order('created_at')
+    const query = isSuper ? supabase.rpc('master_library_group_list')
+      : supabase.from('master_course_groups').select('id, name, sort_order, is_default').order('sort_order').order('created_at')
+    query
       .then(({ data, error }) => {
         if (!alive) return
         if (error) { setGroups([]); toast('강좌 그룹을 불러오지 못했습니다.', 'error'); return }
@@ -268,7 +272,7 @@ function SnapshotDialog({ cohort, onClose }) {
         setGroupId(next.find((group) => group.is_default)?.id || next[0]?.id || '')
       })
     return () => { alive = false }
-  }, [])
+  }, [isSuper])
 
   useEffect(() => {
     if (!groupId) { if (groups) setMasters([]); return }
