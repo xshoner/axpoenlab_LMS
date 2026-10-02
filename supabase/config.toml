@@ -1,0 +1,6 @@
+project_id = "axopenlab-lms"
+
+[functions.screen-share]
+# The handler verifies user JWTs with auth.getUser. The internal watchdog uses
+# its own server-only key; the gateway must allow that request to reach it.
+verify_jwt = false
