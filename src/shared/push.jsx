@@ -17,7 +17,7 @@ function saveSeen(set) {
 }
 
 /* 쪽지 본문은 RichEditor HTML. 예전 텍스트 쪽지(태그 없음)는 줄바꿈을 보존해 HTML로 변환한다. */
-function bodyHtml(body) {
+export function bodyHtml(body) {
   let s = String(body || '')
   // 에디터 오류로 태그가 텍스트로 저장된 과거 쪽지(&lt;a ...&gt;) 복구: 실제 태그가 없고 이스케이프된 태그만 있으면 되돌린다
   if (!/<[a-z][\s\S]*>/i.test(s) && /&lt;[a-z][^&]*&gt;/i.test(s)) {
@@ -26,12 +26,12 @@ function bodyHtml(body) {
   if (/<[a-z][\s\S]*>/i.test(s)) return s
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br>')
 }
-function isBlankHtml(html) {
+export function isBlankHtml(html) {
   return !String(html || '').replace(/<br\s*\/?>|&nbsp;|<[^>]+>/gi, ' ').trim()
     && !/<img|<iframe|copy-block/i.test(html || '')
 }
 
-function PushBody({ body, small }) {
+export function PushBody({ body, small }) {
   return (
     <div className="push-body">
       <RichBody html={bodyHtml(body)} style={small ? { fontSize: 13 } : undefined} />
@@ -182,7 +182,7 @@ export function StudentPushInbox({ cohortId }) {
 }
 
 /* 예전 방식(action_url 컬럼)으로 발송된 쪽지의 링크 버튼 — 신규 쪽지는 본문 안 링크를 사용 */
-function LegacyAction({ item }) {
+export function LegacyAction({ item }) {
   if (!item?.action_url) return null
   return (
     <a href={item.action_url} target="_blank" rel="noopener noreferrer" className="btn btn-primary btn-sm mt-8" style={{ display: 'inline-flex' }}>
@@ -192,7 +192,8 @@ function LegacyAction({ item }) {
 }
 
 /* ============ 관리자: 쪽지 작성(리치 에디터)·발송·이력(재발송/수정/삭제) ============ */
-export function AdminPushComposer({ cohortId, cohortName }) {
+function InlineComposer({ children }) { return children }
+export function AdminPushComposer({ cohortId, cohortName, embedded = false }) {
   const { profile } = useAuth()
   const toast = useToast()
   const [open, setOpen] = useState(false)
@@ -209,7 +210,8 @@ export function AdminPushComposer({ cohortId, cohortName }) {
     setHistory(data || [])
   }, [])
 
-  useEffect(() => { if (open) load() }, [open, load])
+  useEffect(() => { if (open || embedded) load() }, [open, embedded, load])
+  const Container = embedded ? InlineComposer : Dialog
 
   const senderName = profile?.nickname || profile?.name || '관리자'
   const target = cohortId ? `${cohortName} 학생` : '전체 기수 학생'
@@ -292,12 +294,12 @@ export function AdminPushComposer({ cohortId, cohortName }) {
 
   return (
     <>
-      <button type="button" className="inq-pill" title="학생에게 쪽지 팝업 보내기" onClick={() => setOpen(true)}>
+      {!embedded && <button type="button" className="inq-pill" title="학생에게 쪽지 팝업 보내기" onClick={() => setOpen(true)}>
         <IconMail size={14} stroke={1.75} />
         <span>쪽지</span>
-      </button>
+      </button>}
 
-      <Dialog open={open} title="학생에게 쪽지 보내기" onClose={() => setOpen(false)} wide>
+      <Container open={open} title="학생에게 쪽지 보내기" onClose={() => setOpen(false)} wide>
         <div className="stack" style={{ gap: 12 }}>
           <div className="t-caption" style={{ color: 'var(--primary)', fontWeight: 600 }}>
             대상: {target} — 현재 접속 중인 학생 화면에 팝업이 즉시 표시됩니다.
@@ -350,7 +352,7 @@ export function AdminPushComposer({ cohortId, cohortName }) {
             )}
           </div>
         </div>
-      </Dialog>
+      </Container>
 
       <ConfirmDialog open={!!deleteTarget} danger busy={busy} title="쪽지 이력 삭제"
         message="이 쪽지를 이력에서 삭제합니다. 학생 쪽지함에 이미 전달된 내용은 유지됩니다."

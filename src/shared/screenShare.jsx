@@ -89,19 +89,13 @@ function useShareClient(teacher) {
   return [client, snapshot]
 }
 
-export function TeacherScreenShareButton({ cohortId, cohorts }) {
+export function TeacherScreenShareButton({ cohortId, cohorts, children }) {
   const { session } = useAuth()
   const toast = useToast()
   const current = useCurrentShare(true, null)
   const [client, snapshot] = useShareClient(true)
-  const [minutes, setMinutes] = useState(null)
   const active = current || snapshot.session
   const busy = ['preparing','stopping'].includes(snapshot.phase)
-  useEffect(() => {
-    let alive = true
-    supabase.rpc('screen_share_monthly_usage').then(({ data, error }) => { if (alive && !error) setMinutes(Number(data)) })
-    return () => { alive = false }
-  }, [snapshot.phase])
   useEffect(() => { if (snapshot.error) toast(snapshot.error, 'error') }, [snapshot.error, toast])
   useEffect(() => {
     const id = snapshot.session?.id
@@ -137,11 +131,10 @@ export function TeacherScreenShareButton({ cohortId, cohorts }) {
   }
   const name = cohorts.find(c => c.id === (active?.cohort_id || cohortId))?.name
   return <><button type="button" className={`inq-pill screen-share-button ${active ? 'sharing' : ''}`} onClick={toggle} disabled={busy}
-    title={`${active ? `${name || '선택한 기수'} 공유 중 · 클릭하면 모두 연결 해제` : '선택한 기수에 화면 공유'}${minutes === null ? '' : ` · 이번 달 약 ${minutes.toLocaleString()} 참가자·분 (접속 인원 샘플 기준 추정)`}`}>
-    {active ? <IconScreenShareOff size={15} /> : <IconScreenShare size={15} />}
+    title={active ? `${name || '선택한 기수'} 공유 중 · 클릭하면 모두 연결 해제` : '선택한 기수에 화면 공유'}>
+    {active ? <IconScreenShareOff size={14} stroke={1.75} /> : <IconScreenShare size={14} stroke={1.75} />}
     <span>{busy ? (snapshot.phase === 'preparing' ? '공유 준비 중' : '연결 해제 중') : active ? '공유해제' : '화면공유'}</span>
-    {minutes !== null && <span className="share-usage">이달 {minutes.toLocaleString()} 인·분</span>}
-  </button>{active?.id && <ReceiverStatus sessionId={active.id} name={name} />}</>
+  </button>{children}{active?.id && <ReceiverStatus sessionId={active.id} name={name} />}</>
 }
 
 const RECEIVER_LABELS = { receiving: '수신 중', connecting: '연결 중', reconnecting: '재연결 중', error: '연결 실패', waiting: '수신 대기', ended: '공유 종료' }

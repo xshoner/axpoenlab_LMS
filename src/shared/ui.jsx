@@ -131,7 +131,7 @@ export function Pagination({ page, total, pageSize = 20, onChange }) {
 }
 
 /* ---------- Visitor counter ---------- */
-export function VisitorCounter({ admin = false }) {
+export function VisitorCounter({ admin = false, global = false }) {
   const [visitsOpen, setVisitsOpen] = useState(false)
   const [stats, setStats] = useState(null)
   const [show, setShow] = useState(true)
@@ -142,7 +142,7 @@ export function VisitorCounter({ admin = false }) {
         const settings = await getSettings()
         if (!alive) return
         setShow(settings.showVisitorCounter)
-        const { data } = await supabase.rpc('visit_stats')
+        const { data } = await supabase.rpc(global ? 'student_service_stats' : 'visit_stats')
         if (alive && data) setStats(data)
       } catch { /* counter is non-critical */ }
     }
@@ -150,7 +150,7 @@ export function VisitorCounter({ admin = false }) {
     const timer = setInterval(update, 60000)
     window.addEventListener('ax-visit-recorded', update)
     return () => { alive = false; clearInterval(timer); window.removeEventListener('ax-visit-recorded', update) }
-  }, [])
+  }, [global])
   if ((!show && !admin) || !stats) return null
   return (
     <>

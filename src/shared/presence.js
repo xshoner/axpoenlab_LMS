@@ -4,12 +4,12 @@ import { supabase } from '../lib/supabase'
 export function useStudentPresenceTrack(userId, cohortId = null) {
   const [count, setCount] = useState(0)
   useEffect(() => {
-    if (!userId || !cohortId) return
+    if (!userId) return
     let alive = true
     async function poll() {
       await supabase.rpc('heartbeat')
-      const { data } = await supabase.rpc('online_student_count', { p_cohort_id: cohortId })
-      if (alive) setCount(data || 0)
+      const { data, error } = await supabase.rpc('student_service_stats')
+      if (alive && !error) setCount(data?.online || 0)
     }
     poll()
     const timer = setInterval(poll, 30000)

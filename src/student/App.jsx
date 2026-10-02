@@ -9,8 +9,7 @@ import { InactiveAccount, useAuth, signOut } from '../shared/auth'
 import { Aurora, FooterBar, Loading, StatusPill, VisitorCounter } from '../shared/ui'
 import Login from './pages/Login'
 import { useStudentPresenceTrack } from '../shared/presence'
-import { StudentPushInbox } from '../shared/push'
-import { StudentFileInbox } from '../shared/fileTransfers'
+import { StudentDistributionInbox } from '../shared/fileTransfers'
 import { StudentHelpButton } from '../shared/help'
 const Arcade = lazy(() => import('../shared/Arcade'))
 const Signup = lazy(() => import('./pages/Signup'))
@@ -121,7 +120,7 @@ export default function App() {
     // 집중 모드: 오로라 없음, 단색 배경, 중앙 720px
     return (
       <div style={{ minHeight: '100vh', background: 'var(--surface)', display: 'flex', flexDirection: 'column' }}>
-        <StudentFileInbox floating />
+        <StudentDistributionInbox floating />
         <div style={{ flex: 1, width: '100%', maxWidth: 720, margin: '0 auto', padding: '32px 16px' }}>
           <Suspense fallback={<Loading />}><Routes>
             <Route path="/surveys/:id" element={<SurveyForm />} />
@@ -174,13 +173,12 @@ export default function App() {
             <span className="topbar-title">{title}</span>
             <div className="topbar-right">
               <StudentHelpButton cohortId={cohort?.id || null} />
-              <StudentPushInbox cohortId={cohort?.id || null} />
-              <StudentFileInbox />
-              <span className="live-pill" title="현재 접속 중인 학생 수">
+              <StudentDistributionInbox />
+              <span className="live-pill" title="전체 LMS에서 현재 접속 중인 학생 수">
                 <span className="live-dot" />
                 <span className="tnum">접속 {online}명</span>
               </span>
-              <VisitorCounter />
+              <VisitorCounter global />
               <Link to="/profile" className="profile-link" title="내 정보로 이동">
                 <span className="avatar">{(profile.name || '?').slice(0, 1)}</span>
                 <span className="t-label" style={{ color: 'var(--foreground)' }}>{profile.name}</span>

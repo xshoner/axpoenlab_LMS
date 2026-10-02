@@ -1,10 +1,12 @@
-import { useEffect, useRef, useState } from 'react'
+import { lazy, Suspense, useEffect, useRef, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { readAll } from '../lib/queries'
 import { getSettings, extOf, fmtBytes, fmtDate, storageSafeName } from '../lib/helpers'
 import { useAuth } from './auth'
 import { Dialog, useToast } from './ui'
 import { checked } from './fileTransfers'
+import { AdminPushComposer, isBlankHtml } from './push'
+const RichEditor = lazy(() => import('./RichEditor'))
 
 export default function FileSenderDialog({ cohortId, cohorts, onClose }) {
   const { profile } = useAuth()
@@ -12,6 +14,7 @@ export default function FileSenderDialog({ cohortId, cohorts, onClose }) {
   const [target, setTarget] = useState(cohortId || '')
   const [title, setTitle] = useState('')
   const [memo, setMemo] = useState('')
+  const [editorKey, setEditorKey] = useState(0)
   const [files, setFiles] = useState([])
   const [members, setMembers] = useState([])
   const [selected, setSelected] = useState(new Set())
@@ -23,6 +26,7 @@ export default function FileSenderDialog({ cohortId, cohorts, onClose }) {
   const [progress, setProgress] = useState('')
   const [hasDraft, setHasDraft] = useState(false)
   const [search, setSearch] = useState('')
+  const [legacyOpen, setLegacyOpen] = useState(false)
   const [error, setError] = useState('')
   const fileInput = useRef(null)
   const retry = useRef(null)
@@ -51,8 +55,9 @@ export default function FileSenderDialog({ cohortId, cohorts, onClose }) {
       running = true
       try {
         const rows = await readAll(() => supabase.from('file_recipients').select('*').eq('batch_id', status.batch.id).order('user_id'))
-        const requests = await readAll(() => supabase.from('file_download_requests').select('file_id,user_id,requested_at')
-          .in('file_id', status.batch.file_batch_files.map(f => f.id)).order('file_id').order('user_id'))
+        const fileIds = status.batch.file_batch_files.map(f => f.id)
+        const requests = fileIds.length ? await readAll(() => supabase.from('file_download_requests').select('file_id,user_id,requested_at')
+          .in('file_id', fileIds).order('file_id').order('user_id')) : []
         if (alive) setStatus(prev => prev?.batch.id === status.batch.id ? { ...prev, rows, requests } : prev)
       } catch { if (alive) setError('수신 현황을 갱신하지 못했습니다.') }
       finally { running = false }
@@ -67,14 +72,14 @@ export default function FileSenderDialog({ cohortId, cohorts, onClose }) {
     try {
       const settings = await getSettings(true)
       const max = Math.min(50, settings.maxFileSizeMb) * 1048576
-      if (!target || !title.trim() || !files.length || files.length > 10 || (!all && !selected.size)) throw new Error('기수, 제목, 파일과 수신 학생을 선택해 주세요.')
+      if (!target || !title.trim() || (!files.length && isBlankHtml(memo)) || files.length > 10 || (!all && !selected.size)) throw new Error('기수, 제목, 수신 학생과 쪽지 내용 또는 파일을 입력해 주세요.')
       for (const file of files) {
         if (!file.size || file.size > max || !settings.allowedExtensions.includes(extOf(file.name)))
           throw new Error(`${file.name}: 허용 확장자(${settings.allowedExtensions.join(', ')}) 또는 용량(${fmtBytes(max)})을 확인해 주세요.`)
       }
       // Retain the same draft and paths on failure, making a lost response safe to retry.
       if (!retry.current) {
-        const id = checked(await supabase.rpc('create_file_batch', { p_cohort: target, p_title: title.trim(), p_memo: memo }))
+        const id = checked(await supabase.rpc('create_distribution', { p_cohort: target, p_title: title.trim(), p_memo: '', p_html: memo }))
         retry.current = { id, entries: files.map(f => ({ filename: f.name, size_bytes: f.size, file_path: `${profile.id}/${id}/${storageSafeName(f.name)}` })), uploaded: new Set() }
         setHasDraft(true)
       }
@@ -87,11 +92,11 @@ export default function FileSenderDialog({ cohortId, cohorts, onClose }) {
         draft.uploaded.add(i)
       }
       setProgress('학생에게 전송 중…')
-      const count = checked(await supabase.rpc('send_file_batch', { p_batch: draft.id, p_files: draft.entries, p_students: all ? null : [...selected] }))
+      const count = checked(await supabase.rpc('send_distribution', { p_batch: draft.id, p_files: draft.entries, p_students: all ? null : [...selected] }))
       retry.current = null
       setHasDraft(false)
-      setFiles([]); setTitle(''); setMemo(''); if (fileInput.current) fileInput.current.value = ''
-      toast(`${count}명에게 파일을 보냈습니다.`)
+      setFiles([]); setTitle(''); setMemo(''); setEditorKey(k => k + 1); if (fileInput.current) fileInput.current.value = ''
+      toast(`${count}명에게 쪽지/파일을 보냈습니다.`)
       await loadHistory()
     } catch (e) { setError(e instanceof Error ? e.message : '전송하지 못했습니다. 다시 누르면 같은 전송을 이어서 시도합니다.') }
     finally { setBusy(false); setProgress('') }
@@ -118,7 +123,7 @@ export default function FileSenderDialog({ cohortId, cohorts, onClose }) {
         const draft = retry.current
         const batch = checked(await supabase.from('file_batches').select('status').eq('id', draft.id).single())
         if (batch.status === 'draft') {
-          checked(await supabase.storage.from('student-deliveries').remove(draft.entries.map(f => f.file_path)))
+          if (draft.entries.length) checked(await supabase.storage.from('student-deliveries').remove(draft.entries.map(f => f.file_path)))
           checked(await supabase.rpc('discard_file_batch', { p_batch: draft.id }))
         }
         retry.current = null
@@ -126,15 +131,19 @@ export default function FileSenderDialog({ cohortId, cohorts, onClose }) {
     }
     onClose()
   }
-  return <Dialog open title="학생에게 파일 보내기" onClose={close} wide>
+  return <Dialog open title="쪽지/파일 보내기" onClose={close} wide>
     <div className="stack" style={{ gap: 12 }}>
       {error && <p role="alert" style={{ color: 'var(--danger)' }}>{error}</p>}
       <label>대상 기수 <select className="input" aria-label="대상 기수" value={target} disabled={locked} onChange={e => { setTarget(e.target.value); setHistoryPage(0) }}>
         <option value="">기수를 선택하세요</option>{cohorts.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
       </select></label>
       <label>제목 <input className="input" aria-label="파일 제목" maxLength={200} value={title} disabled={locked} onChange={e => setTitle(e.target.value)} /></label>
-      <label>안내 문구 <textarea className="input" aria-label="안내 문구" maxLength={4000} value={memo} disabled={locked} onChange={e => setMemo(e.target.value)} /></label>
-      <label>파일 선택 (최대 10개, 파일당 LMS 용량·확장자 설정 적용)
+      <div><div className="t-label mb-8">쪽지 내용 (파일만 보낼 때는 생략 가능)</div>
+        <div style={locked ? { pointerEvents: 'none', opacity: .65 } : undefined}>
+          <Suspense fallback={<p>편집기 준비 중…</p>}><RichEditor key={editorKey} value={memo} onChange={setMemo} minHeight={140} compact /></Suspense>
+        </div>
+      </div>
+      <label>첨부파일 (선택, 최대 10개, LMS 용량·확장자 설정 적용)
         <input ref={fileInput} type="file" multiple aria-label="전송 파일" disabled={locked} onChange={e => setFiles([...e.target.files])} />
       </label>
       {files.map((f, i) => <small key={i}>{f.name} · {fmtBytes(f.size)}</small>)}
@@ -144,21 +153,24 @@ export default function FileSenderDialog({ cohortId, cohorts, onClose }) {
         {members.filter(p => p.name.includes(search.trim())).map(p => <label key={p.id} style={{ display: 'block' }}><input type="checkbox" checked={selected.has(p.id)} disabled={locked}
           onChange={e => setSelected(prev => { const next = new Set(prev); if (e.target.checked) next.add(p.id); else next.delete(p.id); return next })} /> {p.name}</label>)}
       </div></div>}
-      <p className="t-caption">접속 중인 학생에게 알림이 표시됩니다. 미접속 학생은 다음 로그인 때 받은 파일을 확인할 수 있습니다.</p>
-      <button className="btn btn-primary" disabled={busy || !target || !files.length || !title.trim() || !members.length || (!all && !selected.size)} onClick={send}>
+      <p className="t-caption">쪽지만 보내거나 파일을 함께 보낼 수 있습니다. 접속 중인 학생에게 알림이 표시되며 미접속자는 다음 로그인 때 확인합니다.</p>
+      <button className="btn btn-primary" disabled={busy || !target || (!files.length && isBlankHtml(memo)) || !title.trim() || !members.length || (!all && !selected.size)} onClick={send}>
         {busy ? progress || '준비 중…' : hasDraft ? '전송 다시 시도' : `${all ? members.length : selected.size}명에게 보내기`}
       </button>
       <div style={{ borderTop: '1px solid var(--border)', paddingTop: 12 }}>
         <h3 className="t-h3">전송 이력 · 수신 현황</h3>
         {!history.length && <p>전송 이력이 없습니다.</p>}
         {history.map(batch => <div className="row" key={batch.id} style={{ gap: 8, marginTop: 8 }}>
-          <span style={{ flex: 1 }}>{batch.title} <small>{batch.status === 'sent' ? `${fmtDate(batch.sent_at, true)} · ${batch.file_batch_files.length}개 파일` : '미전송 임시 파일'}</small></span>
+          <span style={{ flex: 1 }}>{batch.title} <small>{batch.status === 'sent' ? `${fmtDate(batch.sent_at, true)} · ${batch.file_batch_files.length ? `첨부 ${batch.file_batch_files.length}개` : '쪽지'}` : '미전송 임시 항목'}</small></span>
           {batch.status === 'sent' ? <button className="btn btn-white btn-sm" onClick={() => setStatus({ batch, rows: [], requests: [] })}>수신 현황</button>
             : batch.sender_id === profile.id && <button className="btn btn-white btn-sm" disabled={busy} onClick={() => discard(batch)}>임시 파일 정리</button>}
         </div>)}
         <div className="row mt-8" style={{ gap: 8 }}><button className="btn btn-white btn-sm" disabled={!historyPage} onClick={() => setHistoryPage(p => p - 1)}>이전</button>
           <span>{historyPage + 1} 페이지</span><button className="btn btn-white btn-sm" disabled={history.length < 20} onClick={() => setHistoryPage(p => p + 1)}>다음</button></div>
       </div>
+      <details onToggle={e => setLegacyOpen(e.currentTarget.open)}><summary>이전 쪽지 이력 · 수정 · 재발송</summary>
+        {legacyOpen && <AdminPushComposer embedded cohortId={target} cohortName={cohorts.find(c => c.id === target)?.name} />}
+      </details>
     </div>
     <Dialog open={!!status} title={`${status?.batch.title || ''} · 수신 현황`} onClose={() => setStatus(null)} wide>
       {status && <div className="stack" style={{ gap: 8 }}>

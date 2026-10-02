@@ -9,7 +9,7 @@ const browser=await chromium.launch({...(process.env.PLAYWRIGHT_CHANNEL?{channel
 try {
  const context=await browser.newContext();
  let failProfile=false, mockShare=false, fileAvailable=false, fileSeen=false, fileReceived=false, downloadRequests=0;
- await context.addInitScript(s=>{localStorage.setItem('ax-lms-keep','1');localStorage.setItem('sb-ugelgndotyppgksbubot-auth-token',JSON.stringify(s))},session);
+ await context.addInitScript(s=>{localStorage.setItem('ax-lms-keep','1');localStorage.setItem('sb-ugelgndotyppgksbubot-auth-token',JSON.stringify(s));localStorage.setItem(`ax-distribution-seen:${s.user.id}`,JSON.stringify(['legacy-message']))},session);
  await context.route('**/ugelgndotyppgksbubot.supabase.co/**',async route=>{
   const u=new URL(route.request().url()), table=u.pathname.split('/').pop();let data=[];
   if(table==='profiles'&&failProfile){await route.fulfill({status:503,contentType:'application/json',body:JSON.stringify({code:'TEST_OFFLINE'})});return;}
@@ -19,14 +19,16 @@ try {
   else if(table==='screen-share')data={room:'https://example.invalid',token:'MOCK_ONLY'};
   else if(table==='my_help_position'||table==='record_visit')data=null;
   else if(table==='online_student_count'||table==='heartbeat')data=0;
+  else if(table==='student_service_stats')data={today:23,total:456,online:7};
   else if(table==='user')data=user;
   else if(table==='quizzes'){await route.fulfill({status:406,contentType:'application/json',body:JSON.stringify({code:'PGRST116',message:'No rows'})});return;}
   else if(table==='quiz_submissions')data=null;
   else if(table==='surveys'){const survey=u.searchParams.get('id')?.endsWith(first)?first:second;data={id:survey,title:survey===first?'First survey':'Second survey',status:'open',allow_edit:false};}
   else if(table==='survey_responses')data=u.searchParams.get('survey_id')?.endsWith(first)?{id:'response',survey_answers:[]}:null;
   else if(table==='survey_questions')data=[];
+  else if(table==='push_deliveries')data=fileAvailable?[{id:'legacy-message',body:'기존 쪽지도 유지됩니다.',sent_at:'2026-10-01T08:00:00Z',sender_name:'관리자'}]:[];
   else if(table==='file_recipients')data=fileAvailable?[{batch_id:first,received_at:fileReceived?'2026-10-02T08:00:00Z':null,seen_at:fileSeen?'2026-10-02T08:00:00Z':null,
-    file_batches:{id:first,title:'배포 자료',memo:'오프라인 학생에게도 전달',sent_at:'2026-10-02T08:00:00Z',file_batch_files:[{id:second,filename:'한글자료.txt',size_bytes:8,file_path:'mock/file.txt'}]}}]:[];
+    file_batches:{id:first,title:'배포 자료',memo:'오프라인 학생에게도 전달',body_html:'<p>통합 쪽지 본문</p>',sent_at:'2026-10-02T08:00:00Z',file_batch_files:[{id:second,filename:'한글자료.txt',size_bytes:8,file_path:'mock/file.txt'}]}}]:[];
   else if(table==='ack_file_batch'){fileReceived=true;if(JSON.parse(route.request().postData()).p_seen)fileSeen=true;data=null;}
   else if(table==='record_file_download'){downloadRequests++;data=null;}
   else if(u.pathname.includes('/storage/v1/object/sign/'))data={signedURL:'/object/mock-file-download'};
@@ -56,6 +58,7 @@ try {
  fileAvailable=true;
  await page.reload();
  await page.getByRole('heading',{name:'배포 자료',exact:true}).waitFor();
+ await page.getByText('통합 쪽지 본문',{exact:true}).waitFor();
  await page.waitForFunction(()=>document.querySelector('.dialog'));
  const downloadPromise=page.waitForEvent('download');
  await page.getByRole('button',{name:'다운로드',exact:true}).click();
@@ -65,14 +68,22 @@ try {
  assert.equal(fileReceived,true);assert.equal(fileSeen,true);
  await page.getByRole('dialog').getByRole('button',{name:'닫기',exact:true}).click();
  await page.reload();
- await page.getByRole('button',{name:'받은 파일',exact:true}).waitFor();
+ await page.getByRole('button',{name:'쪽지/파일',exact:true}).waitFor();
  assert.equal(await page.getByRole('heading',{name:'배포 자료',exact:true}).count(),0);
- await page.getByRole('button',{name:'받은 파일',exact:true}).click();
+ await page.getByRole('button',{name:'쪽지/파일',exact:true}).click();
+ assert.equal(await page.getByRole('button',{name:/관리자 쪽지/}).count(),1,'legacy messages appear in the same inbox');
  await page.getByRole('button',{name:/배포 자료/}).click();
  await page.getByRole('heading',{name:'배포 자료',exact:true}).waitFor();
  await page.getByRole('dialog').last().getByRole('button',{name:'닫기',exact:true}).click();
  await page.getByRole('dialog').getByRole('button',{name:'닫기',exact:true}).click();
  console.log('PASS: offline file popup, persisted read status, retained inbox and original Korean download filename');
+ await page.goto(base+'/#/courses');
+ await page.getByText('접속 7명',{exact:true}).waitFor();
+ await page.getByText('오늘 23',{exact:true}).waitFor();
+ await page.getByText('누적 456',{exact:true}).waitFor();
+ assert.equal(await page.getByRole('button',{name:'쪽지/파일',exact:true}).count(),1);
+ assert.equal(await page.getByRole('button',{name:'받은 파일',exact:true}).count(),0);
+ console.log('PASS: single student inbox menu and service-wide online/today/total counters');
  await context.route('**/assets/daily-esm-*.js',route=>route.fulfill({status:200,contentType:'application/javascript',body:'export default {createCallObject(){return {on(){},participants(){return {}},async join(){window.__qaJoined=true},async destroy(){}}}}'}));
  mockShare=true;
  await page.evaluate(()=>window.dispatchEvent(new Event('online')));
