@@ -55,15 +55,26 @@ function useCurrentShare(enabled, cohortId) {
     const channel = supabase.channel(`screen-share:${cohortId || 'super'}:${crypto.randomUUID()}`)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'screen_share_sessions', ...(cohortId ? { filter: `cohort_id=eq.${cohortId}` } : {}) }, read)
       .subscribe(status => { connected = status === 'SUBSCRIBED'; if (connected) void read(); else { clearTimeout(timer); timer = setTimeout(read, 5000) } })
-    const visible = () => { if (document.visibilityState === 'visible') void read() }
+    const resume = () => {
+      setCurrent(value => value && remainingShareLease(value) <= 0 ? null : value)
+      void read()
+    }
+    const visible = () => { if (document.visibilityState === 'visible') resume() }
     document.addEventListener('visibilitychange', visible)
-    return () => { alive = false; clearTimeout(timer); document.removeEventListener('visibilitychange', visible); void supabase.removeChannel(channel) }
+    for (const event of ['focus', 'pageshow', 'online']) window.addEventListener(event, resume)
+    return () => {
+      alive = false; clearTimeout(timer); document.removeEventListener('visibilitychange', visible)
+      for (const event of ['focus', 'pageshow', 'online']) window.removeEventListener(event, resume)
+      void supabase.removeChannel(channel)
+    }
   }, [enabled, cohortId])
   // A lost Realtime connection must not extend a billed session indefinitely.
   useEffect(() => {
     if (!current) return
+    // A suspended browser can drop a one-shot callback. Check again after resume.
+    const check = setInterval(() => { if (remainingShareLease(current) <= 0) setCurrent(null) }, 1000)
     const timer = setTimeout(() => setCurrent(null), remainingShareLease(current))
-    return () => clearTimeout(timer)
+    return () => { clearTimeout(timer); clearInterval(check) }
   }, [current])
   return enabled && (!cohortId || current?.cohort_id === cohortId) ? current : null
 }

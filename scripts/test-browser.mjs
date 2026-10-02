@@ -8,14 +8,16 @@ const base=process.env.LMS_TEST_URL||'http://127.0.0.1:5186';
 const browser=await chromium.launch({...(process.env.PLAYWRIGHT_CHANNEL?{channel:process.env.PLAYWRIGHT_CHANNEL}:{}),headless:true});
 try {
  const context=await browser.newContext();
- let failProfile=false;
+ let failProfile=false, mockShare=false;
  await context.addInitScript(s=>{localStorage.setItem('ax-lms-keep','1');localStorage.setItem('sb-ugelgndotyppgksbubot-auth-token',JSON.stringify(s))},session);
  await context.route('**/ugelgndotyppgksbubot.supabase.co/**',async route=>{
   const u=new URL(route.request().url()), table=u.pathname.split('/').pop();let data=[];
   if(table==='profiles'&&failProfile){await route.fulfill({status:503,contentType:'application/json',body:JSON.stringify({code:'TEST_OFFLINE'})});return;}
   if(table==='profiles')data={id,name:'Mock',role:'student',status:'active'};
   else if(table==='cohort_members')data={cohort_id:cohort,cohorts:{id:cohort,name:'Mock cohort',status:'active'}};
-  else if(table==='screen_share_current'||table==='my_help_position'||table==='record_visit')data=null;
+  else if(table==='screen_share_current')data=mockShare?{id:first,cohort_id:cohort,teacher_id:second,state:'live',lease_remaining_ms:4000}:null;
+  else if(table==='screen-share')data={room:'https://example.invalid',token:'MOCK_ONLY'};
+  else if(table==='my_help_position'||table==='record_visit')data=null;
   else if(table==='online_student_count'||table==='heartbeat')data=0;
   else if(table==='user')data=user;
   else if(table==='quizzes'){await route.fulfill({status:406,contentType:'application/json',body:JSON.stringify({code:'PGRST116',message:'No rows'})});return;}
@@ -45,6 +47,19 @@ try {
  await page.getByRole('button',{name:'다시 시도',exact:true}).click();
  await page.getByText('Second survey',{exact:true}).waitFor();
  console.log('PASS: profile failure shows retry and recovers without reload');
+ await context.route('**/assets/daily-esm-*.js',route=>route.fulfill({status:200,contentType:'application/javascript',body:'export default {createCallObject(){return {on(){},participants(){return {}},async join(){window.__qaJoined=true},async destroy(){}}}}'}));
+ mockShare=true;
+ await page.evaluate(()=>window.dispatchEvent(new Event('online')));
+ await page.locator('.student-screen-share').waitFor();
+ await page.waitForFunction(()=>window.__qaJoined===true);
+ const cdp=await context.newCDPSession(page);
+ await cdp.send('Emulation.setScriptExecutionDisabled',{value:true});
+ await new Promise(resolve=>setTimeout(resolve,6000));
+ mockShare=false;
+ await cdp.send('Emulation.setScriptExecutionDisabled',{value:false});
+ await page.locator('.student-screen-share').waitFor({state:'hidden',timeout:3500});
+ assert.equal(await page.locator('#root').evaluate(root=>root.inert),false);
+ console.log('PASS: expired share releases the LMS after suspended one-shot timers are lost');
  assert.deepEqual(errors,[]);
  console.log('Browser runtime errors: '+JSON.stringify(errors));
  await context.close();
