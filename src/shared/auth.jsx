@@ -1,5 +1,6 @@
 import { createContext, useContext, useEffect, useState, useCallback, useRef } from 'react'
 import { supabase } from '../lib/supabase'
+import { LoadError, reportClientError } from './errors'
 
 const AuthCtx = createContext({ session: undefined, profile: null, cohort: null })
 
@@ -7,31 +8,37 @@ export function AuthProvider({ children }) {
   const [session, setSession] = useState(undefined) // undefined = 확인 중
   const [profile, setProfile] = useState(null)
   const [cohort, setCohort] = useState(null)
+  const [profileError, setProfileError] = useState(false)
   const profileRequest = useRef(null)
   const profileVersion = useRef(0)
+  const authVersion = useRef(0)
 
   const loadProfile = useCallback(async (uid) => {
     if (!uid) {
       profileVersion.current++
       profileRequest.current = null
-      setProfile(null); setCohort(null); return
+      setProfile(null); setCohort(null); setProfileError(false); return
     }
     if (profileRequest.current?.uid === uid) return profileRequest.current.promise
     const request = { uid, version: ++profileVersion.current }
     request.promise = (async () => {
+      setProfileError(false)
       try {
-        const [{ data: p }, { data: m }] = await Promise.all([
-          supabase.from('profiles').select('*').eq('id', uid).single(),
+        const [{ data: p, error: pe }, { data: m, error: me }] = await Promise.all([
+          supabase.from('profiles').select('*').eq('id', uid).abortSignal(AbortSignal.timeout(15000)).single(),
           supabase.from('cohort_members')
             .select('cohort_id, cohorts(id, name, code, status, start_date, end_date)')
-            .eq('user_id', uid).maybeSingle(),
+            .eq('user_id', uid).abortSignal(AbortSignal.timeout(15000)).maybeSingle(),
         ])
         if (request.version !== profileVersion.current) return
+        if (pe || me || !p) throw new Error('PROFILE_LOAD_FAILED')
         if (p && p.role !== 'super_admin') sessionStorage.removeItem('ax-admin-view')
         // Publish both together: the dashboard should not load once without a
         // cohort and then issue the same requests again when membership arrives.
         setCohort(m?.cohorts || null)
         setProfile(p || null)
+      } catch {
+        if (request.version === profileVersion.current) { setProfileError(true); reportClientError('load', 'PROFILE_LOAD_FAILED') }
       } finally {
         if (profileRequest.current === request) profileRequest.current = null
       }
@@ -41,13 +48,16 @@ export function AuthProvider({ children }) {
   }, [])
 
   useEffect(() => {
+    const initialVersion = authVersion.current
     supabase.auth.getSession().then(({ data }) => {
+      if (initialVersion !== authVersion.current) return
       setSession(data.session ?? null)
-      loadProfile(data.session?.user?.id)
+      void loadProfile(data.session?.user?.id)
     })
     const { data: sub } = supabase.auth.onAuthStateChange((event, s) => {
+      const version = ++authVersion.current
       setSession(s ?? null)
-      if (event === 'SIGNED_IN' || event === 'USER_UPDATED') loadProfile(s?.user?.id)
+      if (event === 'INITIAL_SESSION' || event === 'SIGNED_IN' || event === 'USER_UPDATED') queueMicrotask(() => { if (authVersion.current === version) void loadProfile(s?.user?.id) })
       if (event === 'SIGNED_OUT') loadProfile(null)
       if (event === 'PASSWORD_RECOVERY') {
         // 재설정 메일 링크로 진입 — 대시보드 대신 비밀번호 변경 화면 유지
@@ -75,8 +85,8 @@ export function AuthProvider({ children }) {
   const refresh = useCallback(() => loadProfile(session?.user?.id), [session, loadProfile])
 
   return (
-    <AuthCtx.Provider value={{ session, profile, cohort, refresh }}>
-      {children}
+    <AuthCtx.Provider value={{ session, profile, cohort, refresh, profileError }}>
+      {profileError && session ? <LoadError title="계정 정보를 불러오지 못했습니다" retry={refresh} /> : children}
     </AuthCtx.Provider>
   )
 }

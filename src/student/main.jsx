@@ -6,16 +6,17 @@ import { AuthProvider } from '../shared/auth'
 import { ToastProvider } from '../shared/ui'
 import App from './App'
 import { StudentScreenShare } from '../shared/screenShare'
+import { ErrorBoundary } from '../shared/errors'
 
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
-    <HashRouter>
+    <ErrorBoundary><HashRouter>
       <AuthProvider>
         <ToastProvider>
           <App />
           <StudentScreenShare />
         </ToastProvider>
       </AuthProvider>
-    </HashRouter>
+    </HashRouter></ErrorBoundary>
   </React.StrictMode>,
 )

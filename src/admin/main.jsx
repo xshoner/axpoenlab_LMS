@@ -5,15 +5,16 @@ import '../styles/tokens.css'
 import { AuthProvider } from '../shared/auth'
 import { ToastProvider } from '../shared/ui'
 import AdminApp from './App'
+import { ErrorBoundary } from '../shared/errors'
 
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
-    <HashRouter>
+    <ErrorBoundary><HashRouter>
       <AuthProvider>
         <ToastProvider>
           <AdminApp />
         </ToastProvider>
       </AuthProvider>
-    </HashRouter>
+    </HashRouter></ErrorBoundary>
   </React.StrictMode>,
 )

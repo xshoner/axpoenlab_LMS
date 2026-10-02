@@ -2,25 +2,31 @@ import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { IconPin } from '@tabler/icons-react'
 import { supabase } from '../../lib/supabase'
-import { Loading, EmptyState } from '../../shared/ui'
+import { Loading, EmptyState, Pagination } from '../../shared/ui'
+import { LoadError } from '../../shared/errors'
 import { fmtDate, isNew } from '../../lib/helpers'
 
 export default function Notices() {
   const [rows, setRows] = useState(null)
+  const [page, setPage] = useState(1), [total, setTotal] = useState(0), [error, setError] = useState(false), [retry, setRetry] = useState(0)
 
   useEffect(() => {
+    let alive = true
+    setError(false)
     supabase.from('notices')
-      .select('id, title, created_at, view_count, pinned')
+      .select('id, title, created_at, view_count, pinned', { count: 'exact' })
       .order('pinned', { ascending: false })
-      .order('created_at', { ascending: false })
-      .then(({ data }) => setRows(data || []))
-  }, [])
+      .order('created_at', { ascending: false }).order('id').range((page-1)*20,page*20-1)
+      .then(({ data, error, count }) => { if (alive) { setError(!!error); if (!error) { setRows(data || []); setTotal(count || 0) } } })
+    return () => { alive = false }
+  }, [page, retry])
 
+  if (error) return <LoadError retry={() => setRetry(x => x + 1)} />
   if (!rows) return <Loading />
   if (rows.length === 0) return <EmptyState title="등록된 공지가 없습니다" />
 
   return (
-    <div className="table-wrap">
+    <><div className="table-wrap">
       <table className="data-table">
         <thead>
           <tr><th style={{ width: 60 }}>번호</th><th>제목</th><th style={{ width: 120 }}>등록일</th><th style={{ width: 80 }}>조회수</th></tr>
@@ -28,7 +34,7 @@ export default function Notices() {
         <tbody>
           {rows.map((n, i) => (
             <tr key={n.id}>
-              <td className="tnum">{n.pinned ? <IconPin size={16} stroke={1.75} color="var(--primary)" /> : rows.length - i}</td>
+              <td className="tnum">{n.pinned ? <IconPin size={16} stroke={1.75} color="var(--primary)" /> : total - (page-1)*20 - i}</td>
               <td>
                 <Link to={`/notices/${n.id}`} style={{ textDecoration: 'none', color: 'var(--foreground)', fontWeight: n.pinned ? 600 : 400 }}>
                   {n.title}
@@ -41,6 +47,6 @@ export default function Notices() {
           ))}
         </tbody>
       </table>
-    </div>
+    </div><Pagination page={page} total={total} pageSize={20} onChange={setPage} /></>
   )
 }

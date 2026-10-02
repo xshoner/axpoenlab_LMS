@@ -37,7 +37,7 @@ export default function Signup() {
       previousForcedCode = forced?.code || null
     }
     loadForcedCohort()
-    const timer = window.setInterval(loadForcedCohort, 2000)
+    const timer = window.setInterval(() => { if (document.visibilityState === 'visible') void loadForcedCohort() }, 30000)
     window.addEventListener('focus', loadForcedCohort)
     return () => {
       alive = false
@@ -94,6 +94,7 @@ export default function Signup() {
       if (!json.ok) {
         if (json.error === 'email_exists') setErrors((e) => ({ ...e, email: '이미 가입된 메일주소입니다.' }))
         else if (json.error === 'invalid_cohort_code') setTopError('기수 코드를 확인해 주세요.')
+        else if (json.error === 'rate_limited') setTopError('가입 요청이 반복되었습니다. 잠시 후 다시 시도해 주세요.')
         else setTopError('가입에 실패했습니다. 잠시 후 다시 시도해 주세요.')
         setBusy(false)
         return

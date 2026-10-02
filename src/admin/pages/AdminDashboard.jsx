@@ -45,83 +45,13 @@ export default function AdminDashboard() {
     let alive = true
     ;(async () => {
       setCohortStats(undefined)
-      const [membersQ, coursesQ, groupsQ] = await Promise.all([
-        supabase.from('cohort_members').select('user_id, profiles(name, status)').eq('cohort_id', selectedId),
-        supabase.from('cohort_courses').select('id, group_id, course_no, title, assignment_enabled')
-          .eq('cohort_id', selectedId).order('course_no'),
-        supabase.from('cohort_course_groups').select('id, name, sort_order, is_default')
-          .eq('cohort_id', selectedId).order('sort_order').order('created_at'),
-      ])
+      const { data, error } = await supabase.rpc('admin_cohort_metrics', { p_cohort: selectedId })
       if (!alive) return
-      const members = membersQ.data || []
-      const courses = coursesQ.data || []
-      const courseGroups = groupsQ.data || []
-      const userIds = (members || []).map((m) => m.user_id)
-      const courseIds = (courses || []).map((c) => c.id)
-      const inquiryRequest = Promise.resolve(supabase.from('inquiries')
-        .select('id, title, status, created_at, profiles!inquiries_user_id_fkey(name)')
-        .in('user_id', userIds.length ? userIds : ['00000000-0000-0000-0000-000000000000'])
-        .order('status', { ascending: false }).order('created_at', { ascending: false }).limit(10))
-
-      let views = [], subs = [], surveys = [], quizzes = [], responses = [], quizSubs = [], inquiries = [], ratings = []
-      if (courseIds.length) {
-        const [vQ, sQ, svQ, qzQ, rtQ] = await Promise.all([
-          supabase.from('course_views').select('user_id, cohort_course_id').in('cohort_course_id', courseIds),
-          supabase.from('submissions').select('user_id, cohort_course_id').in('cohort_course_id', courseIds),
-          supabase.from('surveys').select('id, status').in('cohort_course_id', courseIds).neq('status', 'draft'),
-          supabase.from('quizzes').select('id, status').in('cohort_course_id', courseIds).neq('status', 'draft'),
-          supabase.from('course_rating_stats').select('cohort_course_id, avg_rating, rating_count').eq('cohort_id', selectedId),
-        ])
-        if (!alive) return
-        views = vQ.data || []; subs = sQ.data || []; surveys = svQ.data || []; quizzes = qzQ.data || []
-        ratings = rtQ.data || []
-        const [responseQ, quizSubmissionQ] = await Promise.all([
-          surveys.length ? supabase.from('survey_responses').select('survey_id, user_id').in('survey_id', surveys.map((s) => s.id)) : Promise.resolve({ data: [] }),
-          quizzes.length ? supabase.from('quiz_submissions').select('quiz_id, user_id, total_score, graded').in('quiz_id', quizzes.map((q) => q.id)) : Promise.resolve({ data: [] }),
-        ])
-        responses = responseQ.data || []
-        quizSubs = quizSubmissionQ.data || []
-      }
-      const { data: inq } = await inquiryRequest
-      inquiries = inq || []
-
-      if (!alive) return
-      const n = userIds.length
-      const courseViewRates = (courses || []).map((c) => ({
-        name: `${pad2(c.course_no)}. ${c.title.slice(0, 12)}`,
-        groupId: c.group_id,
-        열람률: n ? Math.round((views.filter((v) => v.cohort_course_id === c.id).length / n) * 100) : 0,
-      }))
-      const assignCourses = (courses || []).filter((c) => c.assignment_enabled)
-      const submitRate = n && assignCourses.length
-        ? Math.round((subs.length / (n * assignCourses.length)) * 100) : 0
-      const surveyRate = n && surveys.length
-        ? Math.round((responses.length / (n * surveys.length)) * 100) : 0
-      const quizRate = n && quizzes.length
-        ? Math.round((quizSubs.length / (n * quizzes.length)) * 100) : 0
-      const gradedScores = quizSubs.filter((s) => s.graded && s.total_score != null).map((s) => Number(s.total_score))
-      const avgScore = gradedScores.length ? (gradedScores.reduce((a, b) => a + b, 0) / gradedScores.length).toFixed(1) : '-'
-      // 만족도 상위 강좌 TOP 5
-      const courseMap = {}
-      for (const c of courses || []) courseMap[c.id] = c
-      const topRated = ratings
-        .map((r) => ({ ...r, course: courseMap[r.cohort_course_id] }))
-        .filter((r) => r.course)
-        .sort((a, b) => Number(b.avg_rating) - Number(a.avg_rating) || b.rating_count - a.rating_count)
-        .slice(0, 5)
-      const defaultCourseGroupId = courseGroups.find((group) => group.name.trim() === '기본 정규 강좌')?.id
-        || courseGroups.find((group) => group.is_default)?.id
-        || courseGroups.find((group) => group.name.includes('기본') || group.name.includes('정규'))?.id
-        || courseGroups[0]?.id || ''
-
-      setCourseGroupId((current) => courseGroups.some((group) => group.id === current) ? current : defaultCourseGroupId)
-      setCohortStats({
-        students: n,
-        active: (members || []).filter((m) => m.profiles?.status === 'active').length,
-        courseGroups,
-        defaultCourseGroupId,
-        courseViewRates, topRated, submitRate, surveyRate, quizRate, avgScore, inquiries,
-      })
+      if (error || !data) { setLoadError(true); return }
+      const groups = data.courseGroups
+      const defaultCourseGroupId = groups.find(g => g.is_default)?.id || groups[0]?.id || ''
+      setCourseGroupId(current => groups.some(g => g.id === current) ? current : defaultCourseGroupId)
+      setCohortStats({ ...data, defaultCourseGroupId })
     })()
     return () => { alive = false }
   }, [selectedId])

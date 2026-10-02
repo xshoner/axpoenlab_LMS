@@ -24,7 +24,9 @@ const rows = {
 }
 const mutations = []
 let failMembership = false
+let signupLimited = false
 const client = {
+  rpc: async () => ({ data: !signupLimited }),
   auth: {
     getUser: async jwt => ({ data: { user: profiles.some(p => p.id === jwt) ? { id: jwt } : null } }),
     admin: {
@@ -94,6 +96,11 @@ console.log('PASS: actual admin-users handler rejects cross-tenant, inactive, pr
 
 const signup = await handler('signup')
 const application = {email:'new-student@test.local',password:'password1',name:'New',org:'Org'}
+signupLimited = true
+const limitedBefore = mutations.length
+assert.equal((await signup('', application)).status,429)
+assert.equal(mutations.length,limitedBefore,'throttled signup must not create an account')
+signupLimited = false
 const enrolled = await signup('',{...application,cohort_code:'admina'})
 assert.equal(enrolled.ok,true)
 assert.equal(rows.cohort_members.find(m=>m.user_id===enrolled.user_id).cohort_id,'ca','explicit invitation overrides legacy signup default')

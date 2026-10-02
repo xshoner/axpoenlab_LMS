@@ -5,7 +5,7 @@ import path from 'node:path'
 import assert from 'node:assert/strict'
 import React from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
-import { StaticRouter } from 'react-router-dom/server.js'
+import { StaticRouter } from 'react-router'
 
 // Render the actual tabs with mocked contexts. Rich HTML is never rendered here;
 // its browser-only sanitizer is an explicit unused stub in this Node test.

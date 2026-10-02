@@ -105,6 +105,26 @@ Supabase URL과 publishable key는 클라이언트 공개가 허용된 값으로
 - GitHub Actions: push/PR 시 `npm run lint` + `npm run build`
 - Vercel: 정적 빌드 배포 (프로젝트 `lms-axopenlab`)
 
+### 2026-10-02 운영 개선
+
+- 학생 화면과 본문 편집기는 필요할 때 로드합니다. 기존 인라인 이미지는 검증된 백업을 만든 뒤 원본 바이트를 그대로 Storage에 옮기고 본문을 이미지 주소로 교체했습니다.
+- 관리자 집계는 DB RPC로 계산하며 회원·게시글·공지에는 서버 페이지 조회를 적용했습니다. 전체 과제/CSV 조회는 API 1,000행 제한을 넘겨서 읽습니다.
+- 퀴즈 점수는 제출·채점 RPC에서만 기록합니다. 회원가입 제한, CSV 수식 방지, 과제 서버 검증 및 재제출 이력, 실패한 파일 업로드 정리를 적용했습니다.
+- 프로필·설문·퀴즈 조회 실패는 재시도할 수 있습니다. 화면 오류는 내용·토큰·URL을 제외한 오류 코드만 기록합니다.
+- 슈퍼관리자 **운영 현황**에서 오류·운영 변경·자동 정리 작업·월 화면공유 인·분·최근 백업을 확인합니다.
+- 공유 중 상단 **수신 N/M명**을 누르면 해당 기수 학생별 수신/연결/대기 상태가 보입니다. 영상 재생 성공을 보고하며, 오래된 보고는 40초 후 대기로 표시합니다. 이는 학생이 실제로 화면을 보고 있는지 또는 출석했는지를 증명하지 않습니다.
+- `npm run test:tenancy`, `npm run test:screen-share`, `npm run test:stability`와 브라우저 회귀 검사를 CI에 포함했습니다. 운영 로그인 화면과 Daily 미연결 상태를 매일 오전 7시에 검사합니다.
+
+### 암호화 백업 및 격리 복구
+
+GitHub Actions `Encrypted LMS backup`은 매일 03:30 KST에 실행하며 암호화 파일을 30일간 보관합니다. 서버에서 일관된 스냅샷을 준비한 다음 큰 강좌 본문은 한 행씩 가져옵니다. 업로드 성공 후에만 운영 현황에 성공을 기록합니다. Secrets `LMS_BACKUP_SERVICE_KEY`, `LMS_BACKUP_KEY`가 필요하며 복구 키는 Supabase Vault `lms_backup_key`에도 보관합니다. 데이터·파일 백업이며 DB 스키마는 이 저장소의 해당 시점 마이그레이션과 호환되는 Supabase 환경에 복원합니다.
+
+1. Actions에서 `.lms-backup` 암호화 파일을 내려받고 복구 키를 `LMS_BACKUP_KEY` 환경변수로 설정합니다. 키를 코드·로그에 넣지 않습니다.
+2. `node scripts/restore-backup.mjs FILE`로 복호화와 모든 파일 해시를 검증합니다.
+3. 호환 스키마가 있는 **별도 격리 프로젝트**를 준비하고 `node scripts/restore-backup.mjs FILE --sql STAGING.sql`로 복구 SQL을 만듭니다. SQL은 기존 대상 데이터를 지우므로 운영 DB에서 실행하지 않습니다. 개인정보가 담긴 평문 SQL은 안전하게 보관하고 복구 후 삭제합니다.
+4. 격리 DB에 SQL을 적용한 뒤 `LMS_RESTORE_URL`, `LMS_RESTORE_SERVICE_KEY`를 설정하고 `node scripts/restore-backup.mjs FILE --files`로 파일을 복원·검증합니다. 원본 프로젝트로의 파일 복원은 차단합니다.
+5. 로그인·학습·과제·설문·퀴즈 및 행 수·권한을 검증합니다. CI에서는 격리 PostgreSQL 엔진에서 행 복구, 외래키 재검증, 시퀀스 복구를 검사합니다.
+
 ## 라이선스
 
 Produced by AXopenLab / xshoner@gmail.com

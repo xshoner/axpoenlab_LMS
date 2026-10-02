@@ -8,6 +8,7 @@
     "build": "vite build",
     "preview": "vite preview",
     "lint": "eslint .",
+    "test:stability": "node --test scripts/test-stability.mjs",
     "test:screen-share": "node --test scripts/test-screen-share-client.mjs && node scripts/test-screen-share-edge.mjs",
     "test:tenancy": "node scripts/test-tenancy.mjs && node scripts/test-edge-functions.mjs && node scripts/test-course-tabs.mjs && node scripts/test-cohort-assignment-groups.mjs && node scripts/test-auth-loading.mjs"
   },
@@ -15,21 +16,23 @@
     "@daily-co/daily-js": "0.92.2",
     "@supabase/supabase-js": "^2.45.0",
     "@tabler/icons-react": "^3.19.0",
-    "dompurify": "^3.1.6",
+    "dompurify": "^3.4.16",
     "qrcode": "^1.5.4",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
-    "react-router-dom": "^6.26.0",
+    "react-router-dom": "^7.18.4",
     "recharts": "^2.12.7"
   },
   "devDependencies": {
     "@electric-sql/pglite": "^0.5.8",
     "@eslint/js": "^9.39.5",
-    "@vitejs/plugin-react": "^4.3.1",
+    "@vitejs/plugin-react": "^6.1.1",
+    "esbuild": "^0.28.2",
     "eslint": "^9.39.5",
     "eslint-plugin-react": "^7.37.5",
     "eslint-plugin-react-hooks": "^7.1.1",
     "globals": "^17.9.0",
-    "vite": "^5.4.6"
+    "playwright": "^1.63.0",
+    "vite": "^8.3.2"
   }
 }

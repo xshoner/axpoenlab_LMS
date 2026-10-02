@@ -8,6 +8,8 @@ dist/
 .DS_Store
 Thumbs.db
 .bkit/
+backup-output/
+*.lms-backup
 supabase/.temp/
 
 .vercel

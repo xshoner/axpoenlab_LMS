@@ -1,9 +1,9 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react'
 import { IconMail, IconSend, IconPencil, IconTrash, IconX, IconRepeat } from '@tabler/icons-react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from './auth'
 import { Dialog, ConfirmDialog, useToast } from './ui'
-import RichEditor from './RichEditor'
+const RichEditor = lazy(() => import('./RichEditor'))
 import RichBody from './RichBody'
 import { fmtDate } from '../lib/helpers'
 
@@ -303,7 +303,7 @@ export function AdminPushComposer({ cohortId, cohortName }) {
             대상: {target} — 현재 접속 중인 학생 화면에 팝업이 즉시 표시됩니다.
             <span className="muted-soft" style={{ fontWeight: 400 }}> 링크·굵게·명령어/프롬프트 복사 블록은 툴바에서 넣으세요.</span>
           </div>
-          <RichEditor key={editorKey} value={body} onChange={setBody} minHeight={140} compact />
+          <Suspense fallback={<p className="t-muted-sm">편집기 준비 중…</p>}><RichEditor key={editorKey} value={body} onChange={setBody} minHeight={140} compact /></Suspense>
           <div className="row" style={{ gap: 6, justifyContent: 'flex-end' }}>
             {editing && (
               <>

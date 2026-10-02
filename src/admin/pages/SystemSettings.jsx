@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { Loading, useToast } from '../../shared/ui'
+import { getSettings } from '../../lib/helpers'
 
 export default function SystemSettings() {
   const toast = useToast()
@@ -38,6 +39,7 @@ export default function SystemSettings() {
           .upsert({ key, value, updated_at: new Date().toISOString() })
         if (error) throw error
       }
+      await getSettings(true)
       toast('설정이 저장되었습니다.')
     } catch {
       toast('저장에 실패했습니다.', 'error')

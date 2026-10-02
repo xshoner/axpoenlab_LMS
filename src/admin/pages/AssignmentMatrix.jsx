@@ -4,6 +4,8 @@ import { supabase } from '../../lib/supabase'
 import { useCohort } from '../cohortContext'
 import { Dialog, EmptyState, Loading, StatusPill, useToast } from '../../shared/ui'
 import { fmtDate, fmtBytes, pad2, downloadFile, downloadCsv } from '../../lib/helpers'
+import { readAll } from '../../lib/queries'
+import { LoadError } from '../../shared/errors'
 
 export default function AssignmentMatrix() {
   const { selectedId, selected } = useCohort()
@@ -11,34 +13,37 @@ export default function AssignmentMatrix() {
   const [data, setData] = useState(null)
   const [openCourseId, setOpenCourseId] = useState(null)
   const [detail, setDetail] = useState(null)
+  const [loadError, setLoadError] = useState(false), [retry, setRetry] = useState(0)
 
   useEffect(() => {
     if (!selectedId) { setData(null); return }
     let alive = true
     ;(async () => {
+      try {
+      setLoadError(false)
       setData(undefined)
       setOpenCourseId(null)
       const [membersQ, coursesQ] = await Promise.all([
-        supabase.from('cohort_members').select('user_id, profiles(id, name, org)').eq('cohort_id', selectedId),
-        supabase.from('cohort_courses').select('id, course_no, title, assignment_due')
-          .eq('cohort_id', selectedId).eq('assignment_enabled', true).order('course_no'),
+        readAll(() => supabase.from('cohort_members').select('user_id, profiles(id, name, org)').eq('cohort_id', selectedId).order('id')),
+        readAll(() => supabase.from('cohort_courses').select('id, course_no, title, assignment_due')
+          .eq('cohort_id', selectedId).eq('assignment_enabled', true).order('course_no').order('id')),
       ])
-      const students = (membersQ.data || []).map((m) => m.profiles).filter(Boolean)
+      const students = membersQ.map((m) => m.profiles).filter(Boolean)
         .sort((a, b) => a.name.localeCompare(b.name, 'ko'))
-      const courses = coursesQ.data || []
+      const courses = coursesQ
       let subs = []
       if (courses.length) {
-        const { data: s } = await supabase.from('submissions').select('*')
-          .in('cohort_course_id', courses.map((c) => c.id))
-        subs = s || []
+        subs = await readAll(() => supabase.from('submissions').select('*').in('cohort_course_id', courses.map((c) => c.id)).order('id'))
       }
       if (!alive) return
       setData({ students, courses, subs })
+      } catch { if (alive) setLoadError(true) }
     })()
     return () => { alive = false }
-  }, [selectedId])
+  }, [selectedId, retry])
 
   if (!selectedId) return <EmptyState title="기수를 선택해 주세요" description="상단의 기수 선택 드롭다운에서 기수를 선택하면 제출 현황이 표시됩니다." />
+  if (loadError) return <LoadError retry={() => setRetry(x => x + 1)} />
   if (data === undefined || data === null) return <Loading />
 
   const { students, courses, subs } = data

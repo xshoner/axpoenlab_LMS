@@ -12,7 +12,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 24
           cache: npm
       - name: Install dependencies
         run: npm ci
@@ -24,3 +24,12 @@ jobs:
         run: npm run test:tenancy
       - name: Screen share lifecycle and authorization tests
         run: npm run test:screen-share
+      - name: Paging, CSV and encrypted backup regression tests
+        run: npm run test:stability
+      - name: Install browser for UI regression tests
+        run: npx playwright install --with-deps chromium
+      - name: Quiz, survey and profile recovery browser tests
+        run: |
+          npm run preview -- --host 127.0.0.1 --port 5186 > /tmp/lms-preview.log 2>&1 &
+          for attempt in $(seq 1 30); do curl -fsS http://127.0.0.1:5186/ > /dev/null && break || sleep 1; done
+          node scripts/test-browser.mjs

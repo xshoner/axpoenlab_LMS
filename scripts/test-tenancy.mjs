@@ -1,6 +1,7 @@
 import { PGlite } from '@electric-sql/pglite'
 import fs from 'node:fs'
 import assert from 'node:assert/strict'
+import { restoreSql } from './restore-backup.mjs'
 
 // Real PostgreSQL engine in memory: no production credentials, network or data.
 const db = new PGlite()
@@ -27,7 +28,7 @@ const files = fs.readdirSync('supabase/migrations').filter(f => f.endsWith('.sql
 let baseline
 async function fingerprint() {
   // New feature tables do not exist in the legacy baseline; original rows must still match exactly.
-  const tables = (await db.query("select tablename from pg_tables where schemaname='public' and tablename not in ('account_presence','screen_share_sessions','screen_share_usage','screen_share_admissions') order by tablename")).rows
+  const tables = (await db.query("select tablename from pg_tables where schemaname='public' and tablename not in ('account_presence','screen_share_sessions','screen_share_usage','screen_share_admissions','submission_versions','operation_events','client_errors','screen_share_receivers','signup_attempts','backup_runs','backup_snapshots','backup_snapshot_rows') order by tablename")).rows
   const data = {}
   for (const { tablename } of tables) data[tablename] = (await db.query(`select to_jsonb(t) - 'owner_admin_id' as value from public.${tablename} t order by to_jsonb(t)::text`)).rows
   return data
@@ -90,6 +91,7 @@ async function denied(sql, params = []) {
   assert.ok(error, `Expected rejection: ${sql}`)
 }
 await db.query(`insert into auth.users(id,email) values ($1,'xshoner@gmail.com'),($2,'a@test.local'),($3,'b@test.local'),($4,'sa@test.local'),($5,'sb@test.local')`, [ids.super, ids.a, ids.b, ids.sa, ids.sb])
+await db.query("update public.profiles set role='super_admin' where id=$1",[ids.super])
 await db.query(`update public.profiles set role = 'admin' where id in ($1,$2)`, [ids.a, ids.b])
 await db.query(`insert into public.cohorts(id,name,code) values ($1,'Legacy','LEGACY')`, [ids.legacy])
 await db.query(`insert into public.master_courses(id,group_id,title,body,assignment_enabled) select $1,id,'Shared master','Original body',true from public.master_course_groups where is_default`, [ids.master])
@@ -185,6 +187,8 @@ assert.equal(await scalar('select count(*)::int from public.cohort_courses'), 1)
 assert.equal(await scalar('select count(*)::int from public.push_deliveries'),1)
 assert.equal(await scalar('select count(*)::int from public.notices'),1)
 const question = await scalar('select id from public.quiz_questions_student where quiz_id=$1',[aQuiz])
+await denied('insert into public.quiz_submissions(quiz_id,user_id,total_score,graded) values ($1,$2,9999,true)',[aQuiz,ids.sa])
+await denied('insert into public.quiz_answers(submission_id,question_id,value,is_correct,earned_score) values ($1,$2,$3::jsonb,true,9999)',[crypto.randomUUID(),question,JSON.stringify('forged')])
 assert.equal(await scalar('select answer from public.quiz_questions_student where quiz_id=$1',[aQuiz]),null,'answer stays hidden before close')
 assert.equal((await scalar('select public.submit_quiz($1,$2::jsonb)',[aQuiz,JSON.stringify([{question_id:question,value:'yes'}])])).ok,true)
 const surveyQuestion = await scalar('select id from public.survey_questions where survey_id=$1',[aSurvey])
@@ -371,6 +375,22 @@ const liveShare = await scalar('select public.screen_share_current($1)',[ids.ca]
 assert.equal(liveShare.id,share.id)
 assert.ok(liveShare.lease_remaining_ms>0 && liveShare.lease_remaining_ms<=45000)
 assert.equal(await scalar('select public.screen_share_current($1)',[ids.cb]),null)
+await db.query('select public.screen_share_report($1,$2,$3)',[share.id,ids.master,'receiving'])
+await denied('select public.screen_share_receiver_status($1)',[share.id])
+await denied('select public.operations_status()')
+await denied('select public.lms_backup_stage()')
+assert.equal(await scalar('select public.admin_cohort_metrics($1)',[ids.ca]),null)
+await as('sb')
+await db.query('select public.screen_share_report($1,$2,$3)',[share.id,ids.master,'receiving'])
+await as('super')
+const receivers=await scalar('select public.screen_share_receiver_status($1)',[share.id])
+assert.equal(receivers.students.length,1)
+assert.equal(receivers.students[0].id,ids.sa)
+assert.equal(receivers.students[0].state,'receiving')
+assert.equal((await scalar('select public.operations_status()')).integrityProtected,true)
+await as('super','a')
+await denied('select public.screen_share_receiver_status($1)',[share.id])
+await as('sa')
 await denied('update public.screen_share_sessions set state=\'live\'')
 await denied('select public.screen_share_reserve_token($1)',[share.id])
 await denied('select * from public.screen_share_admissions')
@@ -404,4 +424,35 @@ assert.equal(closing.state,'stopping')
 await denied('select public.screen_share_claim($1,$2,$3)',[ids.super,ids.ca,ids.master])
 assert.equal(await scalar('select to_jsonb(public.screen_share_lock_stop($1,false))',[next.id]),null,'second cleanup must not eject a future room session')
 console.log('PASS: screen share RLS, service-only writes, single room lock, stale-token cooldown and participant-minute accounting')
+await system()
+await db.exec('begin')
+await db.exec(`insert into auth.users(id,email) select ('99999999-0000-0000-0000-'||lpad(n::text,12,'0'))::uuid,'paging-'||n||'@test.local' from generate_series(1,1100)n`)
+await db.query("insert into public.cohort_members(cohort_id,user_id) select $1,id from public.profiles where email like 'paging-%'",[ids.ca])
+await db.query("insert into public.course_views(cohort_course_id,user_id) select $1,id from public.profiles where email like 'paging-%'",[aCourse])
+await as('a')
+const metrics=await scalar('select public.admin_cohort_metrics($1)',[ids.ca])
+assert.equal(metrics.students,1101)
+assert.ok(metrics.courseViewRates.some(v=>v['열람률']===100))
+const page=await scalar('select public.admin_member_page($1,$2,37,30)',[ids.ca,'paging-'])
+assert.equal(page.total,1100);assert.equal(page.items.length,20)
+await system();await db.exec('rollback')
+assert.equal(await scalar('select count(*)::int from public.submission_versions')>0,true)
+const emailHash='a'.repeat(64),networkHash='b'.repeat(64)
+for(let n=0;n<5;n++)assert.equal(await scalar('select public.reserve_signup($1,$2)',[emailHash,networkHash]),true)
+assert.equal(await scalar('select public.reserve_signup($1,$2)',[emailHash,networkHash]),false)
+console.log('PASS: receiver reports, monitoring access, >1000-row metrics/member paging, submission versions and signup throttling')
+const snapshot=await scalar('select public.lms_backup_snapshot()')
+const staged=await scalar('select public.lms_backup_stage()')
+for(const [table,count] of Object.entries(staged.tables)) {
+  const rows=[]
+  for(let offset=0;offset<count;offset+=2)rows.push(...await scalar('select public.lms_backup_chunk($1,$2,$3,2)',[staged.id,table,offset]))
+  assert.deepEqual(rows.map(JSON.stringify).sort(),snapshot.tables[table].map(JSON.stringify).sort())
+}
+await db.query('delete from public.backup_snapshots where id=$1',[staged.id])
+console.log('PASS: staged backup chunks reproduce a consistent snapshot without an unbounded database response')
+await db.exec(restoreSql(snapshot))
+const restored=await scalar('select public.lms_backup_snapshot()')
+const normalize=tables=>Object.fromEntries(Object.entries(tables).map(([name,rows])=>[name,rows.map(row=>JSON.stringify(row)).sort()]))
+assert.deepEqual(normalize(restored.tables),normalize(snapshot.tables))
+console.log('PASS: isolated PostgreSQL restore reproduces every database row, revalidates foreign keys and restores sequences')
 await db.close()

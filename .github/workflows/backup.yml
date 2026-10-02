@@ -1,0 +1,37 @@
+name: Encrypted LMS backup
+on:
+  schedule:
+    - cron: '30 18 * * *'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - name: Snapshot, encrypt and verify database and files
+        run: node scripts/backup.mjs
+        env:
+          SUPABASE_URL: https://ugelgndotyppgksbubot.supabase.co
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.LMS_BACKUP_SERVICE_KEY }}
+          LMS_BACKUP_KEY: ${{ secrets.LMS_BACKUP_KEY }}
+          LMS_BACKUP_DIR: backup-output
+          LMS_BACKUP_DEFER_RECORD: '1'
+      - uses: actions/upload-artifact@v4
+        with:
+          name: encrypted-lms-backup-${{ github.run_id }}
+          path: backup-output/*.lms-backup
+          retention-days: 30
+          if-no-files-found: error
+      - name: Record successfully uploaded backup
+        run: node scripts/record-backup.mjs
+        env:
+          SUPABASE_URL: https://ugelgndotyppgksbubot.supabase.co
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.LMS_BACKUP_SERVICE_KEY }}

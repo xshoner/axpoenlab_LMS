@@ -1,8 +1,9 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { IconFileSpreadsheet, IconSearch } from '@tabler/icons-react'
 import { AUTH_REDIRECT_URL, supabase, FUNCTIONS_URL, getAdminView } from '../../lib/supabase'
 import { useCohort } from '../cohortContext'
-import { ConfirmDialog, Dialog, EmptyState, Loading, StatusPill, useToast } from '../../shared/ui'
+import { ConfirmDialog, Dialog, EmptyState, Loading, Pagination, StatusPill, useToast } from '../../shared/ui'
+import { LoadError } from '../../shared/errors'
 import { fmtDate, downloadCsv, asOne } from '../../lib/helpers'
 
 export default function Members() {
@@ -15,22 +16,25 @@ export default function Members() {
   const [confirmMove, setConfirmMove] = useState(null)
   const [resetTarget, setResetTarget] = useState(null)
   const [busy, setBusy] = useState(false)
+  const [query, setQuery] = useState(''), [page, setPage] = useState(1), [total, setTotal] = useState(0), [error, setError] = useState(false)
+  const version = useRef(0)
+  useEffect(() => { const timer = setTimeout(() => { setQuery(search.trim()); setPage(1) }, 300); return () => clearTimeout(timer) }, [search])
+  useEffect(() => { setPage(1) }, [selectedId])
 
-  async function load() {
-    const { data: profiles } = await supabase.from('profiles')
-      .select('*, cohort_members(cohort_id, cohorts(id, name))')
-      .eq('role', 'student').order('created_at', { ascending: false })
-    setRows(profiles || [])
-  }
-  useEffect(() => { load() }, [])
+  const load = useCallback(async () => {
+    const request = ++version.current
+    setError(false)
+    const { data, error } = await supabase.rpc('admin_member_page', { p_cohort: selectedId || null, p_search: query, p_page: page, p_size: 30 })
+    if (request !== version.current) return
+    if (error) { setError(true); return }
+    setRows(data.items); setTotal(data.total)
+  }, [selectedId, query, page])
+  useEffect(() => { void load(); return () => { version.current++ } }, [load])
 
+  if (error) return <LoadError retry={load} />
   if (!rows) return <Loading />
 
-  const filtered = rows.filter((r) => {
-    if (selectedId && asOne(r.cohort_members)?.cohort_id !== selectedId) return false
-    if (search && !`${r.name}${r.email}${r.org}`.toLowerCase().includes(search.toLowerCase())) return false
-    return true
-  })
+  const filtered = rows
 
   async function doAssign() {
     const target = confirmMove
@@ -93,26 +97,36 @@ export default function Members() {
     } finally { setBusy(false) }
   }
 
-  function exportCsv() {
+  async function exportCsv() {
+    setBusy(true)
+    try {
+    const all = []
+    for (let n=1;;n++) {
+      const { data, error } = await supabase.rpc('admin_member_page', { p_cohort: selectedId || null, p_search: query, p_page: n, p_size: 100 })
+      if (error) throw error
+      all.push(...data.items)
+      if (all.length >= data.total || !data.items.length) break
+    }
     const header = ['소속', '성명', '메일', '기수', '가입일', '최근 접속일', '상태']
-    const data = filtered.map((r) => [
+    const data = all.map((r) => [
       r.org, r.name, r.email, asOne(r.cohort_members)?.cohorts?.name || '미배정',
       fmtDate(r.created_at), fmtDate(r.last_login_at, true), r.status === 'active' ? '활성' : '비활성',
     ])
     downloadCsv('회원목록.csv', [header, ...data])
+    } catch { toast('회원 목록 내보내기에 실패했습니다.', 'error') } finally { setBusy(false) }
   }
 
   return (
     <div className="stack members-page" style={{ gap: 16 }}>
       <div className="row-between members-toolbar">
-        <h2 className="t-h2">회원 관리 <span className="t-muted-sm tnum">({filtered.length}명)</span></h2>
+        <h2 className="t-h2">회원 관리 <span className="t-muted-sm tnum">({total}명)</span></h2>
         <div className="row" style={{ gap: 8 }}>
           <div className="row" style={{ position: 'relative' }}>
             <IconSearch size={16} stroke={1.75} style={{ position: 'absolute', left: 12, color: 'var(--muted-soft)' }} />
             <input className="input" style={{ height: 40, paddingLeft: 36, width: 240 }} placeholder="이름·메일·소속 검색"
               value={search} onChange={(e) => setSearch(e.target.value)} />
           </div>
-          <button className="btn btn-white btn-sm" onClick={exportCsv}><IconFileSpreadsheet size={14} stroke={1.75} /> CSV</button>
+          <button className="btn btn-white btn-sm" onClick={exportCsv} disabled={busy}><IconFileSpreadsheet size={14} stroke={1.75} /> CSV</button>
         </div>
       </div>
 
@@ -152,6 +166,7 @@ export default function Members() {
         </div>
       )}
 
+      <Pagination page={page} total={total} pageSize={30} onChange={setPage} />
       <Dialog open={!!assignTarget} title={`기수 배정 — ${assignTarget?.name}`} onClose={() => setAssignTarget(null)}
         actions={
           <>

@@ -4,6 +4,7 @@ import { IconArrowLeft } from '@tabler/icons-react'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../shared/auth'
 import { Loading, EmptyState, useToast } from '../../shared/ui'
+import { LoadError, reportClientError } from '../../shared/errors'
 
 export default function SurveyForm() {
   const { id } = useParams()
@@ -18,6 +19,8 @@ export default function SurveyForm() {
   const [submitted, setSubmitted] = useState(false)
   const [existingResponse, setExistingResponse] = useState(null)
   const dirty = useRef(false)
+  const [loadError, setLoadError] = useState(false)
+  const [retry, setRetry] = useState(0)
 
   useEffect(() => {
     const onBeforeUnload = (e) => {
@@ -29,14 +32,18 @@ export default function SurveyForm() {
 
   useEffect(() => {
     let alive = true
+    setSurvey(null); setQuestions([]); setAnswers({}); setErrors([]); setSubmitted(false); setExistingResponse(null); setLoadError(false)
+    dirty.current = false
     ;(async () => {
+      try {
       const [sQ, qQ, rQ] = await Promise.all([
         supabase.from('surveys').select('*').eq('id', id).single(),
         supabase.from('survey_questions').select('*').eq('survey_id', id).order('order_no'),
         supabase.from('survey_responses').select('id, survey_answers(question_id, value)').eq('survey_id', id).eq('user_id', profile.id).maybeSingle(),
       ])
       if (!alive) return
-      if (!sQ.data) { setSurvey(false); return }
+      if (!sQ.data && (!sQ.error || sQ.error.code === 'PGRST116')) { setSurvey(false); return }
+      if (sQ.error || qQ.error || rQ.error) throw new Error('SURVEY_LOAD_FAILED')
       setSurvey(sQ.data)
       setQuestions(qQ.data || [])
       if (rQ.data) {
@@ -45,10 +52,12 @@ export default function SurveyForm() {
         for (const ans of rQ.data.survey_answers || []) a[ans.question_id] = ans.value
         setAnswers(a)
       }
+      } catch { if (alive) { setLoadError(true); reportClientError('load', 'SURVEY_LOAD_FAILED') } }
     })()
     return () => { alive = false }
-  }, [id, profile.id])
+  }, [id, profile.id, retry])
 
+  if (loadError) return <LoadError retry={() => setRetry(x => x + 1)} />
   if (survey === null) return <Loading />
   if (survey === false) return <EmptyState title="설문을 찾을 수 없습니다" />
   if (survey.status !== 'open') return <EmptyState title="응답 기간이 아닙니다" description="이 설문은 현재 응답을 받지 않습니다." />

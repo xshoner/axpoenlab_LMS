@@ -23,17 +23,20 @@ Deno.serve(async (req: Request) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
     );
 
-    // bootstrap: 사용자가 한 명도 없을 때(최초 Seed)만 비밀번호 규칙 검증을 건너뜀
-    const { data: firstPage } = await admin.auth.admin.listUsers({ page: 1, perPage: 1 });
-    const isBootstrap = (firstPage?.users?.length ?? 0) === 0;
-
     if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(email))) return err("invalid_email");
-    if (!isBootstrap) {
       if (!password || String(password).length < 8 || !/[A-Za-z]/.test(password) || !/[0-9]/.test(password)) {
         return err("weak_password");
       }
       if (!name || !String(name).trim()) return err("name_required");
-    }
+
+    const hashKey = await crypto.subtle.importKey("raw", new TextEncoder().encode(Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+    const hash = async (value: string) => Array.from(new Uint8Array(await crypto.subtle.sign("HMAC", hashKey, new TextEncoder().encode(value)))).map(b => b.toString(16).padStart(2, "0")).join("");
+    const { data: reserved, error: rateError } = await admin.rpc("reserve_signup", {
+      p_email: await hash("email:" + String(email).trim().toLowerCase()),
+      p_network: await hash("network:" + (req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "unknown")),
+    });
+    if (rateError) return err("signup_unavailable", 503);
+    if (!reserved) return err("rate_limited", 429);
 
     // Resolve the invitation before creating an account. An explicit code always
     // takes precedence over the super-admin's default signup cohort.
@@ -68,6 +71,7 @@ Deno.serve(async (req: Request) => {
       headers: { ...cors, "Content-Type": "application/json" },
     });
   } catch (e) {
-    return err(String(e), 500);
+    console.error("signup_failed");
+    return err("signup_unavailable", 500);
   }
 });

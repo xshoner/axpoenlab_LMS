@@ -6,6 +6,7 @@ import { useAuth } from '../../shared/auth'
 import { Loading, EmptyState, ConfirmDialog, EmojiBar, Pagination, useToast } from '../../shared/ui'
 import { fmtDate, isNew, insertAtCursor } from '../../lib/helpers'
 import { useDraft, DraftBadge } from '../../shared/draft'
+import { LoadError } from '../../shared/errors'
 
 /* 공개게시판 — 누구나 글·댓글 작성 가능, 본인 글은 삭제 가능 */
 export default function Board() {
@@ -23,17 +24,22 @@ const PAGE_SIZE = 20
 function PostList() {
   const [rows, setRows] = useState(null)
   const [page, setPage] = useState(1)
+  const [total, setTotal] = useState(0), [error, setError] = useState(false), [retry, setRetry] = useState(0)
 
   useEffect(() => {
+    let alive = true
+    setError(false)
     supabase.from('board_posts')
-      .select('id, title, author_name, author_org, is_guest, created_at, board_comments(count)')
-      .order('created_at', { ascending: false })
-      .then(({ data }) => setRows(data || []))
-  }, [])
+      .select('id, title, author_name, author_org, is_guest, created_at, board_comments(count)', { count: 'exact' })
+      .order('created_at', { ascending: false }).order('id').range((page-1)*PAGE_SIZE,page*PAGE_SIZE-1)
+      .then(({ data, error, count }) => { if (alive) { setError(!!error); if (!error) { setRows(data || []); setTotal(count || 0) } } })
+    return () => { alive = false }
+  }, [page, retry])
 
+  if (error) return <LoadError retry={() => setRetry(x => x + 1)} />
   if (!rows) return <Loading />
 
-  const pageRows = rows.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE)
+  const pageRows = rows
 
   return (
     <div className="stack board-list-page">
@@ -72,7 +78,7 @@ function PostList() {
           </table>
         </div>
       )}
-      <Pagination page={page} total={rows.length} pageSize={PAGE_SIZE} onChange={setPage} />
+      <Pagination page={page} total={total} pageSize={PAGE_SIZE} onChange={setPage} />
     </div>
   )
 }

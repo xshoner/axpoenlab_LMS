@@ -1,5 +1,6 @@
 import DOMPurify from 'dompurify'
 import { supabase } from './supabase'
+import { csvText } from './csv'
 
 // 본문(rich body) 안의 모든 링크는 새 창으로 열리게 강제한다 (학습 화면 이탈 방지)
 DOMPurify.addHook('afterSanitizeAttributes', (node) => {
@@ -7,6 +8,7 @@ DOMPurify.addHook('afterSanitizeAttributes', (node) => {
     node.setAttribute('target', '_blank')
     node.setAttribute('rel', 'noopener noreferrer')
   }
+  if (node.tagName === 'IMG') { node.setAttribute('loading', 'lazy'); node.setAttribute('decoding', 'async') }
 })
 
 // iframe은 유튜브 임베드 도메인만 허용 — 그 외 출처의 iframe은 통째로 제거한다
@@ -86,15 +88,25 @@ export function asOne(rel) {
   return Array.isArray(rel) ? rel[0] : rel || null
 }
 
-export async function getSettings() {
-  const { data } = await supabase.from('system_settings').select('*')
+let settingsCache = null, settingsLoadedAt = 0, settingsRequest = null
+export async function getSettings(force = false) {
+  if (!force && settingsCache && Date.now() - settingsLoadedAt < 300000) return settingsCache
+  if (settingsRequest) return settingsRequest
+  settingsRequest = loadSettings().finally(() => { settingsRequest = null })
+  return settingsRequest
+}
+async function loadSettings() {
+  const { data, error } = await supabase.from('system_settings').select('key,value')
+  if (error) throw error
   const map = {}
   for (const row of data || []) map[row.key] = row.value
-  return {
+  settingsCache = {
     allowedExtensions: map.allowed_extensions || ['pdf', 'docx', 'pptx', 'xlsx', 'hwp', 'hwpx', 'zip', 'ipynb', 'py', 'txt', 'png', 'jpg'],
     maxFileSizeMb: Number(map.max_file_size_mb || 5),
     showVisitorCounter: map.show_visitor_counter !== false,
   }
+  settingsLoadedAt = Date.now()
+  return settingsCache
 }
 
 export async function downloadFile(bucket, path, filename) {
@@ -117,11 +129,7 @@ export async function uploadFile(bucket, path, file) {
 }
 
 export function downloadCsv(filename, rows) {
-  const esc = (v) => {
-    const s = v == null ? '' : String(v)
-    return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s
-  }
-  const csv = '﻿' + rows.map((r) => r.map(esc).join(',')).join('\n')
+  const csv = csvText(rows)
   const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' })
   const url = URL.createObjectURL(blob)
   const a = document.createElement('a')

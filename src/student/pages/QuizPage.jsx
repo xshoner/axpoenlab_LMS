@@ -4,6 +4,7 @@ import { IconArrowLeft, IconCheck, IconX, IconClock } from '@tabler/icons-react'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../shared/auth'
 import { Loading, EmptyState, useToast } from '../../shared/ui'
+import { LoadError, reportClientError } from '../../shared/errors'
 
 export default function QuizPage() {
   const { id } = useParams()
@@ -15,6 +16,8 @@ export default function QuizPage() {
   const [mySub, setMySub] = useState(undefined)
   const [answers, setAnswers] = useState({})
   const [busy, setBusy] = useState(false)
+  const [loadError, setLoadError] = useState(false)
+  const requestVersion = useRef(0)
   const dirty = useRef(false)
 
   useEffect(() => {
@@ -26,6 +29,9 @@ export default function QuizPage() {
   }, [])
 
   async function load() {
+    const version = ++requestVersion.current
+    setLoadError(false)
+    try {
     const [qzQ, qQ, subQ] = await Promise.all([
       supabase.from('quizzes').select('*').eq('id', id).single(),
       // 정답이 차단된 학생용 뷰 (마감+공개 시에만 answer 포함)
@@ -33,16 +39,24 @@ export default function QuizPage() {
       supabase.from('quiz_submissions').select('*, quiz_answers(question_id, value, is_correct, earned_score)')
         .eq('quiz_id', id).eq('user_id', profile.id).maybeSingle(),
     ])
-    if (!qzQ.data) { setQuiz(false); return }
+    if (version !== requestVersion.current) return
+    if (!qzQ.data && (!qzQ.error || qzQ.error.code === 'PGRST116')) { setQuiz(false); setMySub(null); return }
+    if (qzQ.error || qQ.error || subQ.error) throw new Error('QUIZ_LOAD_FAILED')
     setQuiz(qzQ.data)
     setQuestions(qQ.data || [])
     setMySub(subQ.data || null)
+    } catch { if (version === requestVersion.current) { setLoadError(true); reportClientError('load', 'QUIZ_LOAD_FAILED') } }
   }
 
-  useEffect(() => { load() }, [id, profile.id])
+  useEffect(() => {
+    setQuiz(null); setMySub(undefined); setQuestions([]); setAnswers({}); dirty.current = false
+    void load()
+    return () => { requestVersion.current++ }
+  }, [id, profile.id])
 
-  if (quiz === null || mySub === undefined) return <Loading />
+  if (loadError) return <LoadError retry={load} />
   if (quiz === false) return <EmptyState title="퀴즈를 찾을 수 없습니다" />
+  if (quiz === null || mySub === undefined) return <Loading />
 
   const back = (
     <button className="btn btn-text mb-16" onClick={() => {

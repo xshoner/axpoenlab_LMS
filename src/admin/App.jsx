@@ -30,6 +30,7 @@ const AdminAccounts = lazy(() => import('./pages/AdminAccounts'))
 const SystemSettings = lazy(() => import('./pages/SystemSettings'))
 const StudentPreview = lazy(() => import('./pages/StudentPreview'))
 const HelpQueue = lazy(() => import('./pages/HelpQueue'))
+const Operations = lazy(() => import('./pages/Operations'))
 
 const MENU = [
   { to: '/', label: '대시보드', icon: IconLayoutDashboard, end: true },
@@ -158,6 +159,9 @@ function AdminShell({ profile }) {
               <NavLink to="/settings" className={({ isActive }) => `sidebar-item ${isActive ? 'active' : ''}`}>
                 <IconSettings size={18} stroke={1.75} /> 시스템 총괄 설정
               </NavLink>
+              <NavLink to="/operations" className={({ isActive }) => `sidebar-item ${isActive ? 'active' : ''}`}>
+                <IconLayoutDashboard size={18} stroke={1.75} /> 운영 현황
+              </NavLink>
             </>
           )}
           <div className="sidebar-footer">
@@ -276,6 +280,7 @@ function AdminShell({ profile }) {
               <Route path="/help" element={<HelpQueue />} />
               {isSuper && <Route path="/admins" element={<AdminAccounts />} />}
               {isSuper && <Route path="/settings" element={<SystemSettings />} />}
+              {isSuper && <Route path="/operations" element={<Operations />} />}
               <Route path="*" element={<Navigate to="/" replace />} />
             </Routes></Suspense>
           </main>

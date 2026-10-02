@@ -7,6 +7,7 @@ import { Loading, EmptyState, StatusPill, useToast } from '../../shared/ui'
 import { pad2, fmtBytes, fmtDate, extOf, getSettings, uploadFile, storageSafeName } from '../../lib/helpers'
 import { useDraft, DraftBadge } from '../../shared/draft'
 import { UrlHealthBadge } from '../../shared/urlcheck'
+import { LoadError, reportClientError } from '../../shared/errors'
 
 export default function Assignments() {
   const { profile } = useAuth()
@@ -22,25 +23,31 @@ export default function Assignments() {
   const [dragover, setDragover] = useState(false)
   const [history, setHistory] = useState([])
   const [settings, setSettings] = useState({ allowedExtensions: [], maxFileSizeMb: 5 })
+  const [loadError, setLoadError] = useState(false)
   const fileInput = useRef(null)
   const draft = useDraft(`assignment:${profile.id}`, { selected, url, mode },
     (d) => { if (d.selected && !params.get('course')) setSelected(d.selected); setUrl(d.url || ''); if (d.mode) setMode(d.mode) },
     (d) => !d.url)
 
   async function load() {
+    setLoadError(false)
+    try {
     const [cQ, sQ, settingsData] = await Promise.all([
       supabase.from('cohort_courses').select('id, course_no, title, assignment_enabled, assignment_text, assignment_due')
         .eq('assignment_enabled', true).order('course_no'),
       supabase.from('submissions').select('*, cohort_courses(course_no, title)').eq('user_id', profile.id).order('submitted_at', { ascending: false }),
       getSettings(),
     ])
+    if (cQ.error || sQ.error) throw new Error('ASSIGNMENT_LOAD_FAILED')
     setCourses(cQ.data || [])
     setHistory(sQ.data || [])
     setSettings(settingsData)
+    } catch { setLoadError(true); reportClientError('load', 'ASSIGNMENT_LOAD_FAILED') }
   }
 
   useEffect(() => { load() }, [profile.id])
 
+  if (loadError) return <LoadError retry={load} />
   if (!courses) return <Loading />
 
   const course = courses.find((c) => c.id === selected)
@@ -70,6 +77,7 @@ export default function Assignments() {
   async function submit() {
     if (!course) return
     setBusy(true)
+    let uploadedPath = null, committed = false
     try {
       let payload
       if (mode === 'file') {
@@ -77,6 +85,7 @@ export default function Assignments() {
         if (!validateFile(file)) { setBusy(false); return }
         const path = `${profile.id}/${course.id}/${storageSafeName(file.name)}`
         await uploadFile('submissions', path, file)
+        uploadedPath = path
         payload = { type: 'file', file_path: path, original_filename: file.name, file_size: file.size, url: null }
       } else {
         const u = url.trim()
@@ -88,12 +97,14 @@ export default function Assignments() {
         { onConflict: 'user_id,cohort_course_id' },
       )
       if (error) throw error
+      committed = true
       toast(existing ? '과제가 다시 제출되었습니다.' : '과제가 제출되었습니다.')
       draft.clear()
       setFile(null)
       setUrl('')
       await load()
     } catch (e) {
+      if (uploadedPath && !committed) await supabase.storage.from('submissions').remove([uploadedPath]).catch(() => {})
       toast('제출에 실패했습니다. 다시 시도해 주세요.', 'error')
     } finally {
       setBusy(false)

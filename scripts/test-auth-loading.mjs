@@ -17,7 +17,7 @@ harness.client={
   },
   from(table){
     const request={table,...deferred()};harness.pending.push(request)
-    const q={select(){return q},eq(column,value){request.uid=value;return q},single(){return request.promise},maybeSingle(){return request.promise}}
+    const q={select(){return q},eq(column,value){request.uid=value;return q},abortSignal(){return q},single(){return request.promise},maybeSingle(){return request.promise}}
     return q
   },
 }
@@ -25,6 +25,8 @@ fs.mkdirSync('.bkit',{recursive:true})
 const output=path.resolve('.bkit/auth-loading-test.mjs')
 await build({entryPoints:['src/shared/auth.jsx'],outfile:output,bundle:true,format:'esm',platform:'node',packages:'external',jsx:'automatic',plugins:[{
   name:'provider-adapters',setup(b){
+    b.onResolve({filter:/^\.\/errors$/},()=>({path:'errors',namespace:'error-adapter'}))
+    b.onLoad({filter:/.*/,namespace:'error-adapter'},()=>({contents:'export const LoadError=()=>null; export const reportClientError=()=>{};'}))
     b.onResolve({filter:/^react$/},()=>({path:'react',namespace:'hooks'}))
     b.onLoad({filter:/.*/,namespace:'hooks'},()=>({contents:`
       const h=globalThis.authLoadingTest;
@@ -55,6 +57,7 @@ try {
   assert.equal(harness.states[1].id,'student-a')
   assert.equal(harness.states[2].id,'cohort-a')
   harness.listener('SIGNED_IN',{user:{id:'student-b'}})
+  await flush()
   harness.listener('SIGNED_OUT',null)
   harness.pending[2].resolve({data:{id:'student-b',role:'student'}})
   harness.pending[3].resolve({data:{cohorts:{id:'cohort-b'}}})

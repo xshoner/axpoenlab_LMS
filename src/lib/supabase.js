@@ -58,7 +58,7 @@ export const supabase = createClient(SUPABASE_URL, SUPABASE_KEY, {
         headers.set('x-admin-view', view.id)
         const path = new URL(url).pathname
         const method = (options.method || 'GET').toUpperCase()
-        const readRpc = /\/rpc\/(admin_master_course_list|admin_cohort_course_list|master_library_group_list|admin_dashboard_overview|visit_stats|record_visit|visit_series|today_account_visits|get_board_guest_token|online_student_count|get_forced_signup_cohort)$/.test(path)
+        const readRpc = /\/rpc\/(admin_master_course_list|admin_cohort_course_list|master_library_group_list|admin_dashboard_overview|admin_cohort_metrics|admin_member_page|visit_stats|record_visit|visit_series|today_account_visits|get_board_guest_token|online_student_count|get_forced_signup_cohort)$/.test(path)
         const signedDownload = path.includes('/storage/v1/object/sign/')
         if (!['GET', 'HEAD'].includes(method) &&
             (path.includes('/rest/v1/') || path.includes('/storage/v1/') || path.includes('/functions/v1/')) &&

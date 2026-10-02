@@ -1,33 +1,33 @@
-import { useEffect, useState } from 'react'
+import { lazy, Suspense, useEffect, useState } from 'react'
 import { Routes, Route, NavLink, Navigate, Link, useLocation } from 'react-router-dom'
 import {
   IconDeviceGamepad2, IconLayoutDashboard, IconBook2, IconClipboardText, IconSpeakerphone,
   IconMessageCircleQuestion, IconMessages, IconUserCircle, IconLogout, IconMenu2,
   IconRocket, IconTrophy,
 } from '@tabler/icons-react'
-import Arcade from '../shared/Arcade'
 import { InactiveAccount, useAuth, signOut } from '../shared/auth'
 import { Aurora, FooterBar, Loading, StatusPill, VisitorCounter } from '../shared/ui'
 import Login from './pages/Login'
-import Signup from './pages/Signup'
-import Reset from './pages/Reset'
-import Dashboard from './pages/Dashboard'
-import Courses from './pages/Courses'
-import CourseDetail from './pages/CourseDetail'
-import Assignments from './pages/Assignments'
-import SurveyForm from './pages/SurveyForm'
-import QuizPage from './pages/QuizPage'
-import Notices from './pages/Notices'
-import NoticeDetail from './pages/NoticeDetail'
-import Inquiries from './pages/Inquiries'
-import Board from './pages/Board'
-import GuestBoard from './pages/GuestBoard'
-import Hackathon from './pages/Hackathon'
-import HallOfFame from './pages/HallOfFame'
-import Profile from './pages/Profile'
 import { useStudentPresenceTrack } from '../shared/presence'
 import { StudentPushInbox } from '../shared/push'
 import { StudentHelpButton } from '../shared/help'
+const Arcade = lazy(() => import('../shared/Arcade'))
+const Signup = lazy(() => import('./pages/Signup'))
+const Reset = lazy(() => import('./pages/Reset'))
+const Dashboard = lazy(() => import('./pages/Dashboard'))
+const Courses = lazy(() => import('./pages/Courses'))
+const CourseDetail = lazy(() => import('./pages/CourseDetail'))
+const Assignments = lazy(() => import('./pages/Assignments'))
+const SurveyForm = lazy(() => import('./pages/SurveyForm'))
+const QuizPage = lazy(() => import('./pages/QuizPage'))
+const Notices = lazy(() => import('./pages/Notices'))
+const NoticeDetail = lazy(() => import('./pages/NoticeDetail'))
+const Inquiries = lazy(() => import('./pages/Inquiries'))
+const Board = lazy(() => import('./pages/Board'))
+const GuestBoard = lazy(() => import('./pages/GuestBoard'))
+const Hackathon = lazy(() => import('./pages/Hackathon'))
+const HallOfFame = lazy(() => import('./pages/HallOfFame'))
+const Profile = lazy(() => import('./pages/Profile'))
 
 const MENU = [
   { to: '/', label: '대시보드', icon: IconLayoutDashboard, end: true },
@@ -71,7 +71,7 @@ export default function App() {
     return (
       <>
         <Aurora mode="work" />
-        <GuestBoard />
+        <Suspense fallback={<Loading />}><GuestBoard /></Suspense>
       </>
     )
   }
@@ -83,9 +83,9 @@ export default function App() {
     return (
       <>
         <Aurora mode="auth" />
-        <Routes>
+        <Suspense fallback={<Loading />}><Routes>
           <Route path="*" element={<Reset />} />
-        </Routes>
+        </Routes></Suspense>
       </>
     )
   }
@@ -95,11 +95,11 @@ export default function App() {
     return (
       <>
         <Aurora mode="auth" />
-        <Routes>
+        <Suspense fallback={<Loading />}><Routes>
           <Route path="/login" element={<Login />} />
           <Route path="/signup" element={<Signup />} />
           <Route path="/reset" element={<Reset />} />
-        </Routes>
+        </Routes></Suspense>
       </>
     )
   }
@@ -121,10 +121,10 @@ export default function App() {
     return (
       <div style={{ minHeight: '100vh', background: 'var(--surface)', display: 'flex', flexDirection: 'column' }}>
         <div style={{ flex: 1, width: '100%', maxWidth: 720, margin: '0 auto', padding: '32px 16px' }}>
-          <Routes>
+          <Suspense fallback={<Loading />}><Routes>
             <Route path="/surveys/:id" element={<SurveyForm />} />
             <Route path="/quizzes/:id" element={<QuizPage />} />
-          </Routes>
+          </Routes></Suspense>
         </div>
         <FooterBar />
       </div>
@@ -185,7 +185,7 @@ export default function App() {
             </div>
           </header>
           <main className="content" style={{ maxWidth: 1440 }}>
-            <Routes>
+            <Suspense fallback={<Loading />}><Routes>
               <Route path="/arcade" element={<Arcade />} />
               <Route path="/arcade/:id" element={<Arcade />} />
               <Route path="/" element={<Dashboard />} />
@@ -200,7 +200,7 @@ export default function App() {
               <Route path="/hall-of-fame/*" element={<HallOfFame />} />
               <Route path="/profile" element={<Profile />} />
               <Route path="*" element={<Navigate to="/" replace />} />
-            </Routes>
+            </Routes></Suspense>
           </main>
           <FooterBar />
         </div>
