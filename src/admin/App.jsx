@@ -11,6 +11,7 @@ import { Aurora, Dialog, FooterBar, Loading, StatusPill, VisitorCounter, useToas
 import { CohortProvider, useCohort } from './cohortContext'
 import { useOnlineStudentCount, useOpenInquiryCount } from '../shared/presence'
 import { AdminPushComposer } from '../shared/push'
+import { AdminFileSender } from '../shared/fileTransfers'
 import { useHelpQueueCount } from '../shared/help'
 import { COHORT_STATUS } from '../lib/helpers'
 import { TeacherScreenShareButton } from '../shared/screenShare'
@@ -194,6 +195,7 @@ function AdminShell({ profile }) {
                 <span>도움 요청 <span className="tnum inq-count">{helpCount}명</span></span>
               </NavLink>
               <AdminPushComposer cohortId={selectedId} cohortName={cohorts.find((c) => c.id === selectedId)?.name} />
+              <AdminFileSender cohortId={selectedId} cohorts={cohorts} />
               <NavLink to="/inquiries" className={`inq-pill ${unanswered > 0 ? 'hot' : ''}`} title={`미답변 1:1 문의${cohortScope ? '' : ' (전체 기수)'}`}>
                 <IconMessageCircleQuestion size={14} stroke={1.75} />
                 <span>질문 <span className="tnum inq-count">{unanswered}건</span></span>

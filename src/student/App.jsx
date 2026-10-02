@@ -10,6 +10,7 @@ import { Aurora, FooterBar, Loading, StatusPill, VisitorCounter } from '../share
 import Login from './pages/Login'
 import { useStudentPresenceTrack } from '../shared/presence'
 import { StudentPushInbox } from '../shared/push'
+import { StudentFileInbox } from '../shared/fileTransfers'
 import { StudentHelpButton } from '../shared/help'
 const Arcade = lazy(() => import('../shared/Arcade'))
 const Signup = lazy(() => import('./pages/Signup'))
@@ -120,6 +121,7 @@ export default function App() {
     // 집중 모드: 오로라 없음, 단색 배경, 중앙 720px
     return (
       <div style={{ minHeight: '100vh', background: 'var(--surface)', display: 'flex', flexDirection: 'column' }}>
+        <StudentFileInbox floating />
         <div style={{ flex: 1, width: '100%', maxWidth: 720, margin: '0 auto', padding: '32px 16px' }}>
           <Suspense fallback={<Loading />}><Routes>
             <Route path="/surveys/:id" element={<SurveyForm />} />
@@ -173,6 +175,7 @@ export default function App() {
             <div className="topbar-right">
               <StudentHelpButton cohortId={cohort?.id || null} />
               <StudentPushInbox cohortId={cohort?.id || null} />
+              <StudentFileInbox />
               <span className="live-pill" title="현재 접속 중인 학생 수">
                 <span className="live-dot" />
                 <span className="tnum">접속 {online}명</span>

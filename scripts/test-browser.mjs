@@ -8,7 +8,7 @@ const base=process.env.LMS_TEST_URL||'http://127.0.0.1:5186';
 const browser=await chromium.launch({...(process.env.PLAYWRIGHT_CHANNEL?{channel:process.env.PLAYWRIGHT_CHANNEL}:{}),headless:true});
 try {
  const context=await browser.newContext();
- let failProfile=false, mockShare=false;
+ let failProfile=false, mockShare=false, fileAvailable=false, fileSeen=false, fileReceived=false, downloadRequests=0;
  await context.addInitScript(s=>{localStorage.setItem('ax-lms-keep','1');localStorage.setItem('sb-ugelgndotyppgksbubot-auth-token',JSON.stringify(s))},session);
  await context.route('**/ugelgndotyppgksbubot.supabase.co/**',async route=>{
   const u=new URL(route.request().url()), table=u.pathname.split('/').pop();let data=[];
@@ -25,6 +25,12 @@ try {
   else if(table==='surveys'){const survey=u.searchParams.get('id')?.endsWith(first)?first:second;data={id:survey,title:survey===first?'First survey':'Second survey',status:'open',allow_edit:false};}
   else if(table==='survey_responses')data=u.searchParams.get('survey_id')?.endsWith(first)?{id:'response',survey_answers:[]}:null;
   else if(table==='survey_questions')data=[];
+  else if(table==='file_recipients')data=fileAvailable?[{batch_id:first,received_at:fileReceived?'2026-10-02T08:00:00Z':null,seen_at:fileSeen?'2026-10-02T08:00:00Z':null,
+    file_batches:{id:first,title:'배포 자료',memo:'오프라인 학생에게도 전달',sent_at:'2026-10-02T08:00:00Z',file_batch_files:[{id:second,filename:'한글자료.txt',size_bytes:8,file_path:'mock/file.txt'}]}}]:[];
+  else if(table==='ack_file_batch'){fileReceived=true;if(JSON.parse(route.request().postData()).p_seen)fileSeen=true;data=null;}
+  else if(table==='record_file_download'){downloadRequests++;data=null;}
+  else if(u.pathname.includes('/storage/v1/object/sign/'))data={signedURL:'/object/mock-file-download'};
+  else if(table==='mock-file-download'){await route.fulfill({status:200,contentType:'text/plain',body:'QA bytes'});return;}
   await route.fulfill({status:200,contentType:'application/json',body:JSON.stringify(data)});
  });
  const page=await context.newPage();const errors=[];page.on('pageerror',e=>errors.push(e.message));
@@ -47,6 +53,26 @@ try {
  await page.getByRole('button',{name:'다시 시도',exact:true}).click();
  await page.getByText('Second survey',{exact:true}).waitFor();
  console.log('PASS: profile failure shows retry and recovers without reload');
+ fileAvailable=true;
+ await page.reload();
+ await page.getByRole('heading',{name:'배포 자료',exact:true}).waitFor();
+ await page.waitForFunction(()=>document.querySelector('.dialog'));
+ const downloadPromise=page.waitForEvent('download');
+ await page.getByRole('button',{name:'다운로드',exact:true}).click();
+ const download=await downloadPromise;
+ assert.equal(download.suggestedFilename(),'한글자료.txt');
+ assert.equal(downloadRequests,1);
+ assert.equal(fileReceived,true);assert.equal(fileSeen,true);
+ await page.getByRole('dialog').getByRole('button',{name:'닫기',exact:true}).click();
+ await page.reload();
+ await page.getByRole('button',{name:'받은 파일',exact:true}).waitFor();
+ assert.equal(await page.getByRole('heading',{name:'배포 자료',exact:true}).count(),0);
+ await page.getByRole('button',{name:'받은 파일',exact:true}).click();
+ await page.getByRole('button',{name:/배포 자료/}).click();
+ await page.getByRole('heading',{name:'배포 자료',exact:true}).waitFor();
+ await page.getByRole('dialog').last().getByRole('button',{name:'닫기',exact:true}).click();
+ await page.getByRole('dialog').getByRole('button',{name:'닫기',exact:true}).click();
+ console.log('PASS: offline file popup, persisted read status, retained inbox and original Korean download filename');
  await context.route('**/assets/daily-esm-*.js',route=>route.fulfill({status:200,contentType:'application/javascript',body:'export default {createCallObject(){return {on(){},participants(){return {}},async join(){window.__qaJoined=true},async destroy(){}}}}'}));
  mockShare=true;
  await page.evaluate(()=>window.dispatchEvent(new Event('online')));

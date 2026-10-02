@@ -14,7 +14,7 @@ await db.exec(`
   create function auth.role() returns text language sql stable as
     $$ select nullif(current_setting('request.jwt.claims',true),'')::jsonb->>'role' $$;
   create table storage.buckets(id text primary key, name text, public boolean, file_size_limit bigint);
-  create table storage.objects(id uuid primary key default gen_random_uuid(), bucket_id text, name text, owner_id text);
+  create table storage.objects(id uuid primary key default gen_random_uuid(), bucket_id text, name text, owner_id text, metadata jsonb);
   alter table storage.objects enable row level security;
   create function storage.foldername(text) returns text[] language sql as $$ select string_to_array($1,'/') $$;
   create publication supabase_realtime;
@@ -28,7 +28,7 @@ const files = fs.readdirSync('supabase/migrations').filter(f => f.endsWith('.sql
 let baseline
 async function fingerprint() {
   // New feature tables do not exist in the legacy baseline; original rows must still match exactly.
-  const tables = (await db.query("select tablename from pg_tables where schemaname='public' and tablename not in ('account_presence','screen_share_sessions','screen_share_usage','screen_share_admissions','submission_versions','operation_events','client_errors','screen_share_receivers','signup_attempts','backup_runs','backup_snapshots','backup_snapshot_rows') order by tablename")).rows
+  const tables = (await db.query("select tablename from pg_tables where schemaname='public' and tablename not in ('account_presence','screen_share_sessions','screen_share_usage','screen_share_admissions','submission_versions','operation_events','client_errors','screen_share_receivers','signup_attempts','backup_runs','backup_snapshots','backup_snapshot_rows','file_batches','file_batch_files','file_recipients','file_download_requests') order by tablename")).rows
   const data = {}
   for (const { tablename } of tables) data[tablename] = (await db.query(`select to_jsonb(t) - 'owner_admin_id' as value from public.${tablename} t order by to_jsonb(t)::text`)).rows
   return data
@@ -441,6 +441,57 @@ const emailHash='a'.repeat(64),networkHash='b'.repeat(64)
 for(let n=0;n<5;n++)assert.equal(await scalar('select public.reserve_signup($1,$2)',[emailHash,networkHash]),true)
 assert.equal(await scalar('select public.reserve_signup($1,$2)',[emailHash,networkHash]),false)
 console.log('PASS: receiver reports, monitoring access, >1000-row metrics/member paging, submission versions and signup throttling')
+// File distribution: real database/storage policies and transactional retries.
+await as('sa')
+await denied('select public.create_file_batch($1,$2)', [ids.ca,'Forged student batch'])
+await as('a')
+await denied('select public.create_file_batch($1,$2)', [ids.cb,'Other tenant'])
+const batchId = await scalar('select public.create_file_batch($1,$2,$3)',[ids.ca,'자료 보내기','학생용 안내'])
+const filePath = `${ids.a}/${batchId}/lesson.pdf`
+await denied('select public.send_file_batch($1,null)',[batchId])
+assert.equal(await scalar('select count(*)::int from public.file_recipients where batch_id=$1',[batchId]),0,'null payload cannot publish a delivery without files')
+await db.query("insert into storage.objects(bucket_id,name,metadata) values ('student-deliveries',$1,'{\"size\":123}')",[filePath])
+await denied("insert into storage.objects(bucket_id,name,metadata) values ('student-deliveries',$1,'{\"size\":123}')",[`${ids.b}/${batchId}/spoof.pdf`])
+const payload = [{filename:'수업자료.pdf',file_path:filePath,size_bytes:123}]
+await denied('select public.send_file_batch($1,$2::jsonb,$3)',[batchId,JSON.stringify(payload),[ids.sb]])
+await denied('select public.send_file_batch($1,$2::jsonb)',[batchId,JSON.stringify([{...payload[0],size_bytes:321}])])
+assert.equal(await scalar('select count(*)::int from public.file_batch_files where batch_id=$1',[batchId]),0,'failed send rolls back all attachments')
+assert.equal(await scalar('select public.send_file_batch($1,$2::jsonb,$3)',[batchId,JSON.stringify(payload),[ids.sa]]),1)
+assert.equal(await scalar('select public.send_file_batch($1,$2::jsonb,$3)',[batchId,JSON.stringify(payload),[ids.sa]]),1,'retry does not duplicate recipients')
+const fileId = await scalar('select id from public.file_batch_files where batch_id=$1',[batchId])
+await denied('select public.discard_file_batch($1)',[batchId])
+assert.equal(await scalar("select public.file_storage_allowed($1,true)",[filePath]),false,'sent files cannot be replaced or deleted')
+await as('sb')
+assert.equal(await scalar('select count(*)::int from public.file_batches where id=$1',[batchId]),0)
+assert.equal(await scalar("select count(*)::int from storage.objects where bucket_id='student-deliveries'"),0)
+await denied('select public.record_file_download($1)',[fileId])
+await as('sa')
+assert.equal(await scalar("select count(*)::int from storage.objects where name=$1",[filePath]),1)
+await denied('insert into public.file_download_requests(file_id,user_id) values ($1,$2)',[fileId,ids.sa])
+await db.query('select public.ack_file_batch($1,true)',[batchId])
+await db.query('select public.record_file_download($1)',[fileId])
+await db.query('select public.record_file_download($1)',[fileId])
+assert.equal(await scalar('select count(*)::int from public.file_download_requests where file_id=$1',[fileId]),1)
+await system()
+await db.query("update public.profiles set status='inactive' where id=$1",[ids.sa])
+await as('sa')
+assert.equal(await scalar("select count(*)::int from storage.objects where name=$1",[filePath]),0)
+await denied('select public.record_file_download($1)',[fileId])
+await system()
+await db.query("update public.profiles set status='active' where id=$1",[ids.sa])
+await as('a')
+const recipient = (await db.query('select * from public.file_recipients where batch_id=$1',[batchId])).rows[0]
+assert.ok(recipient.received_at && recipient.seen_at)
+assert.equal(await scalar('select count(*)::int from public.file_download_requests where file_id=$1',[fileId]),1)
+const discarded = await scalar('select public.create_file_batch($1,$2)',[ids.ca,'Cancelled draft'])
+await db.query('select public.discard_file_batch($1)',[discarded])
+assert.equal(await scalar('select count(*)::int from public.file_batches where id=$1',[discarded]),0)
+await as('super','b')
+assert.equal(await scalar('select count(*)::int from public.file_batches where id=$1',[batchId]),0)
+await as('super')
+assert.equal(await scalar('select count(*)::int from public.file_batches where id=$1',[batchId]),1)
+await system()
+console.log('PASS: file delivery recipient/storage isolation, inactive denial, atomic send, retry, receipt/read/download tracking and draft cancellation')
 const snapshot=await scalar('select public.lms_backup_snapshot()')
 const staged=await scalar('select public.lms_backup_stage()')
 for(const [table,count] of Object.entries(staged.tables)) {
