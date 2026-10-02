@@ -10,7 +10,6 @@ import { Aurora, FooterBar, Loading, StatusPill, VisitorCounter } from '../share
 import Login from './pages/Login'
 import { useStudentPresenceTrack } from '../shared/presence'
 import { StudentDistributionInbox } from '../shared/fileTransfers'
-import { StudentHelpButton } from '../shared/help'
 const Arcade = lazy(() => import('../shared/Arcade'))
 const Signup = lazy(() => import('./pages/Signup'))
 const Reset = lazy(() => import('./pages/Reset'))
@@ -172,7 +171,6 @@ export default function App() {
             </button>
             <span className="topbar-title">{title}</span>
             <div className="topbar-right">
-              <StudentHelpButton cohortId={cohort?.id || null} />
               <StudentDistributionInbox />
               <span className="live-pill" title="전체 LMS에서 현재 접속 중인 학생 수">
                 <span className="live-dot" />

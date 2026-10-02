@@ -3,7 +3,7 @@ import { Routes, Route, NavLink, Navigate, useLocation } from 'react-router-dom'
 import {
   IconDeviceGamepad2, IconLayoutDashboard, IconUsersGroup, IconBook2, IconClipboardText, IconChecklist,
   IconPencilQuestion, IconSpeakerphone, IconUsers, IconMessageCircleQuestion,
-  IconShieldLock, IconSettings, IconLogout, IconMenu2, IconMessages, IconRocket, IconEye, IconHandStop,
+  IconShieldLock, IconSettings, IconLogout, IconMenu2, IconMessages, IconRocket, IconEye,
 } from '@tabler/icons-react'
 import { supabase, getAdminView, closeAdminView } from '../lib/supabase'
 import { InactiveAccount, useAuth, signOut } from '../shared/auth'
@@ -11,7 +11,6 @@ import { Aurora, Dialog, FooterBar, Loading, StatusPill, VisitorCounter, useToas
 import { CohortProvider, useCohort } from './cohortContext'
 import { useOnlineStudentCount, useOpenInquiryCount } from '../shared/presence'
 import { AdminDistributionButton } from '../shared/fileTransfers'
-import { useHelpQueueCount } from '../shared/help'
 import { COHORT_STATUS } from '../lib/helpers'
 import { TeacherScreenShareButton } from '../shared/screenShare'
 const Arcade = lazy(() => import('../shared/Arcade'))
@@ -29,7 +28,6 @@ const HackathonAdmin = lazy(() => import('./pages/HackathonAdmin'))
 const AdminAccounts = lazy(() => import('./pages/AdminAccounts'))
 const SystemSettings = lazy(() => import('./pages/SystemSettings'))
 const StudentPreview = lazy(() => import('./pages/StudentPreview'))
-const HelpQueue = lazy(() => import('./pages/HelpQueue'))
 const Operations = lazy(() => import('./pages/Operations'))
 
 const MENU = [
@@ -43,7 +41,6 @@ const MENU = [
   { to: '/notices', label: '공지 관리', icon: IconSpeakerphone },
   { to: '/members', label: '회원 관리', icon: IconUsers },
   { to: '/inquiries', label: '1:1 문의 관리', icon: IconMessageCircleQuestion },
-  { to: '/help', label: '도움 요청 대기열', icon: IconHandStop },
   { to: '/board', label: '게시판 관리', icon: IconMessages },
   { to: '/arcade', label: '오락실', icon: IconDeviceGamepad2 },
 ]
@@ -80,7 +77,6 @@ function AdminShell({ profile }) {
   const cohortScope = selectedId || null // 전체 기수 = null
   const unanswered = useOpenInquiryCount(location.pathname, cohortScope)
   const online = useOnlineStudentCount(cohortScope)
-  const helpCount = useHelpQueueCount(cohortScope)
   const [nickOpen, setNickOpen] = useState(false)
   const [nick, setNick] = useState('')
   const [nickBusy, setNickBusy] = useState(false)
@@ -147,7 +143,6 @@ function AdminShell({ profile }) {
             <NavLink key={to} to={to} end={end} className={({ isActive }) => `sidebar-item ${isActive ? 'active' : ''}`}>
               <Icon size={18} stroke={1.75} /> {label}
               {to === '/inquiries' && unanswered > 0 && <span className="count-pill">{unanswered}</span>}
-              {to === '/help' && helpCount > 0 && <span className="count-pill">{helpCount}</span>}
             </NavLink>
           ))}
           {isSuper && (
@@ -190,10 +185,6 @@ function AdminShell({ profile }) {
               <NavLink to="/preview" className={({ isActive }) => `inq-pill ${isActive ? 'hot-primary' : ''}`} title="선택한 기수의 학생에게 보이는 화면을 미리 봅니다">
                 <IconEye size={14} stroke={1.75} />
                 <span>미리보기</span>
-              </NavLink>
-              <NavLink to="/help" className={`inq-pill help-pill ${helpCount > 0 ? 'waiting' : ''}`} title={`학생 도움 요청 대기열${cohortScope ? '' : ' (전체 기수)'}`}>
-                <IconHandStop size={14} stroke={1.75} />
-                <span>도움 요청 <span className="tnum inq-count">{helpCount}명</span></span>
               </NavLink>
               <NavLink to="/inquiries" className={`inq-pill ${unanswered > 0 ? 'hot' : ''}`} title={`미답변 1:1 문의${cohortScope ? '' : ' (전체 기수)'}`}>
                 <IconMessageCircleQuestion size={14} stroke={1.75} />
@@ -278,7 +269,7 @@ function AdminShell({ profile }) {
               <Route path="/inquiries" element={<InquiriesAdmin />} />
               <Route path="/board" element={<BoardAdmin />} />
               <Route path="/preview" element={<StudentPreview />} />
-              <Route path="/help" element={<HelpQueue />} />
+              <Route path="/help" element={<Navigate to="/inquiries" replace />} />
               {isSuper && <Route path="/admins" element={<AdminAccounts />} />}
               {isSuper && <Route path="/settings" element={<SystemSettings />} />}
               {isSuper && <Route path="/operations" element={<Operations />} />}
