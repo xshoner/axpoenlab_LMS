@@ -83,6 +83,18 @@ export function TeacherScreenShareButton({ cohortId, cohorts }) {
   }, [snapshot.phase])
   useEffect(() => { if (snapshot.error) toast(snapshot.error, 'error') }, [snapshot.error, toast])
   useEffect(() => {
+    const id = snapshot.session?.id
+    if (snapshot.phase !== 'error' || !id) return
+    let alive = true
+    const reconcile = async () => {
+      const { data } = await supabase.from('screen_share_sessions').select('state').eq('id', id).maybeSingle()
+      if (alive && data?.state === 'ended' && client.session?.id === id) void client.end(false)
+    }
+    void reconcile()
+    const timer = setInterval(reconcile, 5000)
+    return () => { alive = false; clearInterval(timer) }
+  }, [client, snapshot.phase, snapshot.session?.id])
+  useEffect(() => {
     const exit = () => {
       const id = client.session?.id
       if (!id) return

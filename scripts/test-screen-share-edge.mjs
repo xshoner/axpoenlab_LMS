@@ -8,15 +8,15 @@ const profiles = [
   {id:ids.student,role:'student',status:'active'}, {id:ids.other,role:'student',status:'active'},
   {id:ids.inactive,role:'super_admin',status:'inactive'},
 ]
-const rows = {profiles,cohorts:[{id:ids.cohort,deleted_at:null}],cohort_members:[{user_id:ids.student,cohort_id:ids.cohort},{user_id:ids.other,cohort_id:ids.otherCohort}],screen_share_sessions:[]}
+const rows = {profiles,cohorts:[{id:ids.cohort,deleted_at:null}],cohort_members:[{user_id:ids.student,cohort_id:ids.cohort},{user_id:ids.other,cohort_id:ids.otherCohort}],screen_share_sessions:[],screen_share_admissions:[]}
 const traffic=[]
 let presence=[{id:'teacher-connection'},{id:'student-connection'}]
 const db={auth:{getUser:async id=>({data:{user:profiles.some(p=>p.id===id)?{id}:null}})},
   from(table) {
     const filters=[], q={
       select(){return q},eq(k,v){filters.push(r=>r[k]===v);return q},is(k,v){filters.push(r=>r[k]===v);return q},in(k,v){filters.push(r=>v.includes(r[k]));return q},
-      single(){return q},maybeSingle(){return q},update(patch){q.patch=patch;return q},
-      then(resolve,reject){const matches=(rows[table]||[]).filter(r=>filters.every(f=>f(r)));if(q.patch)matches.forEach(r=>Object.assign(r,q.patch));return Promise.resolve({data:matches[0]||null}).then(resolve,reject)},
+      single(){q.one=true;return q},maybeSingle(){q.one=true;return q},update(patch){q.patch=patch;return q},upsert(r){rows[table].push(r);return q},
+      then(resolve,reject){const matches=(rows[table]||[]).filter(r=>filters.every(f=>f(r)));if(q.patch)matches.forEach(r=>Object.assign(r,q.patch));return Promise.resolve({data:q.one?matches[0]||null:matches}).then(resolve,reject)},
     };return q
   },
   async rpc(name,opts){
@@ -37,7 +37,7 @@ const db={auth:{getUser:async id=>({data:{user:profiles.some(p=>p.id===id)?{id}:
 }
 const fakeFetch=async (url,opts)=>{
   const body=opts.body?JSON.parse(opts.body):undefined;traffic.push({path:new URL(url).pathname,body})
-  if(url.endsWith('/eject'))presence=presence.filter(p=>!body.ids.includes(p.id))
+  if(url.endsWith('/eject'))presence=presence.filter(p=>!body.ids?.includes(p.id)&&!body.user_ids?.includes(p.userId))
   return new Response(JSON.stringify(url.endsWith('/meeting-tokens')?{token:'signed-test'}:url.endsWith('/presence')?{total_count:presence.length,data:presence}:{}),{status:200})
 }
 const source=fs.readFileSync('supabase/functions/screen-share/index.ts','utf8').replace(/^import[^\n]+\n/,'').replace(/^export /gm,'').replace(/^Deno\.serve[^\n]+\n?$/m,'')
@@ -70,8 +70,9 @@ assert.equal(tokens[1].body.properties.permissions.canSend,false)
 assert.equal(tokens[1].body.properties.enable_screenshare,false)
 assert.ok(!('eject_at_token_exp' in tokens[1].body.properties),'token must not override room expiry')
 assert.equal((await invoke('super',{action:'stop',session_id:sid})).status,200)
+assert.ok(traffic.some(r=>r.path.endsWith('/eject')&&r.body.user_ids?.includes(ids.student)),'all token recipients must be ejected even if REST presence is stale')
 assert.equal(rows.screen_share_sessions[0].state,'ended')
-assert.ok(traffic.some(r=>r.path.endsWith('/eject')&&r.body.ids.includes('student-connection')))
+assert.ok(traffic.some(r=>r.path.endsWith('/eject')&&r.body.ids?.includes('student-connection')))
 assert.equal((await invoke('student',{action:'token',session_id:sid})).status,409)
 const before=traffic.length
 await invoke('super',{action:'stop',session_id:sid})

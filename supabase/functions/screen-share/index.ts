@@ -35,20 +35,21 @@ export function createScreenShareHandler(db: any, key: () => string | undefined,
       await daily("/rooms", { name: ROOM, privacy: "private", properties });
     }
   }
-  async function closeRoom() {
+  async function closeRoom(sessionId?: string) {
     // Close admissions before ejection, without expiring the REST endpoint mid-request.
     const now = Math.floor(Date.now() / 1000);
     await daily(`/rooms/${ROOM}`, { privacy: "private", properties: { nbf: now + 60, exp: now + 61, eject_at_room_exp: true } }, true);
-    for (let pass = 0; pass < 3; pass++) {
-      const presence = await daily(`/rooms/${ROOM}/presence`, undefined, true);
-      if (!presence?.total_count) return;
-      const ids = (presence?.data || []).map((p: any) => p.id).filter(Boolean);
-      if (!ids.length) throw new Error("daily_unavailable");
-      for (let i = 0; i < ids.length; i += 100) await daily(`/rooms/${ROOM}/eject`, { ids: ids.slice(i, i + 100) }, true);
-      await new Promise(resolve => setTimeout(resolve, 1000));
+    if (sessionId) {
+      const { data, error } = await db.from("screen_share_admissions").select("user_id").eq("session_id", sessionId);
+      if (error) throw new Error("database_unavailable");
+      const users = (data || []).map((p: any) => p.user_id);
+      for (let i = 0; i < users.length; i += 100) await daily(`/rooms/${ROOM}/eject`, { user_ids: users.slice(i, i + 100) }, true);
     }
-    // Keep the room locked and retry via the watchdog if ejection is not confirmed.
-    throw new Error("daily_unavailable");
+    // Also clear legacy public-test guests. REST presence is a delayed snapshot;
+    // successful provider ejection of all recorded recipients is the stop ACK.
+    const presence = await daily(`/rooms/${ROOM}/presence`, undefined, true);
+    const ids = (presence?.data || []).map((p: any) => p.id).filter(Boolean);
+    for (let i = 0; i < ids.length; i += 100) await daily(`/rooms/${ROOM}/eject`, { ids: ids.slice(i, i + 100) }, true);
   }
   async function session(id: string) {
     const { data, error } = await db.from("screen_share_sessions").select("*").eq("id", id).maybeSingle();
@@ -64,6 +65,8 @@ export function createScreenShareHandler(db: any, key: () => string | undefined,
   async function issue(s: any, profile: any, teacher: boolean) {
     const { data: reserved, error } = await db.rpc("screen_share_reserve_token", { p_session: s.id });
     if (error || !reserved) throw new Error("share_ended");
+    const { error: admissionError } = await db.from("screen_share_admissions").upsert({ session_id: s.id, user_id: profile.id });
+    if (admissionError) throw new Error("database_unavailable");
     const result = await daily("/meeting-tokens", { properties: {
       room_name: ROOM, user_id: profile.id, user_name: (profile.nickname || profile.name || "참가자").slice(0, 40),
       exp: Math.floor(Date.now() / 1000) + 30, is_owner: false,
@@ -75,7 +78,7 @@ export function createScreenShareHandler(db: any, key: () => string | undefined,
     return { session: publicSession(current), room: ROOM_URL, token: result.token };
   }
   async function finishStop(s: any) {
-    await closeRoom();
+    await closeRoom(s.id);
     await mutate(s.id, { state: "ended", ended_at: new Date().toISOString(), lease_until: new Date().toISOString() });
   }
   async function cleanupExpired() {
@@ -113,7 +116,7 @@ export function createScreenShareHandler(db: any, key: () => string | undefined,
         if (error) return json({ error: error.message?.includes("cooling_down") ? "cooling_down" : "share_busy" }, 409);
         const s = Array.isArray(claimed) ? claimed[0] : claimed;
         startingId = s.id;
-        await closeRoom();
+        await closeRoom(s.id);
         await configureRoom();
         const credentials = await issue(s, profile, true);
         startingId = null;
@@ -151,7 +154,7 @@ export function createScreenShareHandler(db: any, key: () => string | undefined,
     } catch (error) {
       if (startingId) {
         try {
-          await closeRoom();
+          await closeRoom(startingId);
           await mutate(startingId, { state: "ended", ended_at: new Date().toISOString() });
         } catch { /* The room expires server-side even if the network is unavailable. */ }
       }

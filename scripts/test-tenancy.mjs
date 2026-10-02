@@ -27,7 +27,7 @@ const files = fs.readdirSync('supabase/migrations').filter(f => f.endsWith('.sql
 let baseline
 async function fingerprint() {
   // New feature tables do not exist in the legacy baseline; original rows must still match exactly.
-  const tables = (await db.query("select tablename from pg_tables where schemaname='public' and tablename not in ('account_presence','screen_share_sessions','screen_share_usage') order by tablename")).rows
+  const tables = (await db.query("select tablename from pg_tables where schemaname='public' and tablename not in ('account_presence','screen_share_sessions','screen_share_usage','screen_share_admissions') order by tablename")).rows
   const data = {}
   for (const { tablename } of tables) data[tablename] = (await db.query(`select to_jsonb(t) - 'owner_admin_id' as value from public.${tablename} t order by to_jsonb(t)::text`)).rows
   return data
@@ -368,6 +368,7 @@ await as('sa')
 assert.equal(await scalar('select count(*)::int from public.screen_share_sessions'),1)
 await denied('update public.screen_share_sessions set state=\'live\'')
 await denied('select public.screen_share_reserve_token($1)',[share.id])
+await denied('select * from public.screen_share_admissions')
 await denied('select public.screen_share_monthly_usage()')
 await as('sb')
 assert.equal(await scalar('select count(*)::int from public.screen_share_sessions'),0)
