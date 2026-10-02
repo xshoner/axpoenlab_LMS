@@ -8,9 +8,11 @@
     "build": "vite build",
     "preview": "vite preview",
     "lint": "eslint .",
+    "test:screen-share": "node --test scripts/test-screen-share-client.mjs && node scripts/test-screen-share-edge.mjs",
     "test:tenancy": "node scripts/test-tenancy.mjs && node scripts/test-edge-functions.mjs && node scripts/test-course-tabs.mjs && node scripts/test-cohort-assignment-groups.mjs && node scripts/test-auth-loading.mjs"
   },
   "dependencies": {
+    "@daily-co/daily-js": "0.92.2",
     "@supabase/supabase-js": "^2.45.0",
     "@tabler/icons-react": "^3.19.0",
     "dompurify": "^3.1.6",

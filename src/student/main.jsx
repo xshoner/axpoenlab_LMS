@@ -5,6 +5,7 @@ import '../styles/tokens.css'
 import { AuthProvider } from '../shared/auth'
 import { ToastProvider } from '../shared/ui'
 import App from './App'
+import { StudentScreenShare } from '../shared/screenShare'
 
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
@@ -12,6 +13,7 @@ ReactDOM.createRoot(document.getElementById('root')).render(
       <AuthProvider>
         <ToastProvider>
           <App />
+          <StudentScreenShare />
         </ToastProvider>
       </AuthProvider>
     </HashRouter>

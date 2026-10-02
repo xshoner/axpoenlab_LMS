@@ -26,7 +26,8 @@ await db.exec(`
 const files = fs.readdirSync('supabase/migrations').filter(f => f.endsWith('.sql') && !['20260929010000_shared_catalogs.sql','20260929020000_course_group_default_and_deletion.sql'].includes(f)).sort()
 let baseline
 async function fingerprint() {
-  const tables = (await db.query("select tablename from pg_tables where schemaname='public' and tablename <> 'account_presence' order by tablename")).rows
+  // New feature tables do not exist in the legacy baseline; original rows must still match exactly.
+  const tables = (await db.query("select tablename from pg_tables where schemaname='public' and tablename not in ('account_presence','screen_share_sessions','screen_share_usage') order by tablename")).rows
   const data = {}
   for (const { tablename } of tables) data[tablename] = (await db.query(`select to_jsonb(t) - 'owner_admin_id' as value from public.${tablename} t order by to_jsonb(t)::text`)).rows
   return data
@@ -360,4 +361,30 @@ assert.equal((await db.query('delete from public.cohort_course_groups where id=$
 await as('a')
 assert.equal((await db.query('delete from public.cohort_course_groups where id=$1 returning id',[emptyCohort])).rows.length,1)
 console.log('PASS: existing AI 기본 과정 reused, incorrect group removed without lesson loss, group deletion respects defaults, contents and ownership')
+await system()
+const share = await scalar('select to_jsonb(public.screen_share_claim($1,$2,$3))',[ids.super,ids.ca,ids.master])
+await denied('select public.screen_share_claim($1,$2,$3)',[ids.super,ids.cb,ids.master])
+await as('sa')
+assert.equal(await scalar('select count(*)::int from public.screen_share_sessions'),1)
+await denied('update public.screen_share_sessions set state=\'live\'')
+await denied('select public.screen_share_reserve_token($1)',[share.id])
+await denied('select public.screen_share_monthly_usage()')
+await as('sb')
+assert.equal(await scalar('select count(*)::int from public.screen_share_sessions'),0)
+await as('a')
+assert.equal(await scalar('select count(*)::int from public.screen_share_sessions'),0)
+await as('super','a')
+assert.equal(await scalar('select count(*)::int from public.screen_share_sessions'),0)
+await denied('select public.screen_share_monthly_usage()')
+await system()
+assert.equal(await scalar('select public.screen_share_reserve_token($1)',[share.id]),true)
+await db.query("update public.screen_share_sessions set state='ended' where id=$1",[share.id])
+await denied('select public.screen_share_claim($1,$2,$3)',[ids.super,ids.cb,ids.master])
+await db.query("update public.screen_share_sessions set token_until=now()-interval '1 second' where id=$1",[share.id])
+const next = await scalar('select to_jsonb(public.screen_share_claim($1,$2,$3))',[ids.super,ids.cb,ids.master])
+await db.query("update public.screen_share_sessions set sampled_at=now()-interval '60 seconds', participant_count=2 where id=$1",[next.id])
+await db.query('select public.screen_share_sample($1,0)',[next.id])
+await as('super')
+assert.equal(Number(await scalar('select public.screen_share_monthly_usage()')),2)
+console.log('PASS: screen share RLS, service-only writes, single room lock, stale-token cooldown and participant-minute accounting')
 await db.close()

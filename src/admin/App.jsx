@@ -13,6 +13,7 @@ import { useOnlineStudentCount, useOpenInquiryCount } from '../shared/presence'
 import { AdminPushComposer } from '../shared/push'
 import { useHelpQueueCount } from '../shared/help'
 import { COHORT_STATUS } from '../lib/helpers'
+import { TeacherScreenShareButton } from '../shared/screenShare'
 const Arcade = lazy(() => import('../shared/Arcade'))
 const AdminDashboard = lazy(() => import('./pages/AdminDashboard'))
 const Cohorts = lazy(() => import('./pages/Cohorts'))
@@ -179,6 +180,7 @@ function AdminShell({ profile }) {
             </select>
             {selectedId && <StatusPill kind="neutral">{cohorts.find((c) => c.id === selectedId)?.name} 기준으로 표시 중</StatusPill>}
             <div className="topbar-right">
+              {isSuper && <TeacherScreenShareButton cohortId={selectedId} cohorts={cohorts} />}
               <NavLink to="/preview" className={({ isActive }) => `inq-pill ${isActive ? 'hot-primary' : ''}`} title="선택한 기수의 학생에게 보이는 화면을 미리 봅니다">
                 <IconEye size={14} stroke={1.75} />
                 <span>미리보기</span>
