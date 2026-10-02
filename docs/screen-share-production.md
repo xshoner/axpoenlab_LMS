@@ -22,7 +22,7 @@
 
 Supabase 프로젝트: `ugelgndotyppgksbubot`. Edge Secret `DAILY_API_KEY`가 필요하다. 프런트엔드 환경변수나 GitHub에는 키를 넣지 않는다. `screen-share` Edge Function은 JWT를 `auth.getUser`로 검증하고 실제 활성 프로필 및 기수 소속을 서버에서 검사한다. 게이트웨이 JWT 검증 비활성화는 이 인증 검증을 대신하지 않는다. watchdog 전용 무작위 키를 Edge Secret `DAILY_SCREEN_SHARE_WORKER_KEY`와 Supabase Vault `screen_share_worker_key`에 동일하게 등록한다. 이 키는 내부 만료 정리에만 사용할 수 있고 사용자 토큰 발급이나 공유 시작에는 사용할 수 없다.
 
-1. `20261002010000_screen_share.sql`, `20261002020000_screen_share_watchdog.sql`, `20261002030000_screen_share_admissions.sql` 마이그레이션을 순서대로 적용한다. 기존 데이터는 수정하지 않는다. 서비스 역할만 공유 상태를 변경할 수 있다. watchdog 마이그레이션은 hosted Supabase의 `pg_cron`/`pg_net`을 활성화하고 30초 작업을 등록한다. 종료할 세션이 없는 대기 중에는 HTTP/Daily API를 호출하지 않는다.
+1. `20261002010000_screen_share.sql`, `20261002020000_screen_share_watchdog.sql`, `20261002030000_screen_share_admissions.sql`, `20261002040000_screen_share_server_time.sql` 마이그레이션을 순서대로 적용한다. 기존 데이터는 수정하지 않는다. 서비스 역할만 공유 상태를 변경할 수 있다. watchdog 마이그레이션은 hosted Supabase의 `pg_cron`/`pg_net`을 활성화하고 30초 작업을 등록한다. 종료할 세션이 없는 대기 중에는 HTTP/Daily API를 호출하지 않는다.
 2. `npx supabase functions deploy screen-share --project-ref ugelgndotyppgksbubot --use-api --no-verify-jwt`
 3. `npm ci`, `npm run lint`, `npm run test:screen-share`, `npm run test:tenancy`, `npm run build`
 4. 운영 Vercel 프로젝트 `lms-axopenlab`에 프런트엔드를 배포한다.
@@ -32,3 +32,5 @@ Supabase 프로젝트: `ugelgndotyppgksbubot`. Edge Secret `DAILY_API_KEY`가 �
 ## 확인 항목
 
 자동 테스트는 로그인 시 연결 없음, 교사 화면 선택 취소, 공유 시작 순서, 학생 무조작 입장/종료, 종료와 토큰 발급 경합, 교사 이탈 후 빈 방 재입장 차단, 서버 역할·기수 권한, RLS, 단일 방 잠금, 재시작 대기, 월 사용량 계산을 검사한다. 실제 브라우저에서는 Daily 영상 송출과 학생 음소거 자동 재생, 다른 기수 미연결, 종료 후 LMS 복귀를 확인한다.
+
+공유 만료는 서버가 계산한 남은 시간과 브라우저의 단조 증가 시간으로 판단한다. 학생 PC의 시계가 서버와 달라도 자동 연결되며, 조회 RPC는 기존 RLS와 기수 권한을 유지한다.

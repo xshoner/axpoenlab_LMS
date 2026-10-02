@@ -5,6 +5,7 @@ import { ANON_KEY, FUNCTIONS_URL, getAdminView, supabase } from '../lib/supabase
 import { useAuth } from './auth'
 import { useToast } from './ui'
 import { ScreenShareClient } from './screenShareClient'
+import { receiveShareSession, remainingShareLease } from './screenShareLease'
 import './screenShare.css'
 
 const ERRORS = {
@@ -17,13 +18,14 @@ const ERRORS = {
   select_cohort: '공유할 기수를 먼저 선택해 주세요.',
 }
 async function api(action, body = {}) {
+  const requestedAt = performance.now()
   const { data, error } = await supabase.functions.invoke('screen-share', { body: { action, ...body } })
   if (error) {
     let code
     try { code = (await error.context.json()).error } catch { /* transport error */ }
     throw new Error(ERRORS[code] || '화면 공유 연결을 확인해 주세요.')
   }
-  return data
+  return data?.session ? { ...data, session: receiveShareSession(data.session, requestedAt) } : data
 }
 const loadDaily = async () => (await import('@daily-co/daily-js')).default
 
@@ -34,11 +36,9 @@ function useCurrentShare(enabled, cohortId) {
     let alive = true, revision = 0
     const read = async () => {
       const request = ++revision
-      let q = supabase.from('screen_share_sessions').select('id,cohort_id,teacher_id,state,lease_until,started_at')
-        .in('state', cohortId ? ['live'] : ['starting','live','stopping']).gt('lease_until', new Date().toISOString())
-      if (cohortId) q = q.eq('cohort_id', cohortId)
-      const { data, error } = await q.order('created_at', { ascending: false }).limit(1).maybeSingle()
-      if (alive && revision === request && !error) setCurrent(data)
+      const requestedAt = performance.now()
+      const { data, error } = await supabase.rpc('screen_share_current', { p_cohort: cohortId || null })
+      if (alive && revision === request && !error) setCurrent(receiveShareSession(data, requestedAt))
     }
     void read()
     const channel = supabase.channel(`screen-share:${cohortId || 'super'}:${crypto.randomUUID()}`)
@@ -52,7 +52,7 @@ function useCurrentShare(enabled, cohortId) {
   // A lost Realtime connection must not extend a billed session indefinitely.
   useEffect(() => {
     if (!current) return
-    const timer = setTimeout(() => setCurrent(null), Math.max(0, Date.parse(current.lease_until) - Date.now()))
+    const timer = setTimeout(() => setCurrent(null), remainingShareLease(current))
     return () => clearTimeout(timer)
   }, [current])
   return enabled && (!cohortId || current?.cohort_id === cohortId) ? current : null

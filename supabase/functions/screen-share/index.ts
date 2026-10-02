@@ -4,7 +4,7 @@ const ROOM = "axopenlab20261001";
 const ROOM_URL = `https://axopenlab.daily.co/${ROOM}`;
 const cors = { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Headers": "authorization, apikey, x-client-info, content-type, x-admin-view", "Access-Control-Allow-Methods": "POST, OPTIONS" };
 const json = (value: unknown, status = 200) => new Response(JSON.stringify(value), { status, headers: { ...cors, "Content-Type": "application/json", "Cache-Control": "no-store" } });
-const publicSession = (s: any) => ({ id: s.id, cohort_id: s.cohort_id, teacher_id: s.teacher_id, state: s.state, lease_until: s.lease_until, started_at: s.started_at });
+const publicSession = (s: any) => ({ id: s.id, cohort_id: s.cohort_id, teacher_id: s.teacher_id, state: s.state, lease_until: s.lease_until, lease_remaining_ms: Math.max(0, Date.parse(s.lease_until) - Date.now()), started_at: s.started_at });
 
 export function createScreenShareHandler(db: any, key: () => string | undefined, request = fetch, worker: () => string | undefined = () => undefined) {
   async function daily(path: string, body?: unknown, missingOkay = false, method?: string): Promise<any> {

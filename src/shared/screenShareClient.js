@@ -1,3 +1,5 @@
+import { remainingShareLease } from './screenShareLease.js'
+
 // There is deliberately no Daily connection (or SDK load) in the constructor.
 export class ScreenShareClient {
   constructor({ api, loadDaily, capture, onChange, teacher = false }) {
@@ -20,7 +22,7 @@ export class ScreenShareClient {
   renew(session) {
     this.session = session
     clearTimeout(this.deadline)
-    this.deadline = setTimeout(() => { void this.end(this.teacher, '수업 연결이 만료되어 공유를 종료했습니다.').catch(() => {}) }, Math.max(0, Date.parse(session.lease_until) - Date.now()))
+    this.deadline = setTimeout(() => { void this.end(this.teacher, '수업 연결이 만료되어 공유를 종료했습니다.').catch(() => {}) }, remainingShareLease(session))
   }
 
   async clearLocal() {
@@ -108,7 +110,7 @@ export class ScreenShareClient {
 
   async receive(session) {
     if (this.teacher) return
-    if (!session || session.state !== 'live' || Date.parse(session.lease_until) <= Date.now()) {
+    if (!session || session.state !== 'live' || remainingShareLease(session) <= 0) {
       if (this.session || this.call) await this.end(false)
       return
     }
