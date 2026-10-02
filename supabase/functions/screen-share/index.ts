@@ -6,32 +6,49 @@ const cors = { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Headers
 const json = (value: unknown, status = 200) => new Response(JSON.stringify(value), { status, headers: { ...cors, "Content-Type": "application/json", "Cache-Control": "no-store" } });
 const publicSession = (s: any) => ({ id: s.id, cohort_id: s.cohort_id, teacher_id: s.teacher_id, state: s.state, lease_until: s.lease_until, started_at: s.started_at });
 
-export function createScreenShareHandler(db: any, key: () => string | undefined, request = fetch) {
-  async function daily(path: string, body?: unknown, missingOkay = false): Promise<any> {
+export function createScreenShareHandler(db: any, key: () => string | undefined, request = fetch, worker: () => string | undefined = () => undefined) {
+  async function daily(path: string, body?: unknown, missingOkay = false, method?: string): Promise<any> {
     const response = await request(`https://api.daily.co/v1${path}`, {
-      method: body === undefined ? "GET" : "POST",
+      method: method || (body === undefined ? "GET" : "POST"),
       headers: { Authorization: `Bearer ${key()}`, "Content-Type": "application/json" },
       ...(body === undefined ? {} : { body: JSON.stringify(body) }),
       signal: AbortSignal.timeout(8000),
     });
     if (missingOkay && response.status === 404) return null;
+    if (missingOkay && response.status === 400) {
+      const error = await response.clone().json().catch(() => ({}));
+      if (/expired|not found|does not exist/i.test(String(error.info || error.error || ""))) return null;
+    }
     if (!response.ok) throw new Error(`daily_unavailable:${response.status}:${path}`);
     return response.json();
   }
   async function configureRoom() {
-    const properties = { exp: Math.floor(Date.now() / 1000) + 120, eject_at_room_exp: true,
+    // Daily fixes a participant's eject timer at admission; short rolling room expiry
+    // cannot extend an existing participant. The DB watchdog handles short leases.
+    const properties = { nbf: Math.floor(Date.now() / 1000) - 1, exp: Math.floor(Date.now() / 1000) + 28800, eject_at_room_exp: true,
       start_audio_off: true, start_video_off: true, enable_screenshare: true, enable_prejoin_ui: false,
       enable_chat: false, enable_knocking: false,
       permissions: { canSend: false, canAdmin: false, canReceive: { base: true } } };
     const updated = await daily(`/rooms/${ROOM}`, { privacy: "private", properties }, true);
-    if (!updated) await daily("/rooms", { name: ROOM, privacy: "private", properties });
+    if (!updated) {
+      await daily(`/rooms/${ROOM}`, undefined, true, "DELETE");
+      await daily("/rooms", { name: ROOM, privacy: "private", properties });
+    }
   }
   async function closeRoom() {
-    // Close admissions and bound the lifetime even for suspended/disconnected clients.
-    await daily(`/rooms/${ROOM}`, { privacy: "private", properties: { exp: Math.floor(Date.now() / 1000) + 1, eject_at_room_exp: true } }, true);
-    const presence = await daily(`/rooms/${ROOM}/presence`, undefined, true);
-    const ids = (presence?.presence || []).map((p: any) => p.id).filter(Boolean);
-    for (let i = 0; i < ids.length; i += 100) await daily(`/rooms/${ROOM}/eject`, { ids: ids.slice(i, i + 100), ban: true }, true);
+    // Close admissions before ejection, without expiring the REST endpoint mid-request.
+    const now = Math.floor(Date.now() / 1000);
+    await daily(`/rooms/${ROOM}`, { privacy: "private", properties: { nbf: now + 60, exp: now + 61, eject_at_room_exp: true } }, true);
+    for (let pass = 0; pass < 3; pass++) {
+      const presence = await daily(`/rooms/${ROOM}/presence`, undefined, true);
+      if (!presence?.total_count) return;
+      const ids = (presence?.data || []).map((p: any) => p.id).filter(Boolean);
+      if (!ids.length) throw new Error("daily_unavailable");
+      for (let i = 0; i < ids.length; i += 100) await daily(`/rooms/${ROOM}/eject`, { ids: ids.slice(i, i + 100) }, true);
+      await new Promise(resolve => setTimeout(resolve, 1000));
+    }
+    // Keep the room locked and retry via the watchdog if ejection is not confirmed.
+    throw new Error("daily_unavailable");
   }
   async function session(id: string) {
     const { data, error } = await db.from("screen_share_sessions").select("*").eq("id", id).maybeSingle();
@@ -57,12 +74,27 @@ export function createScreenShareHandler(db: any, key: () => string | undefined,
     if (!current || !["starting", "live"].includes(current.state) || Date.parse(current.lease_until) <= Date.now()) throw new Error("share_ended");
     return { session: publicSession(current), room: ROOM_URL, token: result.token };
   }
+  async function finishStop(s: any) {
+    await closeRoom();
+    await mutate(s.id, { state: "ended", ended_at: new Date().toISOString(), lease_until: new Date().toISOString() });
+  }
+  async function cleanupExpired() {
+    const { data, error } = await db.rpc("screen_share_lock_stop", { p_session: null, p_expired: true });
+    if (error) throw new Error("database_unavailable");
+    const s = Array.isArray(data) ? data[0] : data;
+    if (s?.id) await finishStop(s);
+    return !!s?.id;
+  }
   return async (req: Request) => {
     if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
     if (req.method !== "POST") return json({ error: "method_not_allowed" }, 405);
     let startingId: string | null = null;
     try {
       if (req.headers.has("x-admin-view")) return json({ error: "read_only_view" }, 403);
+      if (worker() && req.headers.get("x-screen-share-worker") === worker()) {
+        if ((await req.json()).action !== "sweep") return json({ error: "invalid_action" }, 400);
+        return json({ cleaned: await cleanupExpired() });
+      }
       const jwt = (req.headers.get("Authorization") || "").replace(/^Bearer\s+/i, "");
       const { data: auth, error: authError } = await db.auth.getUser(jwt);
       if (authError || !auth?.user) return json({ error: "unauthorized" }, 401);
@@ -76,6 +108,7 @@ export function createScreenShareHandler(db: any, key: () => string | undefined,
         if (!/^[0-9a-f-]{36}$/i.test(body.cohort_id || "") || !/^[0-9a-f-]{36}$/i.test(body.client_id || "")) return json({ error: "select_cohort" }, 400);
         const { data: cohort } = await db.from("cohorts").select("id").eq("id", body.cohort_id).is("deleted_at", null).maybeSingle();
         if (!cohort) return json({ error: "select_cohort" }, 400);
+        await cleanupExpired();
         const { data: claimed, error } = await db.rpc("screen_share_claim", { p_teacher: profile.id, p_cohort: cohort.id, p_client: body.client_id });
         if (error) return json({ error: error.message?.includes("cooling_down") ? "cooling_down" : "share_busy" }, 409);
         const s = Array.isArray(claimed) ? claimed[0] : claimed;
@@ -98,22 +131,21 @@ export function createScreenShareHandler(db: any, key: () => string | undefined,
       if (!superAdmin) return json({ error: "forbidden" }, 403);
       if (body.action === "stop") {
         if (s.state === "ended") return json({ stopped: true });
-        await mutate(s.id, { state: "stopping" }, ["starting", "live", "stopping"]);
-        await closeRoom();
-        await db.rpc("screen_share_sample", { p_session: s.id, p_count: 0 });
-        await mutate(s.id, { state: "ended", ended_at: new Date().toISOString(), lease_until: new Date().toISOString() });
+        const { data: locked, error } = await db.rpc("screen_share_lock_stop", { p_session: s.id, p_expired: false });
+        if (error) throw new Error("database_unavailable");
+        const closing = Array.isArray(locked) ? locked[0] : locked;
+        if (!closing?.id) return json({ error: "share_busy" }, 409);
+        await finishStop(closing);
         return json({ stopped: true });
       }
       if (!["activate", "heartbeat"].includes(body.action)) return json({ error: "invalid_action" }, 400);
       if (s.teacher_id !== profile.id || s.client_id !== body.client_id || !["starting", "live"].includes(s.state) || Date.parse(s.lease_until) <= Date.now()) return json({ error: "share_ended" }, 409);
-      await configureRoom();
       const current = await session(s.id);
       if (!current || !["starting", "live"].includes(current.state)) {
-        await closeRoom();
         return json({ error: "share_ended" }, 409);
       }
       const presence = await daily(`/rooms/${ROOM}/presence`);
-      await db.rpc("screen_share_sample", { p_session: s.id, p_count: presence?.presence?.length || 0 });
+      await db.rpc("screen_share_sample", { p_session: s.id, p_count: presence?.total_count || 0 });
       await mutate(s.id, { state: "live", started_at: s.started_at || new Date().toISOString(), lease_until: new Date(Date.now() + 45000).toISOString() }, ["starting", "live"]);
       return json({ session: publicSession(await session(s.id)) });
     } catch (error) {
@@ -131,4 +163,4 @@ export function createScreenShareHandler(db: any, key: () => string | undefined,
   };
 }
 
-Deno.serve(createScreenShareHandler(createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!), () => Deno.env.get("DAILY_API_KEY")));
+Deno.serve(createScreenShareHandler(createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!), () => Deno.env.get("DAILY_API_KEY"), fetch, () => Deno.env.get("DAILY_SCREEN_SHARE_WORKER_KEY")));

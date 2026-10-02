@@ -10,6 +10,7 @@ const profiles = [
 ]
 const rows = {profiles,cohorts:[{id:ids.cohort,deleted_at:null}],cohort_members:[{user_id:ids.student,cohort_id:ids.cohort},{user_id:ids.other,cohort_id:ids.otherCohort}],screen_share_sessions:[]}
 const traffic=[]
+let presence=[{id:'teacher-connection'},{id:'student-connection'}]
 const db={auth:{getUser:async id=>({data:{user:profiles.some(p=>p.id===id)?{id}:null}})},
   from(table) {
     const filters=[], q={
@@ -25,12 +26,19 @@ const db={auth:{getUser:async id=>({data:{user:profiles.some(p=>p.id===id)?{id}:
       rows.screen_share_sessions.push(s);return {data:s}
     }
     if(name==='screen_share_reserve_token') return {data:rows.screen_share_sessions.some(s=>s.id===opts.p_session&&['starting','live'].includes(s.state))}
+    if(name==='screen_share_lock_stop') {
+      const s=rows.screen_share_sessions.find(s=>s.state!=='ended'&&(!opts.p_session||s.id===opts.p_session)&&(!opts.p_expired||Date.parse(s.lease_until)<=Date.now())&&(s.state!=='stopping'||Date.parse(s.lease_until)<=Date.now()))
+      if(s){s.state='stopping';s.lease_until=new Date(Date.now()+120000).toISOString()}
+      return {data:s||null}
+    }
+    if(name==='screen_share_sample') {const s=rows.screen_share_sessions.find(s=>s.id===opts.p_session);if(s)s.participant_count=opts.p_count}
     return {data:null}
   },
 }
 const fakeFetch=async (url,opts)=>{
   const body=opts.body?JSON.parse(opts.body):undefined;traffic.push({path:new URL(url).pathname,body})
-  return new Response(JSON.stringify(url.endsWith('/meeting-tokens')?{token:'signed-test'}:url.endsWith('/presence')?{presence:[{id:'teacher-connection'},{id:'student-connection'}]}:{}),{status:200})
+  if(url.endsWith('/eject'))presence=presence.filter(p=>!body.ids.includes(p.id))
+  return new Response(JSON.stringify(url.endsWith('/meeting-tokens')?{token:'signed-test'}:url.endsWith('/presence')?{total_count:presence.length,data:presence}:{}),{status:200})
 }
 const source=fs.readFileSync('supabase/functions/screen-share/index.ts','utf8').replace(/^import[^\n]+\n/,'').replace(/^export /gm,'').replace(/^Deno\.serve[^\n]+\n?$/m,'')
 const {code}=await transform(source,{loader:'ts',target:'es2022'})
@@ -49,7 +57,9 @@ assert.equal(started.session.state,'starting')
 const sid=started.session.id
 assert.equal((await invoke('student',{action:'token',session_id:sid})).status,409)
 assert.equal((await invoke('super',{action:'activate',session_id:sid,client_id:crypto.randomUUID()})).status,409)
+presence=[{id:'teacher-connection'},{id:'student-connection'}]
 assert.equal((await invoke('super',{action:'activate',session_id:sid,client_id:ids.client})).status,200)
+assert.equal(rows.screen_share_sessions[0].participant_count,2,'Daily total_count must drive usage sampling')
 assert.equal((await invoke('other',{action:'token',session_id:sid})).status,403)
 assert.equal((await invoke('admin',{action:'token',session_id:sid})).status,403)
 assert.equal((await invoke('student',{action:'stop',session_id:sid})).status,403)
@@ -67,3 +77,13 @@ const before=traffic.length
 await invoke('super',{action:'stop',session_id:sid})
 assert.equal(traffic.length,before,'stale stop must not affect a later room session')
 console.log('PASS: actual Edge handler enforces super-admin, cohort, client ownership, no audio, no idle tokens and server ejection')
+const workerServe=create(db,()=> 'private-api-key',fakeFetch,()=> 'watchdog-key')
+async function sweep(key){const r=await workerServe(new Request('https://test.local',{method:'POST',headers:{'x-screen-share-worker':key,'Content-Type':'application/json'},body:'{"action":"sweep"}'}));return {status:r.status,...await r.json()}}
+assert.equal((await sweep('forged-key')).status,401)
+assert.equal((await sweep('watchdog-key')).cleaned,false)
+rows.screen_share_sessions.push({id:crypto.randomUUID(),state:'live',lease_until:new Date(Date.now()-1000).toISOString()})
+presence=[{id:'frozen-student-connection'}]
+assert.equal((await sweep('watchdog-key')).cleaned,true)
+assert.equal(presence.length,0)
+assert.equal(rows.screen_share_sessions.at(-1).state,'ended')
+console.log('PASS: authenticated internal watchdog ignores healthy shares and clears expired server participants')

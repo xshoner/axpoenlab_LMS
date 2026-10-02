@@ -8,7 +8,8 @@
 - 슈퍼관리자의 화면 선택이 성공한 뒤 교사 연결을 만들고, 실제 송출 시작 후 학생에게 연결을 허용한다. 학생·관리자는 공유를 시작하거나 종료할 수 없다. 관리자 미리보기 모드에서도 사용할 수 없다.
 - 오디오와 카메라를 캡처하지 않는다. 서버 토큰도 교사에게 화면 영상 송출만 허용하고 학생에게 송출 권한을 주지 않는다.
 - 종료 즉시 학생 세션 알림을 해제하며, Daily 서버에서도 입장 마감과 참가자 강제 퇴장을 요청한다. 연결이 남은 경우 비용이 발생하므로 실제 연결 종료까지 처리한다.
-- 교사 탭 종료 시 keepalive 종료 요청을 전송한다. 네트워크 단절이나 브라우저 강제 종료에 대비해 교사 15초 heartbeat, LMS 45초 lease, Daily 최대 120초 room expiry를 둔다. 장애 시 종료가 즉각적이지 않을 수 있으며 서버 만료가 최종 안전장치다.
+- 교사 탭 종료 시 keepalive 종료 요청을 전송한다. 교사 15초 heartbeat, LMS 45초 lease와 서버의 30초 주기 watchdog을 둔다. 교사 연결이 사라지면 학생의 LMS 연결 감시 및 서버 강제 퇴장으로 종료한다. 브라우저 강제 종료 시 서버의 최초 정리 시도는 마지막 정상 heartbeat 이후 최대 약 75초에 시작된다. Daily API 장애 시 다음 정리 주기에 재시도하므로 종료가 지연될 수 있다.
+- Daily는 입장 시 참가자의 만료 시각을 고정하므로 짧은 방 만료를 반복 갱신하는 방식은 기존 참가자의 연결을 연장하지 못한다. 정상 수업 중 조기 종료를 방지하기 위해 방의 최종 만료는 8시간으로 두고, 짧은 연결 만료는 watchdog이 담당한다. 8시간을 넘는 연속 공유는 새로 시작한다. Supabase와 Daily API가 동시에 장기간 장애인 경우에는 이 방 만료가 최종 안전장치다.
 - 상단 **이달 N 인·분**은 한국 시간 기준 월 누적 접속 인원×분 추정치다. 15초 단위 참가자 수 표본으로 계산하므로 Daily 청구서와 정확히 일치하지 않는다. 여러 탭에서 학생이 접속하면 각 연결이 인원으로 계산될 수 있다.
 
 ## 방과 학생 표시
@@ -19,9 +20,9 @@
 
 ## 서버 구성과 배포
 
-Supabase 프로젝트: `ugelgndotyppgksbubot`. Edge Secret `DAILY_API_KEY`가 필요하다. 프런트엔드 환경변수나 GitHub에는 키를 넣지 않는다. `screen-share` Edge Function은 JWT를 `auth.getUser`로 검증하고 실제 활성 프로필 및 기수 소속을 서버에서 검사한다. 게이트웨이 JWT 검증 비활성화는 이 인증 검증을 대신하지 않는다.
+Supabase 프로젝트: `ugelgndotyppgksbubot`. Edge Secret `DAILY_API_KEY`가 필요하다. 프런트엔드 환경변수나 GitHub에는 키를 넣지 않는다. `screen-share` Edge Function은 JWT를 `auth.getUser`로 검증하고 실제 활성 프로필 및 기수 소속을 서버에서 검사한다. 게이트웨이 JWT 검증 비활성화는 이 인증 검증을 대신하지 않는다. watchdog 전용 무작위 키를 Edge Secret `DAILY_SCREEN_SHARE_WORKER_KEY`와 Supabase Vault `screen_share_worker_key`에 동일하게 등록한다. 이 키는 내부 만료 정리에만 사용할 수 있고 사용자 토큰 발급이나 공유 시작에는 사용할 수 없다.
 
-1. `20261002010000_screen_share.sql` 마이그레이션을 적용한다. 기존 데이터는 수정하지 않는다. 서비스 역할만 공유 상태를 변경할 수 있다.
+1. `20261002010000_screen_share.sql`, `20261002020000_screen_share_watchdog.sql` 마이그레이션을 순서대로 적용한다. 기존 데이터는 수정하지 않는다. 서비스 역할만 공유 상태를 변경할 수 있다. watchdog 마이그레이션은 hosted Supabase의 `pg_cron`/`pg_net`을 활성화하고 30초 작업을 등록한다. 종료할 세션이 없는 대기 중에는 HTTP/Daily API를 호출하지 않는다.
 2. `npx supabase functions deploy screen-share --project-ref ugelgndotyppgksbubot --use-api --no-verify-jwt`
 3. `npm ci`, `npm run lint`, `npm run test:screen-share`, `npm run test:tenancy`, `npm run build`
 4. 운영 Vercel 프로젝트 `lms-axopenlab`에 프런트엔드를 배포한다.
