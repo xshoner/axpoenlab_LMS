@@ -3,7 +3,8 @@ import { supabase } from '../lib/supabase'
 import { readAll } from '../lib/queries'
 import { getSettings, extOf, fmtBytes, fmtDate, storageSafeName } from '../lib/helpers'
 import { useAuth } from './auth'
-import { Dialog, useToast } from './ui'
+import { Dialog, ConfirmDialog, useToast } from './ui'
+import { retryDeliveryRequest } from '../lib/deliveryRequests'
 import { checked } from './fileTransfers'
 import { AdminPushComposer, isBlankHtml } from './push'
 const RichEditor = lazy(() => import('./RichEditor'))
@@ -28,11 +29,12 @@ export default function FileSenderDialog({ cohortId, cohorts, onClose }) {
   const [search, setSearch] = useState('')
   const [legacyOpen, setLegacyOpen] = useState(false)
   const [error, setError] = useState('')
+  const [deleteFile, setDeleteFile] = useState(null)
   const fileInput = useRef(null)
   const retry = useRef(null)
 
   async function loadHistory() {
-    let q = supabase.from('file_batches').select('id,title,status,sender_id,created_at,sent_at,cohort_id,file_batch_files(id,filename,size_bytes)')
+    let q = supabase.from('file_batches').select('id,title,status,sender_id,created_at,sent_at,cohort_id,file_batch_files(id,filename,size_bytes,deleted_at)')
       .order('created_at', { ascending: false }).range(historyPage * 20, historyPage * 20 + 19)
     if (target) q = q.eq('cohort_id', target)
     setHistory(checked(await q) || [])
@@ -69,8 +71,10 @@ export default function FileSenderDialog({ cohortId, cohorts, onClose }) {
 
   async function send() {
     setBusy(true); setError('')
+    let phase = '전송 설정 확인 중…'
     try {
-      const settings = await getSettings(true)
+      setProgress(phase)
+      const settings = await retryDeliveryRequest(() => getSettings(true))
       const max = Math.min(50, settings.maxFileSizeMb) * 1048576
       if (!target || !title.trim() || (!files.length && isBlankHtml(memo)) || files.length > 10 || (!all && !selected.size)) throw new Error('기수, 제목, 수신 학생과 쪽지 내용 또는 파일을 입력해 주세요.')
       for (const file of files) {
@@ -79,26 +83,40 @@ export default function FileSenderDialog({ cohortId, cohorts, onClose }) {
       }
       // Retain the same draft and paths on failure, making a lost response safe to retry.
       if (!retry.current) {
-        const id = checked(await supabase.rpc('create_distribution', { p_cohort: target, p_title: title.trim(), p_memo: '', p_html: memo }))
+        const id = crypto.randomUUID()
         retry.current = { id, entries: files.map(f => ({ filename: f.name, size_bytes: f.size, file_path: `${profile.id}/${id}/${storageSafeName(f.name)}` })), uploaded: new Set() }
         setHasDraft(true)
       }
       const draft = retry.current
+      setProgress(phase = '전송 초안 준비 중…')
+      checked(await retryDeliveryRequest(() => supabase.rpc('create_distribution', {
+        p_cohort: target, p_title: title.trim(), p_memo: '', p_html: memo, p_id: draft.id,
+      }).abortSignal(AbortSignal.timeout(15000))))
       for (let i = 0; i < files.length; i++) {
         if (draft.uploaded.has(i)) continue
-        setProgress(`파일 업로드 ${i + 1}/${files.length}`)
-        const result = await supabase.storage.from('student-deliveries').upload(draft.entries[i].file_path, files[i], { upsert: false })
-        if (result.error && !['409', 'Duplicate'].includes(String(result.error.statusCode || result.error.error))) throw result.error
+        setProgress(phase = `파일 업로드 ${i + 1}/${files.length}`)
+        await retryDeliveryRequest(async () => {
+          const bucket = supabase.storage.from('student-deliveries')
+          const result = await bucket.upload(draft.entries[i].file_path, files[i], { upsert: false })
+          if (result.error && ['409', 'Duplicate'].includes(String(result.error.statusCode || result.error.error))) {
+            const info = checked(await bucket.info(draft.entries[i].file_path))
+            if (Number(info.size) !== files[i].size) throw new Error('이미 업로드된 파일의 용량이 다릅니다. 임시 파일을 정리한 뒤 다시 보내 주세요.')
+            return { data: info }
+          }
+          return result
+        })
         draft.uploaded.add(i)
       }
-      setProgress('학생에게 전송 중…')
-      const count = checked(await supabase.rpc('send_distribution', { p_batch: draft.id, p_files: draft.entries, p_students: all ? null : [...selected] }))
+      setProgress(phase = '학생에게 전송 중…')
+      const count = checked(await retryDeliveryRequest(() => supabase.rpc('send_distribution', {
+        p_batch: draft.id, p_files: draft.entries, p_students: all ? null : [...selected],
+      }).abortSignal(AbortSignal.timeout(15000))))
       retry.current = null
       setHasDraft(false)
       setFiles([]); setTitle(''); setMemo(''); setEditorKey(k => k + 1); if (fileInput.current) fileInput.current.value = ''
       toast(`${count}명에게 쪽지/파일을 보냈습니다.`)
       await loadHistory().catch(() => setError('전송은 완료됐지만 이력을 불러오지 못했습니다. 창을 다시 열어 확인해 주세요.'))
-    } catch (e) { setError(e instanceof Error ? e.message : '전송하지 못했습니다. 다시 누르면 같은 전송을 이어서 시도합니다.') }
+    } catch (e) { setError(`${phase.replace(/ 중…$/, '')}에 실패했습니다. ${e?.message || ''} 다시 누르면 같은 전송을 이어서 시도합니다.`) }
     finally { setBusy(false); setProgress('') }
   }
   const locked = busy || hasDraft
@@ -121,8 +139,8 @@ export default function FileSenderDialog({ cohortId, cohorts, onClose }) {
       setBusy(true)
       try {
         const draft = retry.current
-        const batch = checked(await supabase.from('file_batches').select('status').eq('id', draft.id).single())
-        if (batch.status === 'draft') {
+        const batch = checked(await supabase.from('file_batches').select('status').eq('id', draft.id).maybeSingle())
+        if (batch?.status === 'draft') {
           if (draft.entries.length) checked(await supabase.storage.from('student-deliveries').remove(draft.entries.map(f => f.file_path)))
           checked(await supabase.rpc('discard_file_batch', { p_batch: draft.id }))
         }
@@ -130,6 +148,21 @@ export default function FileSenderDialog({ cohortId, cohorts, onClose }) {
       } catch { setError('임시 파일 정리에 실패했습니다. 다시 닫기를 눌러 주세요.'); setBusy(false); return }
     }
     onClose()
+  }
+  async function removeAttachment() {
+    setBusy(true); setError('')
+    try {
+      checked(await retryDeliveryRequest(() => supabase.functions.invoke('distribution-files', {
+        body: { file_id: deleteFile.id }, signal: AbortSignal.timeout(45000),
+      })))
+      const deletedAt = new Date().toISOString()
+      const replace = f => f.id === deleteFile.id ? { ...f, deleted_at: deletedAt } : f
+      setHistory(prev => prev.map(b => ({ ...b, file_batch_files: b.file_batch_files.map(replace) })))
+      setStatus(prev => prev ? { ...prev, batch: { ...prev.batch, file_batch_files: prev.batch.file_batch_files.map(replace) } } : prev)
+      setDeleteFile(null)
+      toast('첨부파일을 저장소에서 삭제했습니다. 쪽지와 수신 이력은 유지됩니다.')
+    } catch { setError('첨부파일 삭제를 완료하지 못했습니다. 다시 시도해 주세요.') }
+    finally { setBusy(false) }
   }
   return <Dialog open title="쪽지/파일 보내기" onClose={close} wide>
     <div className="stack" style={{ gap: 12 }}>
@@ -161,8 +194,8 @@ export default function FileSenderDialog({ cohortId, cohorts, onClose }) {
         <h3 className="t-h3">전송 이력 · 수신 현황</h3>
         {!history.length && <p>전송 이력이 없습니다.</p>}
         {history.map(batch => <div className="row" key={batch.id} style={{ gap: 8, marginTop: 8 }}>
-          <span style={{ flex: 1 }}>{batch.title} <small>{batch.status === 'sent' ? `${fmtDate(batch.sent_at, true)} · ${batch.file_batch_files.length ? `첨부 ${batch.file_batch_files.length}개` : '쪽지'}` : '미전송 임시 항목'}</small></span>
-          {batch.status === 'sent' ? <button className="btn btn-white btn-sm" onClick={() => setStatus({ batch, rows: [], requests: [] })}>수신 현황</button>
+          <span style={{ flex: 1 }}>{batch.title} <small>{batch.status === 'sent' ? `${fmtDate(batch.sent_at, true)} · ${batch.file_batch_files.length ? `첨부 ${batch.file_batch_files.filter(f => !f.deleted_at).length}개${batch.file_batch_files.some(f => f.deleted_at) ? ' · 삭제 파일 있음' : ''}` : '쪽지'}` : '미전송 임시 항목'}</small></span>
+          {batch.status === 'sent' ? <button className="btn btn-white btn-sm" disabled={busy} onClick={() => setStatus({ batch, rows: [], requests: [] })}>수신 현황{profile.role === 'super_admin' && batch.file_batch_files.length ? ' · 첨부 관리' : ''}</button>
             : batch.sender_id === profile.id && <button className="btn btn-white btn-sm" disabled={busy} onClick={() => discard(batch)}>임시 파일 정리</button>}
         </div>)}
         <div className="row mt-8" style={{ gap: 8 }}><button className="btn btn-white btn-sm" disabled={!historyPage} onClick={() => setHistoryPage(p => p - 1)}>이전</button>
@@ -174,6 +207,10 @@ export default function FileSenderDialog({ cohortId, cohorts, onClose }) {
     </div>
     <Dialog open={!!status} title={`${status?.batch.title || ''} · 수신 현황`} onClose={() => setStatus(null)} wide>
       {status && <div className="stack" style={{ gap: 8 }}>
+        {status.batch.file_batch_files.map(file => <div className="row" key={file.id} style={{ gap: 8 }}>
+          <span style={{ flex: 1, overflowWrap: 'anywhere' }}>{file.filename} · {fmtBytes(file.size_bytes)}{file.deleted_at ? ' · 삭제됨' : ''}</span>
+          {profile.role === 'super_admin' && !file.deleted_at && <button className="btn btn-white btn-sm danger" disabled={busy} onClick={() => setDeleteFile(file)}>파일 삭제</button>}
+        </div>)}
         <p>대상 {status.rows.length}명 · 알림 수신 {status.rows.filter(r => r.received_at).length}명 · 확인 {status.rows.filter(r => r.seen_at).length}명 · 다운로드 요청 {new Set(status.requests.map(r => r.user_id)).size}명</p>
         <p className="t-caption">다운로드 요청은 버튼을 누른 기록입니다. PC 저장 완료나 파일 열람 여부를 의미하지 않습니다.</p>
         <div style={{ maxHeight: '45vh', overflow: 'auto' }}><table style={{ width: '100%' }}>
@@ -183,5 +220,8 @@ export default function FileSenderDialog({ cohortId, cohorts, onClose }) {
         </table></div>
       </div>}
     </Dialog>
+    <ConfirmDialog open={!!deleteFile} busy={busy} danger title="첨부파일 영구 삭제"
+      message={`“${deleteFile?.filename || ''}” 파일을 저장소에서 영구 삭제할까요? 모든 수신 학생의 다운로드가 중단됩니다. 쪽지 내용과 수신 이력은 유지됩니다.`}
+      confirmLabel="파일 영구 삭제" onConfirm={removeAttachment} onClose={() => setDeleteFile(null)} />
   </Dialog>
 }

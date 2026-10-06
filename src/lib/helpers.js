@@ -96,7 +96,7 @@ export async function getSettings(force = false) {
   return settingsRequest
 }
 async function loadSettings() {
-  const { data, error } = await supabase.from('system_settings').select('key,value')
+  const { data, error } = await supabase.from('system_settings').select('key,value').abortSignal(AbortSignal.timeout(10000))
   if (error) throw error
   const map = {}
   for (const row of data || []) map[row.key] = row.value
