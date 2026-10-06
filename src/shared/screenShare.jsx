@@ -20,7 +20,9 @@ const ERRORS = {
 }
 async function api(action, body = {}) {
   const requestedAt = performance.now()
-  const { data, error } = await supabase.functions.invoke('screen-share', { body: { action, ...body } })
+  const { data, error } = await supabase.functions.invoke('screen-share', {
+    body: { action, ...body }, timeout: action === 'start' ? 35000 : action === 'stop' ? 110000 : 10000,
+  })
   if (error) {
     let code
     try { code = (await error.context.json()).error } catch { /* transport error */ }
@@ -100,10 +102,14 @@ export function TeacherScreenShareButton({ cohortId, cohorts, children }) {
   useEffect(() => {
     const id = snapshot.session?.id
     if (snapshot.phase !== 'error' || !id) return
-    let alive = true
+    let alive = true, reading = false
     const reconcile = async () => {
-      const { data } = await supabase.from('screen_share_sessions').select('state').eq('id', id).maybeSingle()
-      if (alive && data?.state === 'ended' && client.session?.id === id) void client.end(false)
+      if (reading) return
+      reading = true
+      try {
+        const { data } = await supabase.from('screen_share_sessions').select('state').eq('id', id).maybeSingle().abortSignal(AbortSignal.timeout(10000))
+        if (alive && data?.state === 'ended' && client.session?.id === id) void client.end(false)
+      } catch { /* keep the stop error visible until reconciliation succeeds */ } finally { reading = false }
     }
     void reconcile()
     const timer = setInterval(reconcile, 5000)
@@ -147,9 +153,9 @@ function ReceiverStatus({ sessionId, name }) {
       if (pending) return
       pending = true
       try {
-        const { data, error } = await supabase.rpc('screen_share_receiver_status', { p_session: sessionId })
+        const { data, error } = await supabase.rpc('screen_share_receiver_status', { p_session: sessionId }).abortSignal(AbortSignal.timeout(10000))
         if (alive) { setError(!!error); if (!error) setStudents(data?.students || []) }
-      } finally { pending = false }
+      } catch { if (alive) setError(true) } finally { pending = false }
     }
     void read()
     const timer = setInterval(read, 5000)
@@ -172,38 +178,53 @@ export function StudentScreenShare() {
   const video = useRef(null)
   const modal = useRef(null)
   const [playing, setPlaying] = useState(false)
+  const visible = enabled && !!active && ['joining', 'live'].includes(snapshot.phase)
   const receiverState = playing ? 'receiving' : snapshot.error ? 'error' : snapshot.phase === 'joining' ? 'connecting' : 'reconnecting'
   const reportState = useRef(receiverState)
   useEffect(() => { void client.receive(enabled ? active : null) }, [client, active, enabled])
   useEffect(() => {
+    setPlaying(false)
     if (!video.current) return
     const element = video.current
     let alive = true
-    setPlaying(false)
+    const failed = () => {
+      if (!alive) return
+      reportClientError('share', 'SHARE_PLAY_FAILED')
+      void client.end(false, '공유 영상을 재생하지 못했습니다. 다시 연결해 주세요.').catch(() => {})
+    }
+    const timer = snapshot.track ? setTimeout(failed, 10000) : null
     element.srcObject = snapshot.track ? new MediaStream([snapshot.track]) : null
-    if (snapshot.track) void element.play().then(() => { if (alive) setPlaying(true) }).catch(() => { reportClientError('share', 'SHARE_PLAY_FAILED') })
-    return () => { alive = false; element.srcObject = null }
-  }, [snapshot.track, !!active])
+    if (snapshot.track) void element.play().then(() => { clearTimeout(timer); if (alive) setPlaying(true) }).catch(failed)
+    return () => { alive = false; clearTimeout(timer); element.srcObject = null }
+  }, [client, snapshot.track, visible])
+  useEffect(() => {
+    // pagehide also covers bfcache; resume obtains fresh state before rejoining.
+    const exit = () => { void client.end(false).catch(() => {}) }
+    window.addEventListener('pagehide', exit)
+    return () => window.removeEventListener('pagehide', exit)
+  }, [client])
   useEffect(() => {
     if (!enabled || !active?.id) return
-    const report = (state) => { void Promise.resolve(supabase.rpc('screen_share_report', { p_session: active.id, p_client: client.clientId, p_state: state })).catch(() => {}) }
+    const report = (state) => { void Promise.resolve(supabase.rpc('screen_share_report', { p_session: active.id, p_client: client.clientId, p_state: state }).abortSignal(AbortSignal.timeout(10000))).catch(() => {}) }
     const timer = setInterval(() => report(reportState.current), 15000)
     return () => { clearInterval(timer); report('ended') }
   }, [client, enabled, active?.id])
   useEffect(() => {
     reportState.current = receiverState
-    if (enabled && active?.id) void Promise.resolve(supabase.rpc('screen_share_report', { p_session: active.id, p_client: client.clientId, p_state: receiverState })).catch(() => {})
+    if (enabled && active?.id) void Promise.resolve(supabase.rpc('screen_share_report', { p_session: active.id, p_client: client.clientId, p_state: receiverState }).abortSignal(AbortSignal.timeout(10000))).catch(() => {})
   }, [client, enabled, active?.id, receiverState])
   useEffect(() => {
-    if (!active) return
+    if (!visible) return
     const root = document.getElementById('root')
     const inert = root.inert, overflow = document.body.style.overflow, focus = document.activeElement
     root.inert = true
     document.body.style.overflow = 'hidden'
     modal.current?.focus()
     return () => { root.inert = inert; document.body.style.overflow = overflow; if (focus?.isConnected) focus.focus() }
-  }, [active?.id])
-  if (!enabled || !active) return null
+  }, [visible, active?.id])
+  if (!visible) return enabled && active && snapshot.error ? <div className="screen-share-error" role="alert">
+    {snapshot.error} <button className="btn btn-white btn-sm" onClick={() => { void client.retry(active) }}>다시 연결</button>
+  </div> : null
   return createPortal(<section className="student-screen-share" ref={modal} tabIndex={-1} role="dialog" aria-modal="true" aria-label="교사 화면 공유">
     <video ref={video} autoPlay playsInline muted className="student-shared-video" />
     {!snapshot.track && <div className="screen-share-loading" role="status">교사 화면을 연결하고 있습니다…</div>}

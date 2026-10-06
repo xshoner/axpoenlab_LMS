@@ -15,6 +15,7 @@ function fixture(teacher = false) {
     loadDaily: async () => { log.push('load-sdk'); return { createCallObject(opts) {
       const call = { opts, participants: () => ({}), on(name,fn) { listeners.set(name,fn) }, once(name,fn) { listeners.set(name,fn) },
         join: async options => { call.joinOptions=options; log.push('join') },
+        async leave() { log.push('leave') },
         startScreenShare(options) { call.shareOptions=options; log.push('share'); listeners.get('local-screen-share-started')() },
         async destroy() { log.push('destroy'); listeners.get('left-meeting')?.({}) },
       }
@@ -107,4 +108,101 @@ test('teacher departure disconnects students and never rejoins the empty old roo
   await f.client.receive(f.session)
   assert.equal(f.frames.length,1)
   assert.equal(f.client.call,null)
+})
+
+const flush = () => new Promise(r => setImmediate(r))
+test('stalled token polling times out and stops after three automatic attempts', async t => {
+  t.mock.timers.enable({ apis: ['setTimeout'] })
+  const f = fixture()
+  let tokens = 0
+  f.client.api = () => { tokens++; return new Promise(() => {}) }
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const waiting = f.client.receive(f.session)
+    await flush()
+    await f.client.receive({ ...f.session, lease_until: new Date(Date.now() + 45000).toISOString() })
+    t.mock.timers.tick(10001)
+    await waiting
+    assert.equal(f.client.snapshot.phase, 'idle')
+    assert.ok(f.client.snapshot.error)
+  }
+  await f.client.receive(f.session)
+  assert.equal(tokens, 3)
+  assert.equal(f.frames.length, 0)
+})
+test('missing teacher media and a stuck SDK destroy release the connection on time', async t => {
+  t.mock.timers.enable({ apis: ['setTimeout'] })
+  const f = fixture()
+  await f.client.receive(f.session)
+  f.frames[0].destroy = () => { f.log.push('destroy-stalled'); return new Promise(() => {}) }
+  t.mock.timers.tick(15001)
+  await flush()
+  assert.equal(f.client.call, null)
+  assert.ok(f.log.includes('leave'))
+  t.mock.timers.tick(5001)
+  await flush()
+  assert.equal(f.client.snapshot.phase, 'idle')
+  assert.ok(f.client.snapshot.error)
+})
+test('a cancelled start cleans up late server credentials without joining', async () => {
+  const f = fixture(true)
+  let resolve
+  f.client.api = action => {
+    f.log.push(action)
+    return action === 'start' ? new Promise(r => { resolve = r }) : Promise.resolve({})
+  }
+  const waiting = f.client.start('cohort')
+  await flush()
+  await f.client.end()
+  resolve({ session: f.session, room: 'https://test.daily.co/room', token: 'late' })
+  await waiting; await flush()
+  assert.equal(f.log.filter(x => x === 'stop').length, 1)
+  assert.equal(f.frames.length, 0)
+  assert.equal(f.stream.getVideoTracks()[0].readyState, 'ended')
+})
+test('a join completing after cancellation is explicitly left again', async () => {
+  const f = fixture()
+  let resolve
+  const load = f.client.loadDaily
+  f.client.loadDaily = async () => {
+    const daily = await load(), create = daily.createCallObject
+    daily.createCallObject = options => {
+      const call = create(options)
+      call.join = () => new Promise(r => { resolve = r })
+      return call
+    }
+    return daily
+  }
+  const waiting = f.client.receive(f.session)
+  await flush(); await f.client.end(false)
+  resolve(); await waiting; await flush()
+  assert.equal(f.log.filter(x => x === 'leave').length, 2)
+  assert.equal(f.client.call, null)
+})
+test('an ended capture missed by the browser event stops the server at heartbeat', async t => {
+  t.mock.timers.enable({ apis: ['setTimeout', 'setInterval'] })
+  const f = fixture(true)
+  await f.client.start('cohort')
+  f.stream.getVideoTracks()[0].readyState = 'ended'
+  t.mock.timers.tick(15001); await flush()
+  assert.equal(f.log.filter(x => x === 'stop').length, 1)
+  assert.equal(f.client.call, null)
+  assert.equal(f.client.snapshot.phase, 'idle')
+})
+test('brief media interruptions recover, but signaling success cannot hide a stalled SFU', async t => {
+  t.mock.timers.enable({ apis: ['setTimeout'] })
+  const f=fixture(true)
+  await f.client.start('cohort')
+  const network=f.listeners.get('network-connection')
+  network({type:'sfu',event:'interrupted'})
+  t.mock.timers.tick(10000)
+  network({type:'sfu',event:'connected'})
+  t.mock.timers.tick(20001);await flush()
+  assert.ok(f.client.call,'brief interruption must not end a healthy lesson')
+  f.client.renew(f.session)
+  network({type:'sfu',event:'interrupted'})
+  network({type:'signaling',event:'connected'})
+  t.mock.timers.tick(30001);await flush()
+  assert.equal(f.client.call,null)
+  assert.equal(f.log.filter(x=>x==='stop').length,1)
+  assert.match(f.client.snapshot.error,/복구 시간/)
 })

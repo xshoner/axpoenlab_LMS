@@ -30,16 +30,15 @@ export function FileBatchDetail({ batch }) {
     try {
       const data = checked(await supabase.storage.from(BUCKET).createSignedUrl(file.file_path, 300, { download: file.filename }))
       checked(await supabase.rpc('record_file_download', { p_file: file.id }))
-      const response = await fetch(data.signedUrl)
-      if (!response.ok) throw new Error('Download failed')
-      const objectUrl = URL.createObjectURL(await response.blob())
       const a = document.createElement('a')
-      a.href = objectUrl
+      // Storage sets Content-Disposition; let the browser stream bytes directly to disk.
+      a.href = data.signedUrl
       a.download = file.filename
+      a.target = '_blank'
+      a.rel = 'noopener noreferrer'
       document.body.appendChild(a)
       a.click()
       a.remove()
-      setTimeout(() => URL.revokeObjectURL(objectUrl), 30000)
     } catch { toast('파일을 다운로드하지 못했습니다. 다시 시도해 주세요.', 'error') }
     finally { setBusy(null) }
   }
@@ -59,6 +58,11 @@ export function FileBatchDetail({ batch }) {
 
 function legacySeen(userId) {
   try { return new Set(JSON.parse(localStorage.getItem(`ax-distribution-seen:${userId}`) || localStorage.getItem('ax-push-seen') || '[]')) } catch { return new Set() }
+}
+async function inboxDetail(row) {
+  if (row.delivery_id) return row.file_batches
+  return checked(await supabase.from('file_batches').select('id,title,memo,body_html,sent_at,file_batch_files(*)')
+    .eq('id', row.batch_id).single().abortSignal(AbortSignal.timeout(10000)))
 }
 export function StudentDistributionInbox({ floating = false }) {
   const { profile } = useAuth()
@@ -89,7 +93,7 @@ export function StudentDistributionInbox({ floating = false }) {
       try {
         const [fileResult, messageResult, hiddenResult] = await Promise.all([
           supabase.from('file_recipients')
-            .select('batch_id,received_at,seen_at,file_batches!inner(id,title,memo,body_html,sent_at,file_batch_files(*))')
+            .select('batch_id,received_at,seen_at,file_batches!inner(id,title,sent_at,file_batch_files(id))')
             .eq('user_id', profile.id).is('hidden_at', null).order('created_at', { ascending: false }).range(page * 20, page * 20 + 19),
           page === 0 ? supabase.from('push_deliveries').select('id,body,sender_name,sent_at,action_url,action_label').order('sent_at', { ascending: false }).limit(100) : Promise.resolve({ data: [] }),
           page === 0 ? supabase.from('push_hidden').select('delivery_id') : Promise.resolve({ data: [] }),
@@ -110,9 +114,10 @@ export function StudentDistributionInbox({ floating = false }) {
         if (page === 0 && !currentDetail.current) {
           const row = rows.find(x => !x.seen_at && !popped.current.has(x.batch_id))
           if (row) {
-            popped.current.add(row.batch_id)
-            if (alive) {
-              setDetail(row.file_batches)
+            const batch = await inboxDetail(row)
+            if (alive && !currentDetail.current) {
+              popped.current.add(row.batch_id)
+              setDetail(batch)
             }
           }
         }
@@ -162,9 +167,7 @@ export function StudentDistributionInbox({ floating = false }) {
 
   async function view(row) {
     try {
-      if (!row.delivery_id) checked(await supabase.rpc('ack_file_batch', { p_batch: row.batch_id, p_seen: true }))
-      setItems(prev => prev.map(x => x.batch_id === row.batch_id ? { ...x, seen_at: new Date().toISOString() } : x))
-      setDetail(row.file_batches)
+      setDetail(await inboxDetail(row))
     } catch { toast('파일 정보를 확인하지 못했습니다. 다시 시도해 주세요.', 'error') }
   }
   async function hideMessage() {

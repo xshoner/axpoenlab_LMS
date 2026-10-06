@@ -1,21 +1,26 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
 
-export function useStudentPresenceTrack(userId, cohortId = null) {
-  const [count, setCount] = useState(0)
+export function useStudentPresenceTrack(userId) {
+  const [stats, setStats] = useState(null)
   useEffect(() => {
     if (!userId) return
-    let alive = true
+    let alive = true, pending = false
     async function poll() {
-      await supabase.rpc('heartbeat')
-      const { data, error } = await supabase.rpc('student_service_stats')
-      if (alive && !error) setCount(data?.online || 0)
+      if (pending) return
+      pending = true
+      try {
+        await supabase.rpc('heartbeat').abortSignal(AbortSignal.timeout(10000))
+        const { data, error } = await supabase.rpc('student_service_stats').abortSignal(AbortSignal.timeout(10000))
+        if (alive && !error) setStats(data)
+      } catch { /* retain the last counter on a transient failure */ }
+      finally { pending = false }
     }
     poll()
     const timer = setInterval(poll, 30000)
     return () => { alive = false; clearInterval(timer) }
-  }, [userId, cohortId])
-  return count
+  }, [userId])
+  return userId ? stats : null
 }
 
 export function useOnlineStudentCount(cohortId = null) {
