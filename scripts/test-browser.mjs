@@ -11,6 +11,7 @@ try {
  let failProfile=false, mockShare=false, fileAvailable=false, fileSeen=false, fileReceived=false, downloadRequests=0, statsRequests=0, detailRequests=0;
  let adminMode=false, failHistory=false, sends=0;
  let uploadMode=false, draftAttempts=0, uploadAttempts=0, fileSendAttempts=0, deleteAttempts=0, draftId=null, uploadedPath=null;
+ let adminReceiptRequests=0;
  let shareTtl=4000;
  const batch={id:first,title:'배포 자료',memo:'오프라인 학생에게도 전달',body_html:'<p>통합 쪽지 본문</p>',sent_at:'2026-10-02T08:00:00Z',file_batch_files:[{id:second,filename:'한글자료.txt',size_bytes:8,file_path:'mock/file.txt'}]};
  await context.addInitScript(s=>{localStorage.setItem('ax-lms-keep','1');localStorage.setItem('sb-ugelgndotyppgksbubot-auth-token',JSON.stringify(s));localStorage.setItem(`ax-distribution-seen:${s.user.id}`,JSON.stringify(['legacy-message']))},session);
@@ -33,6 +34,7 @@ try {
   else if(table==='survey_questions')data=[];
   else if(table==='push_deliveries')data=fileAvailable?[{id:'legacy-message',body:'기존 쪽지도 유지됩니다.',sent_at:'2026-10-01T08:00:00Z',sender_name:'관리자'}]:[];
   else if(table==='file_recipients'){
+    if(adminMode)adminReceiptRequests++;
     if(!adminMode)assert.ok(!/body_html|memo|\*/.test(u.searchParams.get('select')),'inbox polling retrieves metadata only');
     data=fileAvailable?[{batch_id:first,received_at:fileReceived?'2026-10-02T08:00:00Z':null,seen_at:fileSeen?'2026-10-02T08:00:00Z':null,
       file_batches:{id:batch.id,title:batch.title,sent_at:batch.sent_at,file_batch_files:[{id:second,deleted_at:batch.file_batch_files[0].deleted_at}]}}]:[];
@@ -151,6 +153,34 @@ try {
  adminMode=true;fileAvailable=false;
  await page.goto(base+'/admin.html#/courses');
  await page.getByRole('button',{name:'쪽지/파일',exact:true}).click();
+ assert.equal(await page.locator('.distribution-disclosure').first().evaluate(el=>el.open),false,'history starts collapsed');
+ assert.equal(adminReceiptRequests,0,'collapsed history does not poll receipts');
+ await page.getByRole('button',{name:'첨부파일 선택',exact:true}).focus();
+ await page.locator('.distribution-dropzone').evaluate(el=>{
+   const drop=new DataTransfer();drop.items.add(new File(['drag content'],'드래그 파일.txt',{type:'text/plain',lastModified:1}));
+   el.dispatchEvent(new DragEvent('drop',{dataTransfer:drop,bubbles:true,cancelable:true}));
+ });
+ await page.getByText('드래그 파일.txt',{exact:true}).waitFor();
+ await page.locator('.distribution-dropzone').evaluate(el=>{
+   const drop=new DataTransfer();drop.items.add(new File(['drag content'],'드래그 파일.txt',{type:'text/plain',lastModified:1}));
+   el.dispatchEvent(new DragEvent('drop',{dataTransfer:drop,bubbles:true,cancelable:true}));
+ });
+ assert.equal(await page.getByLabel('선택한 첨부파일').locator('.distribution-file-row').count(),1,'duplicate drop is ignored');
+ await page.locator('.distribution-dropzone').evaluate(el=>{
+   const drop=new DataTransfer();for(let n=0;n<10;n++)drop.items.add(new File(['data'],`overflow-${n}.txt`,{lastModified:1}));
+   el.dispatchEvent(new DragEvent('drop',{dataTransfer:drop,bubbles:true,cancelable:true}));
+ });
+ await page.getByText('첨부파일은 최대 10개까지 추가할 수 있습니다. 기존 파일을 제거한 뒤 다시 추가해 주세요.',{exact:true}).waitFor();
+ assert.equal(await page.getByLabel('선택한 첨부파일').locator('.distribution-file-row').count(),1,'too many files do not silently replace earlier choices');
+ await page.getByRole('button',{name:'드래그 파일.txt 제거',exact:true}).click();
+ assert.equal(await page.getByLabel('선택한 첨부파일').count(),0);
+ const chooserEvent=page.waitForEvent('filechooser');
+ await page.getByRole('button',{name:'첨부파일 선택',exact:true}).focus();
+ await page.keyboard.press('Enter');
+ const chooser=await chooserEvent;
+ await chooser.setFiles({name:'키보드 선택.txt',mimeType:'text/plain',buffer:Buffer.from('keyboard')});
+ await page.getByRole('button',{name:'키보드 선택.txt 제거',exact:true}).click();
+ await page.locator('.distribution-disclosure > summary').first().click();
  await page.getByRole('combobox',{name:'대상 기수',exact:true}).selectOption(cohort);
  await page.getByRole('textbox',{name:'파일 제목',exact:true}).fill('확인용 쪽지');
  await page.locator('[contenteditable="true"]').first().fill('쪽지 본문');
@@ -165,15 +195,29 @@ try {
  await page.getByRole('textbox',{name:'파일 제목',exact:true}).fill('504 파일 재시도');
  await page.getByLabel('전송 파일',{exact:true}).setInputFiles({name:'한글자료.txt',mimeType:'text/plain',buffer:Buffer.from('QA bytes')});
  await page.getByRole('button',{name:'1명에게 보내기',exact:true}).click();
- await page.getByRole('button',{name:'수신 현황 · 첨부 관리',exact:true}).waitFor();
+ await page.waitForFunction(()=>document.querySelector('.distribution-dropzone').disabled);
+ await page.locator('.distribution-dropzone').evaluate(el=>{
+   const drop=new DataTransfer();drop.items.add(new File(['blocked'],'전송 중 추가.txt'));
+   el.dispatchEvent(new DragEvent('drop',{dataTransfer:drop,bubbles:true,cancelable:true}));
+ });
+ assert.equal(await page.getByText('전송 중 추가.txt',{exact:true}).count(),0,'an in-flight delivery cannot change its locked attachments');
+ await page.getByText('수신 현황 · 첨부 관리',{exact:true}).waitFor();
  assert.equal(draftAttempts,2);assert.equal(uploadAttempts,2);assert.equal(fileSendAttempts,2);assert.equal(sends,2,'lost response retries do not commit a second delivery');
  assert.equal(await page.getByRole('textbox',{name:'파일 제목',exact:true}).inputValue(),'');
- await page.getByRole('button',{name:'수신 현황 · 첨부 관리',exact:true}).click();
+ await page.getByText('수신 현황 · 첨부 관리',{exact:true}).click();
+ await page.getByRole('table',{name:'학생별 수신 현황',exact:true}).waitFor();
+ assert.equal(await page.getByRole('dialog').count(),1,'receipt panel expands inline without another modal');
  await page.getByRole('button',{name:'파일 삭제',exact:true}).click();
  await page.getByRole('button',{name:'파일 영구 삭제',exact:true}).click();
- await page.getByText('한글자료.txt · 8B · 삭제됨',{exact:true}).waitFor();
+ await page.getByText('8B · 삭제됨',{exact:true}).waitFor();
  assert.equal(deleteAttempts,2);assert.equal(await page.getByRole('button',{name:'파일 삭제',exact:true}).count(),0);
  console.log('PASS: 504 at draft, upload and send recovers with identical IDs/paths; attachment deletion retries and marks success only after completion');
+ await page.locator('.distribution-disclosure > summary').first().click();
+ await page.waitForTimeout(100);
+ const receiptCount=adminReceiptRequests;
+ await page.waitForTimeout(5500);
+ assert.equal(adminReceiptRequests,receiptCount,'collapsing history stops the receipt poll');
+ console.log('PASS: accessible drag/drop, duplicate and 10-file guards, per-file removal, collapsed history and inline receipt panel without background polling');
  adminMode=false;fileAvailable=true;
  await page.goto(base+'/#/courses');
  await page.getByRole('button',{name:'쪽지/파일',exact:true}).click();

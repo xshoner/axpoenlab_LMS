@@ -7,6 +7,8 @@ import { Dialog, ConfirmDialog, useToast } from './ui'
 import { retryDeliveryRequest } from '../lib/deliveryRequests'
 import { checked } from './fileTransfers'
 import { AdminPushComposer, isBlankHtml } from './push'
+import { IconChevronDown, IconFile, IconHistory, IconMail, IconPaperclip, IconSend, IconUpload, IconX } from '@tabler/icons-react'
+import './fileSender.css'
 const RichEditor = lazy(() => import('./RichEditor'))
 
 export default function FileSenderDialog({ cohortId, cohorts, onClose }) {
@@ -22,6 +24,8 @@ export default function FileSenderDialog({ cohortId, cohorts, onClose }) {
   const [all, setAll] = useState(true)
   const [history, setHistory] = useState([])
   const [historyPage, setHistoryPage] = useState(0)
+  const [historyOpen, setHistoryOpen] = useState(false)
+  const [historyLoading, setHistoryLoading] = useState(false)
   const [status, setStatus] = useState(null)
   const [busy, setBusy] = useState(false)
   const [progress, setProgress] = useState('')
@@ -30,27 +34,35 @@ export default function FileSenderDialog({ cohortId, cohorts, onClose }) {
   const [legacyOpen, setLegacyOpen] = useState(false)
   const [error, setError] = useState('')
   const [deleteFile, setDeleteFile] = useState(null)
+  const [dragover, setDragover] = useState(false)
   const fileInput = useRef(null)
   const retry = useRef(null)
+  const historyRequest = useRef(0)
 
   async function loadHistory() {
+    if (!historyOpen) return
+    const request = ++historyRequest.current
+    setHistoryLoading(true)
     let q = supabase.from('file_batches').select('id,title,status,sender_id,created_at,sent_at,cohort_id,file_batch_files(id,filename,size_bytes,deleted_at)')
       .order('created_at', { ascending: false }).range(historyPage * 20, historyPage * 20 + 19)
     if (target) q = q.eq('cohort_id', target)
-    setHistory(checked(await q) || [])
+    try {
+      const rows = checked(await q.abortSignal(AbortSignal.timeout(10000))) || []
+      if (request === historyRequest.current) setHistory(rows)
+    } finally { if (request === historyRequest.current) setHistoryLoading(false) }
   }
   useEffect(() => {
     let alive = true
-    setMembers([]); setSelected(new Set()); setAll(true); setError('')
+    setMembers([]); setSelected(new Set()); setAll(true); setError(''); setStatus(null)
     if (target) readAll(() => supabase.from('cohort_members').select('user_id,profiles!inner(id,name,status,role)')
       .eq('cohort_id', target).eq('profiles.status', 'active').eq('profiles.role', 'student').order('user_id'))
       .then(rows => { if (alive) setMembers(rows.map(x => x.profiles)) })
       .catch(() => { if (alive) setError('학생 목록을 불러오지 못했습니다. 창을 다시 열어 주세요.') })
     return () => { alive = false }
   }, [target])
-  useEffect(() => { loadHistory().catch(() => setError('전송 이력을 불러오지 못했습니다.')) }, [target, historyPage])
+  useEffect(() => { loadHistory().catch(() => setError('전송 이력을 불러오지 못했습니다.')) }, [target, historyPage, historyOpen])
   useEffect(() => {
-    if (!status) return
+    if (!status || status.batch.status === 'draft') return
     let alive = true, running = false
     async function refresh() {
       if (running) return
@@ -60,8 +72,8 @@ export default function FileSenderDialog({ cohortId, cohorts, onClose }) {
         const fileIds = status.batch.file_batch_files.map(f => f.id)
         const requests = fileIds.length ? await readAll(() => supabase.from('file_download_requests').select('file_id,user_id,requested_at')
           .in('file_id', fileIds).order('file_id').order('user_id')) : []
-        if (alive) setStatus(prev => prev?.batch.id === status.batch.id ? { ...prev, rows, requests } : prev)
-      } catch { if (alive) setError('수신 현황을 갱신하지 못했습니다.') }
+        if (alive) setStatus(prev => prev?.batch.id === status.batch.id ? { ...prev, rows, requests, loading: false, error: false } : prev)
+      } catch { if (alive) setStatus(prev => prev?.batch.id === status.batch.id ? { ...prev, loading: false, error: true } : prev) }
       finally { running = false }
     }
     void refresh()
@@ -120,6 +132,15 @@ export default function FileSenderDialog({ cohortId, cohorts, onClose }) {
     finally { setBusy(false); setProgress('') }
   }
   const locked = busy || hasDraft
+  function addFiles(incoming) {
+    if (locked) return
+    const next = [...files]
+    for (const file of incoming) {
+      if (!next.some(f => f.name === file.name && f.size === file.size && f.lastModified === file.lastModified)) next.push(file)
+    }
+    if (next.length > 10) { setError('첨부파일은 최대 10개까지 추가할 수 있습니다. 기존 파일을 제거한 뒤 다시 추가해 주세요.'); return }
+    setFiles(next); setError('')
+  }
   async function discard(batch) {
     setBusy(true)
     try {
@@ -164,62 +185,112 @@ export default function FileSenderDialog({ cohortId, cohorts, onClose }) {
     } catch { setError('첨부파일 삭제를 완료하지 못했습니다. 다시 시도해 주세요.') }
     finally { setBusy(false) }
   }
-  return <Dialog open title="쪽지/파일 보내기" onClose={close} wide>
-    <div className="stack" style={{ gap: 12 }}>
-      {error && <p role="alert" style={{ color: 'var(--danger)' }}>{error}</p>}
-      <label>대상 기수 <select className="input" aria-label="대상 기수" value={target} disabled={locked} onChange={e => { setTarget(e.target.value); setHistoryPage(0) }}>
-        <option value="">기수를 선택하세요</option>{cohorts.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-      </select></label>
-      <label>제목 <input className="input" aria-label="파일 제목" maxLength={200} value={title} disabled={locked} onChange={e => setTitle(e.target.value)} /></label>
-      <div><div className="t-label mb-8">쪽지 내용 (파일만 보낼 때는 생략 가능)</div>
-        <div style={locked ? { pointerEvents: 'none', opacity: .65 } : undefined}>
-          <Suspense fallback={<p>편집기 준비 중…</p>}><RichEditor key={editorKey} value={memo} onChange={setMemo} minHeight={140} compact /></Suspense>
+  return <Dialog open title="쪽지/파일 보내기" onClose={close} wide className="distribution-dialog">
+    <div className="distribution-composer">
+      <p className="distribution-intro"><IconMail size={18} stroke={1.75} /> 학생에게 쪽지와 자료를 한 번에 전달하세요.</p>
+      {error && <p role="alert" className="distribution-error">{error}</p>}
+      <div className="distribution-fields">
+        <label className="distribution-field"><span>대상 기수</span><select className="input" aria-label="대상 기수" value={target} disabled={locked} onChange={e => { setTarget(e.target.value); setHistoryPage(0) }}>
+          <option value="">기수를 선택하세요</option>{cohorts.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+        </select></label>
+        <label className="distribution-field"><span>제목</span><input className="input" aria-label="파일 제목" placeholder="전달할 내용의 제목을 입력하세요" maxLength={200} value={title} disabled={locked} onChange={e => setTitle(e.target.value)} /></label>
+      </div>
+      <section className="distribution-field">
+        <div className="distribution-section-label">쪽지 내용 <span>파일만 보낼 때는 생략 가능</span></div>
+        <div className={locked ? 'distribution-editor-locked' : ''}>
+          <Suspense fallback={<p className="distribution-empty">편집기 준비 중…</p>}><RichEditor key={editorKey} value={memo} onChange={setMemo} minHeight={120} compact /></Suspense>
         </div>
+      </section>
+      <section className="distribution-field">
+        <div className="distribution-section-label">첨부파일 <span>선택 · 최대 10개</span></div>
+        <button type="button" className={`dropzone distribution-dropzone ${dragover ? 'dragover' : ''}`} aria-label="첨부파일 선택" disabled={locked}
+          onClick={() => fileInput.current?.click()}
+          onDragOver={e => { e.preventDefault(); if (!locked) { e.dataTransfer.dropEffect = 'copy'; setDragover(true) } }}
+          onDragLeave={e => { if (!e.currentTarget.contains(e.relatedTarget)) setDragover(false) }}
+          onDrop={e => { e.preventDefault(); setDragover(false); addFiles([...e.dataTransfer.files]) }}>
+          <IconUpload size={24} stroke={1.5} />
+          <span className="distribution-drop-title">파일을 끌어다 놓거나 클릭하여 선택</span>
+          <span className="distribution-hint">여러 파일 추가 가능 · LMS 용량·확장자 설정 적용</span>
+        </button>
+        <input ref={fileInput} type="file" multiple hidden aria-label="전송 파일" disabled={locked} onChange={e => { addFiles([...e.target.files]); e.target.value = '' }} />
+        {!!files.length && <div className="distribution-files" aria-label="선택한 첨부파일">
+          <div className="distribution-file-total"><span>첨부 {files.length}/10개</span><span>{fmtBytes(files.reduce((n, f) => n + f.size, 0))}</span></div>
+          {files.map((f, i) => <div className="distribution-file-row" key={`${f.name}-${i}`}>
+            <IconFile size={18} stroke={1.5} /><span className="distribution-file-name">{f.name}</span><span className="distribution-file-size">{fmtBytes(f.size)}</span>
+            <button className="icon-btn" aria-label={`${f.name} 제거`} disabled={locked} onClick={() => { setFiles(prev => prev.filter((_, index) => index !== i)); setError('') }}><IconX size={15} /></button>
+          </div>)}
+        </div>}
+      </section>
+      <section className="distribution-recipients">
+        <div className="distribution-section-label">받는 학생 <span className="distribution-count">{all ? members.length : selected.size}명 선택</span></div>
+        <label className="checkbox-row"><input type="checkbox" checked={all} disabled={locked} onChange={e => setAll(e.target.checked)} /> 기수 전체 학생 ({members.length}명)</label>
+        {!all && <div className="distribution-member-picker">
+          <input className="input" aria-label="학생 이름 검색" placeholder="학생 이름으로 검색" value={search} onChange={e => setSearch(e.target.value)} />
+          <div className="distribution-member-list">
+            {members.filter(p => p.name.includes(search.trim())).map(p => <label key={p.id} className="checkbox-row"><input type="checkbox" checked={selected.has(p.id)} disabled={locked}
+              onChange={e => setSelected(prev => { const next = new Set(prev); if (e.target.checked) next.add(p.id); else next.delete(p.id); return next })} /> {p.name}</label>)}
+            {!members.some(p => p.name.includes(search.trim())) && <p className="distribution-hint">검색 결과가 없습니다.</p>}
+          </div>
+        </div>}
+      </section>
+      <div className="distribution-send-row">
+        <p className="distribution-hint">접속 중인 학생은 알림으로,<br />미접속 학생은 다음 로그인 때 확인합니다.</p>
+        <button className="btn btn-primary" disabled={busy || !target || (!files.length && isBlankHtml(memo)) || !title.trim() || !members.length || (!all && !selected.size)} onClick={send}>
+          <IconSend size={16} stroke={1.75} /> {busy ? progress || '준비 중…' : hasDraft ? '전송 다시 시도' : `${all ? members.length : selected.size}명에게 보내기`}
+        </button>
       </div>
-      <label>첨부파일 (선택, 최대 10개, LMS 용량·확장자 설정 적용)
-        <input ref={fileInput} type="file" multiple aria-label="전송 파일" disabled={locked} onChange={e => setFiles([...e.target.files])} />
-      </label>
-      {files.map((f, i) => <small key={i}>{f.name} · {fmtBytes(f.size)}</small>)}
-      <label><input type="checkbox" checked={all} disabled={locked} onChange={e => setAll(e.target.checked)} /> 기수 전체 학생 ({members.length}명)</label>
-      {!all && <div><input className="input" aria-label="학생 이름 검색" placeholder="학생 이름 검색" value={search} onChange={e => setSearch(e.target.value)} />
-        <div style={{ maxHeight: 180, overflowY: 'auto' }}>
-        {members.filter(p => p.name.includes(search.trim())).map(p => <label key={p.id} style={{ display: 'block' }}><input type="checkbox" checked={selected.has(p.id)} disabled={locked}
-          onChange={e => setSelected(prev => { const next = new Set(prev); if (e.target.checked) next.add(p.id); else next.delete(p.id); return next })} /> {p.name}</label>)}
-      </div></div>}
-      <p className="t-caption">쪽지만 보내거나 파일을 함께 보낼 수 있습니다. 접속 중인 학생에게 알림이 표시되며 미접속자는 다음 로그인 때 확인합니다.</p>
-      <button className="btn btn-primary" disabled={busy || !target || (!files.length && isBlankHtml(memo)) || !title.trim() || !members.length || (!all && !selected.size)} onClick={send}>
-        {busy ? progress || '준비 중…' : hasDraft ? '전송 다시 시도' : `${all ? members.length : selected.size}명에게 보내기`}
-      </button>
-      <div style={{ borderTop: '1px solid var(--border)', paddingTop: 12 }}>
-        <h3 className="t-h3">전송 이력 · 수신 현황</h3>
-        {!history.length && <p>전송 이력이 없습니다.</p>}
-        {history.map(batch => <div className="row" key={batch.id} style={{ gap: 8, marginTop: 8 }}>
-          <span style={{ flex: 1 }}>{batch.title} <small>{batch.status === 'sent' ? `${fmtDate(batch.sent_at, true)} · ${batch.file_batch_files.length ? `첨부 ${batch.file_batch_files.filter(f => !f.deleted_at).length}개${batch.file_batch_files.some(f => f.deleted_at) ? ' · 삭제 파일 있음' : ''}` : '쪽지'}` : '미전송 임시 항목'}</small></span>
-          {batch.status === 'sent' ? <button className="btn btn-white btn-sm" disabled={busy} onClick={() => setStatus({ batch, rows: [], requests: [] })}>수신 현황{profile.role === 'super_admin' && batch.file_batch_files.length ? ' · 첨부 관리' : ''}</button>
-            : batch.sender_id === profile.id && <button className="btn btn-white btn-sm" disabled={busy} onClick={() => discard(batch)}>임시 파일 정리</button>}
-        </div>)}
-        <div className="row mt-8" style={{ gap: 8 }}><button className="btn btn-white btn-sm" disabled={!historyPage} onClick={() => setHistoryPage(p => p - 1)}>이전</button>
-          <span>{historyPage + 1} 페이지</span><button className="btn btn-white btn-sm" disabled={history.length < 20} onClick={() => setHistoryPage(p => p + 1)}>다음</button></div>
-      </div>
-      <details onToggle={e => setLegacyOpen(e.currentTarget.open)}><summary>이전 쪽지 이력 · 수정 · 재발송</summary>
-        {legacyOpen && <AdminPushComposer embedded cohortId={target} cohortName={cohorts.find(c => c.id === target)?.name} />}
+      <details className="distribution-disclosure" open={historyOpen} onToggle={e => { setHistoryOpen(e.currentTarget.open); if (!e.currentTarget.open) setStatus(null) }}>
+        <summary><IconHistory size={18} stroke={1.75} /><span className="distribution-summary-copy"><strong>전송 이력 · 수신 현황</strong><small>지난 전송 내역과 첨부파일을 관리하세요.</small></span><IconChevronDown className="distribution-chevron" size={18} /></summary>
+        <div className="distribution-history">
+          {historyLoading && <p className="distribution-empty" role="status">전송 이력을 불러오는 중…</p>}
+          {!historyLoading && !history.length && <p className="distribution-empty">전송 이력이 없습니다.</p>}
+          {history.map(batch => <details className="distribution-history-item" key={batch.id} open={status?.batch.id === batch.id}
+            onToggle={e => {
+              if (e.currentTarget.open) setStatus(prev => prev?.batch.id === batch.id ? prev : { batch, rows: [], requests: [], loading: true })
+              else setStatus(prev => prev?.batch.id === batch.id ? null : prev)
+            }}>
+            <summary><span className="distribution-history-icon">{batch.file_batch_files.length ? <IconPaperclip size={17} /> : <IconMail size={17} />}</span>
+              <span className="distribution-summary-copy"><strong>{batch.title}</strong><small>{fmtDate(batch.sent_at || batch.created_at, true)} · {batch.status === 'sent' ? (batch.file_batch_files.length ? `첨부 ${batch.file_batch_files.filter(f => !f.deleted_at).length}개` : '쪽지') : '미전송 임시 항목'}</small></span>
+              <span className="distribution-row-action">{batch.status === 'sent' ? `수신 현황${profile.role === 'super_admin' && batch.file_batch_files.length ? ' · 첨부 관리' : ''}` : '임시 파일 관리'}</span><IconChevronDown className="distribution-chevron" size={16} />
+            </summary>
+            {status?.batch.id === batch.id && <div className="distribution-status">
+              {batch.status === 'draft' ? <div className="distribution-draft"><p className="distribution-hint">학생에게 전송되지 않은 임시 항목입니다.</p>
+                {batch.sender_id === profile.id && <button className="btn btn-white btn-sm" disabled={busy} onClick={() => discard(batch)}>임시 파일 정리</button>}</div>
+                : <>
+                  {!!status.batch.file_batch_files.length && <section className="distribution-attachments">
+                    <div className="distribution-section-label">첨부파일 <span>{status.batch.file_batch_files.length}개</span></div>
+                    {status.batch.file_batch_files.map(file => <div className={`distribution-file-row ${file.deleted_at ? 'is-deleted' : ''}`} key={file.id}>
+                      <IconFile size={18} stroke={1.5} /><span className="distribution-file-name">{file.filename}<small>{fmtBytes(file.size_bytes)}{file.deleted_at ? ' · 삭제됨' : ''}</small></span>
+                      {file.deleted_at ? <span className="distribution-state">삭제됨</span> : profile.role === 'super_admin' && <button className="btn btn-danger btn-sm" disabled={busy} onClick={() => setDeleteFile(file)}>파일 삭제</button>}
+                    </div>)}
+                  </section>}
+                  {status.loading ? <p className="distribution-empty" role="status">수신 현황을 불러오는 중…</p> : <>
+                    {status.error && <p className="distribution-error" role="alert">수신 현황을 갱신하지 못했습니다. 잠시 후 다시 확인합니다.</p>}
+                    <div className="distribution-stats" aria-label="수신 요약">
+                      {[['대상 학생', status.rows.length], ['알림 수신', status.rows.filter(r => r.received_at).length], ['내용 확인', status.rows.filter(r => r.seen_at).length], ['다운로드 요청', new Set(status.requests.map(r => r.user_id)).size]].map(([label, count]) => <div key={label}><span>{label}</span><strong>{count}<small>명</small></strong></div>)}
+                    </div>
+                    <div className="table-wrap distribution-table-wrap"><table className="data-table distribution-table" aria-label="학생별 수신 현황">
+                      <thead><tr><th scope="col">학생</th><th scope="col">알림 수신</th><th scope="col">내용 확인</th><th scope="col">다운로드 요청</th></tr></thead>
+                      <tbody>{status.rows.length ? status.rows.map(r => <tr key={r.user_id}><td><strong>{r.recipient_name}</strong></td>
+                        <td data-label="알림 수신"><span className={`distribution-state ${r.received_at ? 'is-done' : ''}`}>{r.received_at ? '수신 완료' : '대기'}</span>{r.received_at && <time dateTime={r.received_at}>{fmtDate(r.received_at, true)}</time>}</td>
+                        <td data-label="내용 확인"><span className={`distribution-state ${r.seen_at ? 'is-done' : ''}`}>{r.seen_at ? '확인 완료' : '미확인'}</span>{r.seen_at && <time dateTime={r.seen_at}>{fmtDate(r.seen_at, true)}</time>}</td>
+                        <td data-label="다운로드 요청">{status.requests.filter(d => d.user_id === r.user_id).map(d => status.batch.file_batch_files.find(f => f.id === d.file_id)?.filename).filter(Boolean).join(', ') || <span className="distribution-hint">없음</span>}</td>
+                      </tr>) : <tr><td colSpan={4} className="distribution-empty">수신 대상이 없습니다.</td></tr>}</tbody>
+                    </table></div>
+                    <p className="distribution-hint">다운로드 요청은 버튼을 누른 기록이며, PC 저장 완료나 파일 열람을 의미하지 않습니다.</p>
+                  </>}
+                </>}
+            </div>}
+          </details>)}
+          <div className="distribution-pagination"><button className="btn btn-white btn-sm" disabled={busy || !historyPage} onClick={() => { setStatus(null); setHistoryPage(p => p - 1) }}>이전</button>
+            <span>{historyPage + 1} 페이지</span><button className="btn btn-white btn-sm" disabled={busy || history.length < 20} onClick={() => { setStatus(null); setHistoryPage(p => p + 1) }}>다음</button></div>
+        </div>
+      </details>
+      <details className="distribution-disclosure distribution-legacy" onToggle={e => setLegacyOpen(e.currentTarget.open)}>
+        <summary><IconMail size={18} stroke={1.75} /><span className="distribution-summary-copy"><strong>이전 쪽지 이력 · 수정 · 재발송</strong></span><IconChevronDown className="distribution-chevron" size={18} /></summary>
+        {legacyOpen && <div className="distribution-legacy-body"><AdminPushComposer embedded cohortId={target} cohortName={cohorts.find(c => c.id === target)?.name} /></div>}
       </details>
     </div>
-    <Dialog open={!!status} title={`${status?.batch.title || ''} · 수신 현황`} onClose={() => setStatus(null)} wide>
-      {status && <div className="stack" style={{ gap: 8 }}>
-        {status.batch.file_batch_files.map(file => <div className="row" key={file.id} style={{ gap: 8 }}>
-          <span style={{ flex: 1, overflowWrap: 'anywhere' }}>{file.filename} · {fmtBytes(file.size_bytes)}{file.deleted_at ? ' · 삭제됨' : ''}</span>
-          {profile.role === 'super_admin' && !file.deleted_at && <button className="btn btn-white btn-sm danger" disabled={busy} onClick={() => setDeleteFile(file)}>파일 삭제</button>}
-        </div>)}
-        <p>대상 {status.rows.length}명 · 알림 수신 {status.rows.filter(r => r.received_at).length}명 · 확인 {status.rows.filter(r => r.seen_at).length}명 · 다운로드 요청 {new Set(status.requests.map(r => r.user_id)).size}명</p>
-        <p className="t-caption">다운로드 요청은 버튼을 누른 기록입니다. PC 저장 완료나 파일 열람 여부를 의미하지 않습니다.</p>
-        <div style={{ maxHeight: '45vh', overflow: 'auto' }}><table style={{ width: '100%' }}>
-          <thead><tr><th>학생</th><th>알림 수신</th><th>확인</th><th>다운로드 요청</th></tr></thead>
-          <tbody>{status.rows.map(r => <tr key={r.user_id}><td>{r.recipient_name}</td><td>{r.received_at ? fmtDate(r.received_at, true) : '대기'}</td><td>{r.seen_at ? fmtDate(r.seen_at, true) : '미확인'}</td>
-            <td>{status.requests.filter(d => d.user_id === r.user_id).map(d => status.batch.file_batch_files.find(f => f.id === d.file_id)?.filename).join(', ') || '없음'}</td></tr>)}</tbody>
-        </table></div>
-      </div>}
-    </Dialog>
     <ConfirmDialog open={!!deleteFile} busy={busy} danger title="첨부파일 영구 삭제"
       message={`“${deleteFile?.filename || ''}” 파일을 저장소에서 영구 삭제할까요? 모든 수신 학생의 다운로드가 중단됩니다. 쪽지 내용과 수신 이력은 유지됩니다.`}
       confirmLabel="파일 영구 삭제" onConfirm={removeAttachment} onClose={() => setDeleteFile(null)} />
