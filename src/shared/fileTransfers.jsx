@@ -3,7 +3,7 @@ import { IconMail, IconDownload, IconTrash } from '@tabler/icons-react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from './auth'
 import { Dialog, ConfirmDialog, useToast } from './ui'
-import { fmtBytes, fmtDate } from '../lib/helpers'
+import { createDownloadUrl, fmtBytes, fmtDate } from '../lib/helpers'
 import { PushBody, LegacyAction } from './push'
 const FileSenderDialog = lazy(() => import('./FileSenderDialog'))
 const BUCKET = 'student-deliveries'
@@ -28,11 +28,11 @@ export function FileBatchDetail({ batch }) {
   async function download(file) {
     setBusy(file.id)
     try {
-      const data = checked(await supabase.storage.from(BUCKET).createSignedUrl(file.file_path, 300, { download: file.filename }))
+      const url = await createDownloadUrl(BUCKET, file.file_path, file.filename, 300)
       checked(await supabase.rpc('record_file_download', { p_file: file.id }))
       const a = document.createElement('a')
       // Storage sets Content-Disposition; let the browser stream bytes directly to disk.
-      a.href = data.signedUrl
+      a.href = url
       a.download = file.filename
       a.target = '_blank'
       a.rel = 'noopener noreferrer'

@@ -5,6 +5,7 @@ import { encryptBackup, decryptBackup, checksum, writeBackupFile, verifyBackupFi
 import fs from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
+import {setTimeout as delay} from 'node:timers/promises'
 import { csvCell } from '../src/lib/csv.js'
 import { readAll } from '../src/lib/queries.js'
 test('CSV rejects formulas through whitespace and control characters', () => {
@@ -48,17 +49,20 @@ test('actual backup job streams paged rows and exact file bytes, cleans its stag
   const secret=randomBytes(32).toString('hex'),bytes=randomBytes(65536),empty=Buffer.alloc(0)
   const tables={'public.profiles':Array.from({length:201},(_,id)=>({id,name:`학생 ${id}`})),
     'storage.objects':[{bucket_id:'test',name:'한글"파일.bin'},{bucket_id:'test',name:'empty.txt'}],'public.empty':[]}
-  let cleaned=false,recorded
-  const db={rpc(name,p){return {abortSignal:async()=>({data:name==='lms_backup_stage'?{id:'mock',created_at:'2026-10-06',tables:Object.fromEntries(Object.entries(tables).map(([k,v])=>[k,v.length]))}:
-    name==='lms_backup_chunk'?tables[p.p_table].slice(p.p_offset,p.p_offset+p.p_size):(recorded=p,null)})}},
+  let cleaned=false,recorded,transientFailures=1
+  const db={rpc(name,p){return {abortSignal:async()=>{
+    if(name==='lms_backup_chunk'&&transientFailures-- >0)return {error:{code:'',message:'TimeoutError'},status:0}
+    return {data:name==='lms_backup_stage'?{id:'mock',created_at:'2026-10-06',tables:Object.fromEntries(Object.entries(tables).map(([k,v])=>[k,v.length]))}:
+    name==='lms_backup_chunk'?tables[p.p_table].slice(p.p_offset,p.p_offset+p.p_size):(recorded=p,null)}
+  }}},
     from(){return {delete(){return this},eq(){return this},abortSignal:async()=>{cleaned=true;return {}}}},
     storage:{from(){return {download:async name=>({data:new Blob([name==='empty.txt'?empty:bytes],{type:'application/octet-stream'})})}}}}
   const envKeys=['SUPABASE_URL','LMS_BACKUP_KEY','LMS_BACKUP_DIR','LMS_BACKUP_DEFER_RECORD'],before=Object.fromEntries(envKeys.map(k=>[k,process.env[k]]))
   try {
     Object.assign(process.env,{SUPABASE_URL:'https://mock.example.invalid',LMS_BACKUP_KEY:secret,LMS_BACKUP_DIR:directory,LMS_BACKUP_DEFER_RECORD:'0'})
     const source=(await fs.readFile(new URL('./backup.mjs',import.meta.url),'utf8')).replace(/^import[^\n]+\n/gm,'')
-    const run=new (Object.getPrototypeOf(async function(){}).constructor)('fs','path','createClient','writeBackupFile','checksum','console',source)
-    await run(fs,path,()=>db,writeBackupFile,checksum,{log(){}})
+    const run=new (Object.getPrototypeOf(async function(){}).constructor)('fs','path','delay','createClient','writeBackupFile','checksum','console',source)
+    await run(fs,path,delay,()=>db,writeBackupFile,checksum,{log(){}})
     const files=await fs.readdir(directory),backup=files.find(n=>n.endsWith('.lms-backup'))
     const restored=decryptBackup(await fs.readFile(path.join(directory,backup)),secret)
     assert.deepEqual(restored.tables,tables)

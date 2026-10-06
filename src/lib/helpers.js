@@ -109,14 +109,21 @@ async function loadSettings() {
   return settingsCache
 }
 
-export async function downloadFile(bucket, path, filename) {
-  const { data, error } = await supabase.storage.from(bucket).createSignedUrl(path, 3600, {
-    download: filename || true,
-  })
+export async function createDownloadUrl(bucket, path, filename, expiresIn = 3600) {
+  const { data, error } = await supabase.storage.from(bucket).createSignedUrl(path, expiresIn)
   if (error) throw error
+  // Add the filename after signing: the SDK encodes its download option twice.
+  const url = new URL(data.signedUrl)
+  url.searchParams.set('download', filename || '')
+  return url.href
+}
+
+export async function downloadFile(bucket, path, filename) {
   const a = document.createElement('a')
-  a.href = data.signedUrl
+  a.href = await createDownloadUrl(bucket, path, filename)
   a.download = filename || ''
+  a.target = '_blank'
+  a.rel = 'noopener noreferrer'
   document.body.appendChild(a)
   a.click()
   a.remove()

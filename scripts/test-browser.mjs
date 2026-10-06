@@ -45,7 +45,10 @@ try {
   else if(table==='ack_file_batch'){fileReceived=true;if(JSON.parse(route.request().postData()).p_seen)fileSeen=true;data=null;}
   else if(table==='record_file_download'){downloadRequests++;data=null;}
   else if(u.pathname.includes('/storage/v1/object/sign/'))data={signedURL:'/object/mock-file-download?token=MOCK_ONLY'};
-  else if(table==='mock-file-download'){await route.fulfill({status:200,contentType:'text/plain',headers:{'Content-Disposition':"attachment; filename*=UTF-8''"+encodeURIComponent('한글자료.txt')},body:'QA bytes'});return;}
+  else if(table==='mock-file-download'){
+    assert.equal(u.searchParams.get('download'),'한글자료.txt','download filename must be encoded exactly once');
+    await route.fulfill({status:200,contentType:'text/plain',headers:{'Content-Disposition':"attachment; filename*=UTF-8''"+encodeURIComponent(u.searchParams.get('download'))},body:'QA bytes'});return;
+  }
   await route.fulfill({status:200,contentType:'application/json',body:JSON.stringify(data)});
  });
  const page=await context.newPage();const errors=[];page.on('pageerror',e=>errors.push(e.message));
