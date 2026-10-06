@@ -1,5 +1,6 @@
 import fs from 'node:fs/promises'
 import path from 'node:path'
+import {setTimeout as delay} from 'node:timers/promises'
 import {createClient} from '@supabase/supabase-js'
 import {writeBackupFile,checksum} from './backup-crypto.mjs'
 const db=createClient(process.env.SUPABASE_URL,process.env.SUPABASE_SERVICE_ROLE_KEY,{
@@ -14,8 +15,15 @@ async function* rows(table){
   const count=staged.tables[table]||0,size=['public.master_courses','public.cohort_courses'].includes(table)?1:200
   let received=0
   for(let offset=0;offset<count;offset+=size){
-    const {data,error}=await db.rpc('lms_backup_chunk',{p_snapshot:staged.id,p_table:table,p_offset:offset,p_size:size}).abortSignal(AbortSignal.timeout(30000))
-    if(error)throw new Error('Snapshot chunk failed: '+error.code)
+    let result
+    // Static snapshot reads are safe to retry. Large legacy course bodies need a longer window.
+    for(let attempt=0;attempt<3;attempt++){
+      if(attempt)await delay(attempt*1000)
+      result=await db.rpc('lms_backup_chunk',{p_snapshot:staged.id,p_table:table,p_offset:offset,p_size:size}).abortSignal(AbortSignal.timeout(size===1?90000:30000))
+      if(!result.error||(result.error.code&&result.error.code!=='57014'&&!(result.status>=500)))break
+    }
+    const {data,error}=result
+    if(error)throw new Error(`Snapshot chunk failed: ${table}:${offset}:${error.code||'TRANSPORT_TIMEOUT'}`)
     for(const row of data){received++;yield row}
   }
   if(received!==count)throw new Error('Snapshot row count mismatch')
