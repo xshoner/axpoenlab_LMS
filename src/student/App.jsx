@@ -63,7 +63,8 @@ export default function App() {
   const focusMode = /^\/(surveys|quizzes)\//.test(location.pathname)
 
   useEffect(() => { setDrawerOpen(false) }, [location.pathname])
-  const online = useStudentPresenceTrack(session && profile?.role === 'student' ? profile.id : null, cohort?.id || null)
+  const serviceStats = useStudentPresenceTrack(session && profile?.role === 'student' && profile.status === 'active' ? profile.id : null)
+  const online = serviceStats?.online || 0
 
   // QR 게스트 게시판 — 로그인 없이 접근 (토큰은 RPC에서 검증)
   if (location.pathname === '/guest-board') {
@@ -176,7 +177,7 @@ export default function App() {
                 <span className="live-dot" />
                 <span className="tnum">접속 {online}명</span>
               </span>
-              <VisitorCounter global />
+              <VisitorCounter global stats={serviceStats} />
               <Link to="/profile" className="profile-link" title="내 정보로 이동">
                 <span className="avatar">{(profile.name || '?').slice(0, 1)}</span>
                 <span className="t-label" style={{ color: 'var(--foreground)' }}>{profile.name}</span>

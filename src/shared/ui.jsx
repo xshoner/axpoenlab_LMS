@@ -131,9 +131,10 @@ export function Pagination({ page, total, pageSize = 20, onChange }) {
 }
 
 /* ---------- Visitor counter ---------- */
-export function VisitorCounter({ admin = false, global = false }) {
+export function VisitorCounter({ admin = false, global = false, stats: serviceStats }) {
   const [visitsOpen, setVisitsOpen] = useState(false)
-  const [stats, setStats] = useState(null)
+  const [localStats, setStats] = useState(null)
+  const stats = global ? serviceStats : localStats
   const [show, setShow] = useState(true)
   useEffect(() => {
     let alive = true
@@ -142,8 +143,10 @@ export function VisitorCounter({ admin = false, global = false }) {
         const settings = await getSettings()
         if (!alive) return
         setShow(settings.showVisitorCounter)
-        const { data } = await supabase.rpc(global ? 'student_service_stats' : 'visit_stats')
-        if (alive && data) setStats(data)
+        if (!global) {
+          const { data } = await supabase.rpc('visit_stats').abortSignal(AbortSignal.timeout(10000))
+          if (alive && data) setStats(data)
+        }
       } catch { /* counter is non-critical */ }
     }
     update()

@@ -97,7 +97,7 @@ export default function FileSenderDialog({ cohortId, cohorts, onClose }) {
       setHasDraft(false)
       setFiles([]); setTitle(''); setMemo(''); setEditorKey(k => k + 1); if (fileInput.current) fileInput.current.value = ''
       toast(`${count}명에게 쪽지/파일을 보냈습니다.`)
-      await loadHistory()
+      await loadHistory().catch(() => setError('전송은 완료됐지만 이력을 불러오지 못했습니다. 창을 다시 열어 확인해 주세요.'))
     } catch (e) { setError(e instanceof Error ? e.message : '전송하지 못했습니다. 다시 누르면 같은 전송을 이어서 시도합니다.') }
     finally { setBusy(false); setProgress('') }
   }
