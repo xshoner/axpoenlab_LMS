@@ -8,6 +8,20 @@ import path from 'node:path'
 import {setTimeout as delay} from 'node:timers/promises'
 import { csvCell } from '../src/lib/csv.js'
 import { readAll } from '../src/lib/queries.js'
+import { retryDeliveryRequest } from '../src/lib/deliveryRequests.js'
+test('delivery retries are bounded and only retry transport or gateway failures', async () => {
+  let attempts = 0
+  const waits = []
+  const wait = async ms => { waits.push(ms) }
+  assert.deepEqual(await retryDeliveryRequest(async () => ++attempts < 3 ? { error: { statusCode: '504', message: 'HTTP 504 error' } } : { data: 'same draft' }, wait), { data: 'same draft' })
+  assert.equal(attempts, 3); assert.deepEqual(waits, [1000, 2000])
+  attempts = 0
+  await assert.rejects(retryDeliveryRequest(async () => { attempts++; throw new Error('Failed to fetch') }, wait), /fetch/)
+  assert.equal(attempts, 3)
+  attempts = 0
+  await assert.rejects(retryDeliveryRequest(async () => { attempts++; return { error: new Error('forbidden') } }, wait), /forbidden/)
+  assert.equal(attempts, 1)
+})
 test('CSV rejects formulas through whitespace and control characters', () => {
   for (const value of ['=1+1', '+cmd', '-1', '@SUM(A1)', '  =cmd', '\t=cmd', '\r=cmd', '\n=cmd', '\ufeff=cmd']) assert.ok(csvCell(value).includes("'"))
   assert.equal(csvCell('학생'), '학생'); assert.equal(csvCell('a,"b"'), '"a,""b"""')

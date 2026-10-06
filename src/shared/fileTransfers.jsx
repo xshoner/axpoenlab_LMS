@@ -49,9 +49,9 @@ export function FileBatchDetail({ batch }) {
     <span className="t-caption muted-soft">{fmtDate(batch.sent_at, true)}</span>
     {(batch.file_batch_files || []).map(f => <div className="row" key={f.id} style={{ gap: 8 }}>
       <span style={{ flex: 1, overflowWrap: 'anywhere' }}>{f.filename} <small>({fmtBytes(f.size_bytes)})</small></span>
-      <button className="btn btn-primary btn-sm" disabled={!!busy} onClick={() => download(f)}>
+      {f.deleted_at ? <small className="t-caption">관리자가 삭제한 첨부파일</small> : <button className="btn btn-primary btn-sm" disabled={!!busy} onClick={() => download(f)}>
         <IconDownload size={14} /> {busy === f.id ? '준비 중…' : '다운로드'}
-      </button>
+      </button>}
     </div>)}
   </div>
 }
@@ -93,7 +93,7 @@ export function StudentDistributionInbox({ floating = false }) {
       try {
         const [fileResult, messageResult, hiddenResult] = await Promise.all([
           supabase.from('file_recipients')
-            .select('batch_id,received_at,seen_at,file_batches!inner(id,title,sent_at,file_batch_files(id))')
+            .select('batch_id,received_at,seen_at,file_batches!inner(id,title,sent_at,file_batch_files(id,deleted_at))')
             .eq('user_id', profile.id).is('hidden_at', null).order('created_at', { ascending: false }).range(page * 20, page * 20 + 19),
           page === 0 ? supabase.from('push_deliveries').select('id,body,sender_name,sent_at,action_url,action_label').order('sent_at', { ascending: false }).limit(100) : Promise.resolve({ data: [] }),
           page === 0 ? supabase.from('push_hidden').select('delivery_id') : Promise.resolve({ data: [] }),
@@ -190,7 +190,7 @@ export function StudentDistributionInbox({ floating = false }) {
         {!items.length && !error && <p>받은 쪽지/파일이 없습니다.</p>}
         <div className="stack" style={{ gap: 8, maxHeight: '55vh', overflowY: 'auto' }}>
         {items.map(row => <div className="row" key={row.batch_id} style={{ gap: 6 }}><button className="btn btn-white" style={{ flex: 1, justifyContent: 'space-between', textAlign: 'left' }} onClick={() => view(row)}>
-          <span>{row.file_batches.title} <small>{row.file_batches.file_batch_files.length ? `첨부 ${row.file_batches.file_batch_files.length}개` : '쪽지'} {!row.seen_at && '· 새 소식'}</small></span>
+          <span>{row.file_batches.title} <small>{row.file_batches.file_batch_files.length ? `첨부 ${row.file_batches.file_batch_files.filter(f => !f.deleted_at).length}개` : '쪽지'} {!row.seen_at && '· 새 소식'}</small></span>
           <small>{fmtDate(row.file_batches.sent_at)}</small>
         </button><button className="icon-btn danger" title="받은 항목 삭제" onClick={() => setDeleteTarget(row)}><IconTrash size={14} /></button></div>)}
         </div>

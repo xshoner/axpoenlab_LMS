@@ -67,7 +67,12 @@ export const supabase = createClient(SUPABASE_URL, SUPABASE_KEY, {
             { status: 403, headers: { 'Content-Type': 'application/json' } }))
         }
       }
-      return fetch(url, { ...options, headers })
+      // The Storage SDK does not pass an upload AbortSignal. Bound delivery requests here.
+      const delivery = new URL(url).pathname.includes('/storage/v1/object/') &&
+        new URL(url).pathname.includes('/student-deliveries')
+      const timeout = delivery ? AbortSignal.timeout(options.body instanceof FormData ? 120000 : 15000) : null
+      const signal = timeout ? (options.signal ? AbortSignal.any([options.signal, timeout]) : timeout) : options.signal
+      return fetch(url, { ...options, headers, signal })
     },
   },
 })

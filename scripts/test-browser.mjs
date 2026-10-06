@@ -10,6 +10,7 @@ try {
  const context=await browser.newContext();
  let failProfile=false, mockShare=false, fileAvailable=false, fileSeen=false, fileReceived=false, downloadRequests=0, statsRequests=0, detailRequests=0;
  let adminMode=false, failHistory=false, sends=0;
+ let uploadMode=false, draftAttempts=0, uploadAttempts=0, fileSendAttempts=0, deleteAttempts=0, draftId=null, uploadedPath=null;
  let shareTtl=4000;
  const batch={id:first,title:'배포 자료',memo:'오프라인 학생에게도 전달',body_html:'<p>통합 쪽지 본문</p>',sent_at:'2026-10-02T08:00:00Z',file_batch_files:[{id:second,filename:'한글자료.txt',size_bytes:8,file_path:'mock/file.txt'}]};
  await context.addInitScript(s=>{localStorage.setItem('ax-lms-keep','1');localStorage.setItem('sb-ugelgndotyppgksbubot-auth-token',JSON.stringify(s));localStorage.setItem(`ax-distribution-seen:${s.user.id}`,JSON.stringify(['legacy-message']))},session);
@@ -32,16 +33,32 @@ try {
   else if(table==='survey_questions')data=[];
   else if(table==='push_deliveries')data=fileAvailable?[{id:'legacy-message',body:'기존 쪽지도 유지됩니다.',sent_at:'2026-10-01T08:00:00Z',sender_name:'관리자'}]:[];
   else if(table==='file_recipients'){
-    assert.ok(!/body_html|memo|\*/.test(u.searchParams.get('select')),'inbox polling retrieves metadata only');
+    if(!adminMode)assert.ok(!/body_html|memo|\*/.test(u.searchParams.get('select')),'inbox polling retrieves metadata only');
     data=fileAvailable?[{batch_id:first,received_at:fileReceived?'2026-10-02T08:00:00Z':null,seen_at:fileSeen?'2026-10-02T08:00:00Z':null,
-      file_batches:{id:batch.id,title:batch.title,sent_at:batch.sent_at,file_batch_files:[{id:second}]}}]:[];
+      file_batches:{id:batch.id,title:batch.title,sent_at:batch.sent_at,file_batch_files:[{id:second,deleted_at:batch.file_batch_files[0].deleted_at}]}}]:[];
   }
   else if(table==='file_batches'){
-    if(adminMode){if(failHistory){await route.fulfill({status:503,contentType:'application/json',body:JSON.stringify({message:'history offline'})});return;}data=[];}
+    if(adminMode){if(failHistory){await route.fulfill({status:503,contentType:'application/json',body:JSON.stringify({message:'history offline'})});return;}data=uploadMode?[{...batch,status:'sent',sender_id:id}]:[];}
     else {detailRequests++;data=batch;}
   }
-  else if(table==='create_distribution')data=first;
-  else if(table==='send_distribution'){sends++;failHistory=true;data=1;}
+  else if(table==='create_distribution'){
+    if(uploadMode){const payload=JSON.parse(route.request().postData());draftId??=payload.p_id;assert.equal(payload.p_id,draftId);draftAttempts++;if(draftAttempts===1){await route.fulfill({status:504,contentType:'application/json',body:JSON.stringify({message:'HTTP 504 error'})});return;}data=draftId;}
+    else data=first;
+  }
+  else if(u.pathname.startsWith('/storage/v1/object/student-deliveries/')&&route.request().method()==='POST'){
+    const path=u.pathname.split('/student-deliveries/')[1];uploadedPath??=path;assert.equal(path,uploadedPath);assert.ok(path.includes(draftId));uploadAttempts++;
+    await route.fulfill({status:uploadAttempts===1?504:409,contentType:'application/json',body:JSON.stringify({statusCode:uploadAttempts===1?'504':'409',error:uploadAttempts===1?'GatewayTimeout':'Duplicate',message:uploadAttempts===1?'HTTP 504 error':'already exists'})});return;
+  }
+  else if(u.pathname.startsWith('/storage/v1/object/info/student-deliveries/')){assert.equal(u.pathname.split('/student-deliveries/')[1],uploadedPath);data={size:8};}
+  else if(table==='send_distribution'){
+    if(uploadMode){const payload=JSON.parse(route.request().postData());assert.equal(payload.p_batch,draftId);assert.equal(payload.p_files[0].file_path,uploadedPath);fileSendAttempts++;if(fileSendAttempts===1){sends++;await route.fulfill({status:504,contentType:'application/json',body:JSON.stringify({message:'HTTP 504 error'})});return;}data=1;}
+    else {sends++;failHistory=true;data=1;}
+  }
+  else if(table==='distribution-files'){
+    assert.deepEqual(JSON.parse(route.request().postData()),{file_id:second});deleteAttempts++;
+    if(deleteAttempts===1){await route.fulfill({status:503,contentType:'application/json',body:JSON.stringify({error:'storage_delete_failed'})});return;}
+    batch.file_batch_files[0].deleted_at=new Date().toISOString();data={ok:true};
+  }
   else if(table==='ack_file_batch'){fileReceived=true;if(JSON.parse(route.request().postData()).p_seen)fileSeen=true;data=null;}
   else if(table==='record_file_download'){downloadRequests++;data=null;}
   else if(u.pathname.includes('/storage/v1/object/sign/'))data={signedURL:'/object/mock-file-download?token=MOCK_ONLY'};
@@ -144,6 +161,26 @@ try {
  assert.equal(await page.getByRole('textbox',{name:'파일 제목',exact:true}).inputValue(),'');
  assert.equal(await page.getByRole('button',{name:'전송 다시 시도',exact:true}).count(),0);
  console.log('PASS: sent message remains successful when its history refresh fails, without inviting a duplicate send');
+ failHistory=false;uploadMode=true;
+ await page.getByRole('textbox',{name:'파일 제목',exact:true}).fill('504 파일 재시도');
+ await page.getByLabel('전송 파일',{exact:true}).setInputFiles({name:'한글자료.txt',mimeType:'text/plain',buffer:Buffer.from('QA bytes')});
+ await page.getByRole('button',{name:'1명에게 보내기',exact:true}).click();
+ await page.getByRole('button',{name:'수신 현황 · 첨부 관리',exact:true}).waitFor();
+ assert.equal(draftAttempts,2);assert.equal(uploadAttempts,2);assert.equal(fileSendAttempts,2);assert.equal(sends,2,'lost response retries do not commit a second delivery');
+ assert.equal(await page.getByRole('textbox',{name:'파일 제목',exact:true}).inputValue(),'');
+ await page.getByRole('button',{name:'수신 현황 · 첨부 관리',exact:true}).click();
+ await page.getByRole('button',{name:'파일 삭제',exact:true}).click();
+ await page.getByRole('button',{name:'파일 영구 삭제',exact:true}).click();
+ await page.getByText('한글자료.txt · 8B · 삭제됨',{exact:true}).waitFor();
+ assert.equal(deleteAttempts,2);assert.equal(await page.getByRole('button',{name:'파일 삭제',exact:true}).count(),0);
+ console.log('PASS: 504 at draft, upload and send recovers with identical IDs/paths; attachment deletion retries and marks success only after completion');
+ adminMode=false;fileAvailable=true;
+ await page.goto(base+'/#/courses');
+ await page.getByRole('button',{name:'쪽지/파일',exact:true}).click();
+ await page.getByRole('button',{name:/배포 자료/}).click();
+ await page.getByText('관리자가 삭제한 첨부파일',{exact:true}).waitFor();
+ assert.equal(await page.getByRole('button',{name:'다운로드',exact:true}).count(),0);
+ console.log('PASS: deleted attachment keeps message and history visible without a student download button');
  assert.deepEqual(errors,[]);
  console.log('Browser runtime errors: '+JSON.stringify(errors));
  await context.close();
