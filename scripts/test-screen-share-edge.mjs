@@ -12,6 +12,7 @@ const rows = {profiles,cohorts:[{id:ids.cohort,deleted_at:null}],cohort_members:
 const traffic=[]
 let presence=[{id:'teacher-connection'},{id:'student-connection'}]
 let failProvider = '', onToken = null, onReserve = null
+let roomExpiry=Infinity
 const db={auth:{getUser:async id=>({data:{user:profiles.some(p=>p.id===id)?{id}:null}})},
   from(table) {
     const filters=[], q={
@@ -40,6 +41,8 @@ const db={auth:{getUser:async id=>({data:{user:profiles.some(p=>p.id===id)?{id}:
 const fakeFetch=async (url,opts)=>{
   const body=opts.body?JSON.parse(opts.body):undefined;traffic.push({path:new URL(url).pathname,body})
   if(failProvider && url.endsWith(failProvider))return new Response('{}',{status:503})
+  if(url.includes('/rooms/axopenlab20261001')&&roomExpiry<=Math.floor(Date.now()/1000))return new Response('{}',{status:404})
+  if(body?.properties?.exp&&url.endsWith('/rooms/axopenlab20261001'))roomExpiry=body.properties.exp
   if(url.endsWith('/meeting-tokens'))onToken?.()
   if(url.endsWith('/eject'))presence=presence.filter(p=>!body.ids?.includes(p.id)&&!body.user_ids?.includes(p.userId))
   return new Response(JSON.stringify(url.endsWith('/meeting-tokens')?{token:'signed-test'}:url.endsWith('/presence')?{total_count:presence.length,data:presence}:{}),{status:200})
@@ -97,6 +100,7 @@ const large = {id:crypto.randomUUID(),state:'live',teacher_id:ids.super,cohort_i
 rows.screen_share_sessions.push(large)
 const recipients=Array.from({length:1401},()=>crypto.randomUUID())
 rows.screen_share_admissions.push(...recipients.map(user_id=>({session_id:large.id,user_id})))
+presence=recipients.map(userId=>({id:crypto.randomUUID(),userId}))
 failProvider='/eject'
 assert.equal((await invoke('super',{action:'stop',session_id:large.id})).status,503)
 assert.equal(large.state,'stopping','failed ejection must retain the cleanup lock')
@@ -104,7 +108,12 @@ assert.equal((await sweep('watchdog-key')).cleaned,false,'healthy cleanup lock c
 failProvider=''
 large.lease_until=new Date(Date.now()-1000).toISOString()
 const from=traffic.length
-assert.equal((await sweep('watchdog-key')).cleaned,true)
+const originalNow=Date.now
+try {
+  Date.now=()=>originalNow()+150000
+  assert.equal((await sweep('watchdog-key')).cleaned,true)
+  assert.equal(presence.length,0,'room REST must remain available when the 120s cleanup lock is retried')
+}finally{Date.now=originalNow}
 const ejected=traffic.slice(from).filter(r=>r.path.endsWith('/eject')).flatMap(r=>r.body.user_ids||[])
 assert.deepEqual(new Set(ejected),new Set(recipients),'ejection must include recipients beyond the API row limit')
 assert.ok(traffic.slice(from).filter(r=>r.body?.user_ids).every(r=>r.body.user_ids.length<=100))

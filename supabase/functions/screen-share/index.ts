@@ -38,9 +38,10 @@ export function createScreenShareHandler(db: any, key: () => string | undefined,
   async function closeRoom(sessionId?: string, operationSignal?: AbortSignal) {
     // Finish before the 120s DB cleanup lock expires, even for large cohorts.
     const signal = operationSignal ? AbortSignal.any([operationSignal, AbortSignal.timeout(90000)]) : AbortSignal.timeout(90000);
-    // Close admissions before ejection, without expiring the REST endpoint mid-request.
+    // Close admissions without expiring REST access before a watchdog retry.
+    // Existing participants retain their original admission-time 8h eject timer.
     const now = Math.floor(Date.now() / 1000);
-    await daily(`/rooms/${ROOM}`, { privacy: "private", properties: { nbf: now + 60, exp: now + 61, eject_at_room_exp: true } }, true, undefined, signal);
+    await daily(`/rooms/${ROOM}`, { privacy: "private", properties: { nbf: now + 28800, exp: now + 28801, eject_at_room_exp: true } }, true, undefined, signal);
     if (sessionId) {
       for (let offset = 0; ; offset += 200) {
         const { data, error } = await db.from("screen_share_admissions").select("user_id").eq("session_id", sessionId)
