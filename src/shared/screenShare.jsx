@@ -187,10 +187,16 @@ export function StudentScreenShare() {
     if (!video.current) return
     const element = video.current
     let alive = true
+    const failed = () => {
+      if (!alive) return
+      reportClientError('share', 'SHARE_PLAY_FAILED')
+      void client.end(false, '공유 영상을 재생하지 못했습니다. 다시 연결해 주세요.').catch(() => {})
+    }
+    const timer = snapshot.track ? setTimeout(failed, 10000) : null
     element.srcObject = snapshot.track ? new MediaStream([snapshot.track]) : null
-    if (snapshot.track) void element.play().then(() => { if (alive) setPlaying(true) }).catch(() => { reportClientError('share', 'SHARE_PLAY_FAILED') })
-    return () => { alive = false; element.srcObject = null }
-  }, [snapshot.track, visible])
+    if (snapshot.track) void element.play().then(() => { clearTimeout(timer); if (alive) setPlaying(true) }).catch(failed)
+    return () => { alive = false; clearTimeout(timer); element.srcObject = null }
+  }, [client, snapshot.track, visible])
   useEffect(() => {
     // pagehide also covers bfcache; resume obtains fresh state before rejoining.
     const exit = () => { void client.end(false).catch(() => {}) }

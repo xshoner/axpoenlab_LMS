@@ -10,6 +10,7 @@ try {
  const context=await browser.newContext();
  let failProfile=false, mockShare=false, fileAvailable=false, fileSeen=false, fileReceived=false, downloadRequests=0, statsRequests=0, detailRequests=0;
  let adminMode=false, failHistory=false, sends=0;
+ let shareTtl=4000;
  const batch={id:first,title:'배포 자료',memo:'오프라인 학생에게도 전달',body_html:'<p>통합 쪽지 본문</p>',sent_at:'2026-10-02T08:00:00Z',file_batch_files:[{id:second,filename:'한글자료.txt',size_bytes:8,file_path:'mock/file.txt'}]};
  await context.addInitScript(s=>{localStorage.setItem('ax-lms-keep','1');localStorage.setItem('sb-ugelgndotyppgksbubot-auth-token',JSON.stringify(s));localStorage.setItem(`ax-distribution-seen:${s.user.id}`,JSON.stringify(['legacy-message']))},session);
  await context.route('**/ugelgndotyppgksbubot.supabase.co/**',async route=>{
@@ -18,7 +19,7 @@ try {
   if(table==='profiles')data={id,name:'Mock',role:adminMode?'super_admin':'student',status:'active'};
   else if(table==='cohorts')data=[{id:cohort,name:'Mock cohort',status:'active'}];
   else if(table==='cohort_members')data=u.searchParams.get('select')?.includes('profiles!inner')?[{user_id:id,profiles:{id,name:'Mock student',status:'active',role:'student'}}]:{cohort_id:cohort,cohorts:{id:cohort,name:'Mock cohort',status:'active'}};
-  else if(table==='screen_share_current')data=mockShare?{id:first,cohort_id:cohort,teacher_id:second,state:'live',lease_remaining_ms:4000}:null;
+  else if(table==='screen_share_current')data=mockShare?{id:first,cohort_id:cohort,teacher_id:second,state:'live',lease_remaining_ms:shareTtl}:null;
   else if(table==='screen-share')data={room:'https://example.invalid',token:'MOCK_ONLY'};
   else if(table==='my_help_position'||table==='record_visit')data=null;
   else if(table==='online_student_count'||table==='heartbeat')data=0;
@@ -102,7 +103,7 @@ try {
  await page.waitForTimeout(300);
  assert.equal(statsRequests,statsBefore,'visitor counter reuses presence statistics without another full count');
  console.log('PASS: single student inbox menu and service-wide online/today/total counters');
- await context.route('**/assets/daily-esm-*.js',route=>route.fulfill({status:200,contentType:'application/javascript',body:'export default {createCallObject(){return {on(){},participants(){return {}},async join(){window.__qaJoined=true},async destroy(){}}}}'}));
+ await context.route('**/assets/daily-esm-*.js',route=>route.fulfill({status:200,contentType:'application/javascript',body:'export default {createCallObject(){return {on(){},participants(){return window.__qaTrack?{teacher:{local:false,user_id:window.__qaTeacher,tracks:{screenVideo:{state:"playable",persistentTrack:window.__qaTrack}}}}:{}},async join(){window.__qaJoined=true},async leave(){window.__qaLeaves=(window.__qaLeaves||0)+1},async destroy(){}}}}'}));
  mockShare=true;
  await page.evaluate(()=>window.dispatchEvent(new Event('online')));
  await page.locator('.student-screen-share').waitFor();
@@ -115,6 +116,18 @@ try {
  await page.locator('.student-screen-share').waitFor({state:'hidden',timeout:3500});
  assert.equal(await page.locator('#root').evaluate(root=>root.inert),false);
  console.log('PASS: expired share releases the LMS after suspended one-shot timers are lost');
+ mockShare=true;shareTtl=45000;
+ await page.evaluate(teacher=>{
+   window.__qaTeacher=teacher;window.__qaTrack=document.createElement('canvas').captureStream(15).getVideoTracks()[0];
+   window.__originalPlay=HTMLMediaElement.prototype.play;HTMLMediaElement.prototype.play=()=>Promise.reject(new Error('mock playback failure'));
+   window.dispatchEvent(new Event('online'));
+ },second);
+ await page.getByText('공유 영상을 재생하지 못했습니다. 다시 연결해 주세요.',{exact:false}).waitFor();
+ assert.equal(await page.locator('#root').evaluate(root=>root.inert),false);
+ assert.ok(await page.evaluate(()=>window.__qaLeaves>=2));
+ await page.evaluate(()=>{HTMLMediaElement.prototype.play=window.__originalPlay;window.__qaTrack.stop()});
+ mockShare=false;
+ console.log('PASS: playback failure leaves Daily and unlocks the LMS instead of retaining a billed blank video');
  adminMode=true;fileAvailable=false;
  await page.goto(base+'/admin.html#/courses');
  await page.getByRole('button',{name:'쪽지/파일',exact:true}).click();
