@@ -77,7 +77,6 @@ export default function Assignments() {
   async function submit() {
     if (!course) return
     setBusy(true)
-    let uploadedPath = null, committed = false
     try {
       let payload
       if (mode === 'file') {
@@ -85,7 +84,6 @@ export default function Assignments() {
         if (!validateFile(file)) { setBusy(false); return }
         const path = `${profile.id}/${course.id}/${storageSafeName(file.name)}`
         await uploadFile('submissions', path, file)
-        uploadedPath = path
         payload = { type: 'file', file_path: path, original_filename: file.name, file_size: file.size, url: null }
       } else {
         const u = url.trim()
@@ -97,15 +95,14 @@ export default function Assignments() {
         { onConflict: 'user_id,cohort_course_id' },
       )
       if (error) throw error
-      committed = true
       toast(existing ? '과제가 다시 제출되었습니다.' : '과제가 제출되었습니다.')
       draft.clear()
       setFile(null)
       setUrl('')
       await load()
-    } catch (e) {
-      if (uploadedPath && !committed) await supabase.storage.from('submissions').remove([uploadedPath]).catch(() => {})
-      toast('제출에 실패했습니다. 다시 시도해 주세요.', 'error')
+    } catch {
+      // A lost response does not prove rollback. Keep uploaded bytes for recovery.
+      toast('제출 결과를 확인하지 못했습니다. 제출 이력을 확인한 뒤 다시 시도해 주세요.', 'error')
     } finally {
       setBusy(false)
     }
