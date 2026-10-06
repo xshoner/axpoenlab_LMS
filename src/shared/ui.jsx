@@ -39,11 +39,11 @@ export function useToast() {
 }
 
 /* ---------- Dialog ---------- */
-export function Dialog({ open, title, danger, children, onClose, actions, wide, extraWide }) {
+export function Dialog({ open, title, danger, children, onClose, actions, wide, extraWide, className = '' }) {
   if (!open) return null
   return (
     <div className="dialog-overlay" onMouseDown={(e) => e.target === e.currentTarget && onClose?.()}>
-      <div className={`dialog ${extraWide ? 'dialog-extra-wide' : wide ? 'dialog-wide' : ''}`} role="dialog" aria-modal="true">
+      <div className={`dialog ${extraWide ? 'dialog-extra-wide' : wide ? 'dialog-wide' : ''} ${className}`} role="dialog" aria-modal="true">
         <div className="row mb-16" style={{ gap: 8 }}>
           {danger && <IconAlertTriangle size={20} color="var(--danger)" stroke={1.75} />}
           <h2 className="t-h2">{title}</h2>
