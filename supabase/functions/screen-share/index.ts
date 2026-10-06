@@ -7,12 +7,12 @@ const json = (value: unknown, status = 200) => new Response(JSON.stringify(value
 const publicSession = (s: any) => ({ id: s.id, cohort_id: s.cohort_id, teacher_id: s.teacher_id, state: s.state, lease_until: s.lease_until, lease_remaining_ms: Math.max(0, Date.parse(s.lease_until) - Date.now()), started_at: s.started_at });
 
 export function createScreenShareHandler(db: any, key: () => string | undefined, request = fetch, worker: () => string | undefined = () => undefined) {
-  async function daily(path: string, body?: unknown, missingOkay = false, method?: string): Promise<any> {
+  async function daily(path: string, body?: unknown, missingOkay = false, method?: string, signal?: AbortSignal): Promise<any> {
     const response = await request(`https://api.daily.co/v1${path}`, {
       method: method || (body === undefined ? "GET" : "POST"),
       headers: { Authorization: `Bearer ${key()}`, "Content-Type": "application/json" },
       ...(body === undefined ? {} : { body: JSON.stringify(body) }),
-      signal: AbortSignal.timeout(8000),
+      signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(8000)]) : AbortSignal.timeout(8000),
     });
     if (missingOkay && response.status === 404) return null;
     if (missingOkay && response.status === 400) {
@@ -22,34 +22,41 @@ export function createScreenShareHandler(db: any, key: () => string | undefined,
     if (!response.ok) throw new Error(`daily_unavailable:${response.status}:${path}`);
     return response.json();
   }
-  async function configureRoom() {
+  async function configureRoom(signal?: AbortSignal) {
     // Daily fixes a participant's eject timer at admission; short rolling room expiry
     // cannot extend an existing participant. The DB watchdog handles short leases.
     const properties = { nbf: Math.floor(Date.now() / 1000) - 1, exp: Math.floor(Date.now() / 1000) + 28800, eject_at_room_exp: true,
       start_audio_off: true, start_video_off: true, enable_screenshare: true, enable_prejoin_ui: false,
       enable_chat: false, enable_knocking: false,
       permissions: { canSend: false, canAdmin: false, canReceive: { base: true } } };
-    const updated = await daily(`/rooms/${ROOM}`, { privacy: "private", properties }, true);
+    const updated = await daily(`/rooms/${ROOM}`, { privacy: "private", properties }, true, undefined, signal);
     if (!updated) {
-      await daily(`/rooms/${ROOM}`, undefined, true, "DELETE");
-      await daily("/rooms", { name: ROOM, privacy: "private", properties });
+      await daily(`/rooms/${ROOM}`, undefined, true, "DELETE", signal);
+      await daily("/rooms", { name: ROOM, privacy: "private", properties }, false, undefined, signal);
     }
   }
-  async function closeRoom(sessionId?: string) {
+  async function closeRoom(sessionId?: string, operationSignal?: AbortSignal) {
+    // Finish before the 120s DB cleanup lock expires, even for large cohorts.
+    const signal = operationSignal ? AbortSignal.any([operationSignal, AbortSignal.timeout(90000)]) : AbortSignal.timeout(90000);
     // Close admissions before ejection, without expiring the REST endpoint mid-request.
     const now = Math.floor(Date.now() / 1000);
-    await daily(`/rooms/${ROOM}`, { privacy: "private", properties: { nbf: now + 60, exp: now + 61, eject_at_room_exp: true } }, true);
+    await daily(`/rooms/${ROOM}`, { privacy: "private", properties: { nbf: now + 60, exp: now + 61, eject_at_room_exp: true } }, true, undefined, signal);
     if (sessionId) {
-      const { data, error } = await db.from("screen_share_admissions").select("user_id").eq("session_id", sessionId);
-      if (error) throw new Error("database_unavailable");
-      const users = (data || []).map((p: any) => p.user_id);
-      for (let i = 0; i < users.length; i += 100) await daily(`/rooms/${ROOM}/eject`, { user_ids: users.slice(i, i + 100) }, true);
+      for (let offset = 0; ; offset += 200) {
+        const { data, error } = await db.from("screen_share_admissions").select("user_id").eq("session_id", sessionId)
+          .order("user_id").range(offset, offset + 199).abortSignal(signal);
+        if (error) throw new Error("database_unavailable");
+        const users = (data || []).map((p: any) => p.user_id);
+        for (let i = 0; i < users.length; i += 100)
+          await daily(`/rooms/${ROOM}/eject`, { user_ids: users.slice(i, i + 100) }, true, undefined, signal);
+        if (users.length < 200) break;
+      }
     }
     // Also clear legacy public-test guests. REST presence is a delayed snapshot;
     // successful provider ejection of all recorded recipients is the stop ACK.
-    const presence = await daily(`/rooms/${ROOM}/presence`, undefined, true);
+    const presence = await daily(`/rooms/${ROOM}/presence`, undefined, true, undefined, signal);
     const ids = (presence?.data || []).map((p: any) => p.id).filter(Boolean);
-    for (let i = 0; i < ids.length; i += 100) await daily(`/rooms/${ROOM}/eject`, { ids: ids.slice(i, i + 100) }, true);
+    for (let i = 0; i < ids.length; i += 100) await daily(`/rooms/${ROOM}/eject`, { ids: ids.slice(i, i + 100) }, true, undefined, signal);
   }
   async function session(id: string) {
     const { data, error } = await db.from("screen_share_sessions").select("*").eq("id", id).maybeSingle();
@@ -62,17 +69,20 @@ export function createScreenShareHandler(db: any, key: () => string | undefined,
     const { error } = await q;
     if (error) throw new Error("database_unavailable");
   }
-  async function issue(s: any, profile: any, teacher: boolean) {
+  async function issue(s: any, profile: any, teacher: boolean, signal?: AbortSignal) {
+    // DB/provider latency must never move token expiry beyond the reserved cooldown.
+    const expires = Math.floor(Date.now() / 1000) + 30;
     const { data: reserved, error } = await db.rpc("screen_share_reserve_token", { p_session: s.id });
     if (error || !reserved) throw new Error("share_ended");
     const { error: admissionError } = await db.from("screen_share_admissions").upsert({ session_id: s.id, user_id: profile.id });
     if (admissionError) throw new Error("database_unavailable");
+    if (expires <= Math.floor(Date.now() / 1000) + 5) throw new Error("share_ended");
     const result = await daily("/meeting-tokens", { properties: {
       room_name: ROOM, user_id: profile.id, user_name: (profile.nickname || profile.name || "참가자").slice(0, 40),
-      exp: Math.floor(Date.now() / 1000) + 30, is_owner: false,
+      exp: expires, is_owner: false,
       enable_screenshare: teacher, start_audio_off: true, start_video_off: true,
       permissions: { canSend: teacher ? ["screenVideo"] : false, canAdmin: false, canReceive: { base: true } },
-    } });
+    } }, false, undefined, signal);
     const current = await session(s.id);
     if (!current || !["starting", "live"].includes(current.state) || Date.parse(current.lease_until) <= Date.now()) throw new Error("share_ended");
     return { session: publicSession(current), room: ROOM_URL, token: result.token };
@@ -116,9 +126,11 @@ export function createScreenShareHandler(db: any, key: () => string | undefined,
         if (error) return json({ error: error.message?.includes("cooling_down") ? "cooling_down" : "share_busy" }, 409);
         const s = Array.isArray(claimed) ? claimed[0] : claimed;
         startingId = s.id;
-        await closeRoom(s.id);
-        await configureRoom();
-        const credentials = await issue(s, profile, true);
+        // Provider work must finish before the 45s starting lease can be reclaimed.
+        const signal = AbortSignal.timeout(25000);
+        await closeRoom(s.id, signal);
+        await configureRoom(signal);
+        const credentials = await issue(s, profile, true, signal);
         startingId = null;
         return json(credentials);
       }
@@ -154,9 +166,11 @@ export function createScreenShareHandler(db: any, key: () => string | undefined,
     } catch (error) {
       if (startingId) {
         try {
-          await closeRoom(startingId);
-          await mutate(startingId, { state: "ended", ended_at: new Date().toISOString() });
-        } catch { /* The room expires server-side even if the network is unavailable. */ }
+          const { data, error } = await db.rpc("screen_share_lock_stop", { p_session: startingId, p_expired: false });
+          if (error) throw new Error("database_unavailable");
+          const closing = Array.isArray(data) ? data[0] : data;
+          if (closing?.id) await finishStop(closing);
+        } catch { /* Keep the lock/state for the watchdog; never claim an unconfirmed stop. */ }
       }
       const message = error instanceof Error ? error.message : "unavailable";
       // Status/path only: never log tokens, credentials or provider response bodies.
@@ -166,4 +180,6 @@ export function createScreenShareHandler(db: any, key: () => string | undefined,
   };
 }
 
-Deno.serve(createScreenShareHandler(createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!), () => Deno.env.get("DAILY_API_KEY"), fetch, () => Deno.env.get("DAILY_SCREEN_SHARE_WORKER_KEY")));
+Deno.serve(createScreenShareHandler(createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!, {
+  global: { fetch: (url, options) => fetch(url, { ...options, signal: options?.signal ? AbortSignal.any([options.signal, AbortSignal.timeout(10000)]) : AbortSignal.timeout(10000) }) },
+}), () => Deno.env.get("DAILY_API_KEY"), fetch, () => Deno.env.get("DAILY_SCREEN_SHARE_WORKER_KEY")));
