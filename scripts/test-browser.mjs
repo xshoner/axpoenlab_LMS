@@ -8,7 +8,7 @@ const base=process.env.LMS_TEST_URL||'http://127.0.0.1:5186';
 const browser=await chromium.launch({...(process.env.PLAYWRIGHT_CHANNEL?{channel:process.env.PLAYWRIGHT_CHANNEL}:{}),headless:true});
 try {
  const context=await browser.newContext();
- let failProfile=false, mockShare=false, fileAvailable=false, fileSeen=false, fileReceived=false, downloadRequests=0, statsRequests=0, detailRequests=0;
+ let failProfile=false, profileFailuresRemaining=0, mockShare=false, fileAvailable=false, fileSeen=false, fileReceived=false, downloadRequests=0, statsRequests=0, detailRequests=0;
  let adminMode=false, failHistory=false, sends=0;
  let uploadMode=false, draftAttempts=0, uploadAttempts=0, fileSendAttempts=0, deleteAttempts=0, draftId=null, uploadedPath=null;
  let adminReceiptRequests=0;
@@ -17,7 +17,10 @@ try {
  await context.addInitScript(s=>{localStorage.setItem('ax-lms-keep','1');localStorage.setItem('sb-ugelgndotyppgksbubot-auth-token',JSON.stringify(s));localStorage.setItem(`ax-distribution-seen:${s.user.id}`,JSON.stringify(['legacy-message']))},session);
  await context.route('**/ugelgndotyppgksbubot.supabase.co/**',async route=>{
   const u=new URL(route.request().url()), table=u.pathname.split('/').pop();let data=[];
-  if(table==='profiles'&&failProfile){await route.fulfill({status:503,contentType:'application/json',body:JSON.stringify({code:'TEST_OFFLINE'})});return;}
+  if(table==='profiles'&&(failProfile||profileFailuresRemaining>0)){
+   if(profileFailuresRemaining>0)profileFailuresRemaining--;
+   await route.fulfill({status:503,contentType:'application/json',body:JSON.stringify({code:'TEST_OFFLINE'})});return;
+  }
   if(table==='profiles')data={id,name:'Mock',role:adminMode?'super_admin':'student',status:'active'};
   else if(table==='cohorts')data=[{id:cohort,name:'Mock cohort',status:'active'}];
   else if(table==='cohort_members')data=u.searchParams.get('select')?.includes('profiles!inner')?[{user_id:id,profiles:{id,name:'Mock student',status:'active',role:'student'}}]:{cohort_id:cohort,cohorts:{id:cohort,name:'Mock cohort',status:'active'}};
@@ -83,6 +86,11 @@ try {
  await page.waitForTimeout(1200);
  assert.equal(await page.getByText('이미 응답을 제출했습니다').count(),0);
  console.log('PASS: navigating between surveys resets the previous response');
+ profileFailuresRemaining=1;
+ await page.reload();
+ await page.getByText('Second survey',{exact:true}).waitFor();
+ assert.equal(await page.getByText('계정 정보를 불러오지 못했습니다',{exact:true}).count(),0);
+ console.log('PASS: a transient profile failure recovers automatically');
  failProfile=true;
  await page.reload();
  await page.getByText('계정 정보를 불러오지 못했습니다',{exact:true}).waitFor();

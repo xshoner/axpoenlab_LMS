@@ -3,6 +3,7 @@ import { supabase } from '../lib/supabase'
 import { LoadError, reportClientError } from './errors'
 
 const AuthCtx = createContext({ session: undefined, profile: null, cohort: null })
+const PROFILE_RETRY_DELAYS = [400, 1200]
 
 export function AuthProvider({ children }) {
   const [session, setSession] = useState(undefined) // undefined = 확인 중
@@ -11,38 +12,53 @@ export function AuthProvider({ children }) {
   const [profileError, setProfileError] = useState(false)
   const profileRequest = useRef(null)
   const profileVersion = useRef(0)
+  const profileUid = useRef(null)
   const authVersion = useRef(0)
 
   const loadProfile = useCallback(async (uid) => {
     if (!uid) {
       profileVersion.current++
       profileRequest.current = null
+      profileUid.current = null
       setProfile(null); setCohort(null); setProfileError(false); return
     }
     if (profileRequest.current?.uid === uid) return profileRequest.current.promise
     const request = { uid, version: ++profileVersion.current }
+    if (profileUid.current !== uid) {
+      profileUid.current = uid
+      setProfile(null); setCohort(null)
+    }
     request.promise = (async () => {
       setProfileError(false)
-      try {
-        const [{ data: p, error: pe }, { data: m, error: me }] = await Promise.all([
-          supabase.from('profiles').select('*').eq('id', uid).abortSignal(AbortSignal.timeout(15000)).single(),
-          supabase.from('cohort_members')
-            .select('cohort_id, cohorts(id, name, code, status, start_date, end_date)')
-            .eq('user_id', uid).abortSignal(AbortSignal.timeout(15000)).maybeSingle(),
-        ])
-        if (request.version !== profileVersion.current) return
-        if (pe || me || !p) throw new Error('PROFILE_LOAD_FAILED')
-        if (p && p.role !== 'super_admin') sessionStorage.removeItem('ax-admin-view')
-        // Publish both together: the dashboard should not load once without a
-        // cohort and then issue the same requests again when membership arrives.
-        setCohort(m?.cohorts || null)
-        setProfile(p || null)
-      } catch {
-        if (request.version === profileVersion.current) { setProfileError(true); reportClientError('load', 'PROFILE_LOAD_FAILED') }
-      } finally {
-        if (profileRequest.current === request) profileRequest.current = null
+      for (let attempt = 0; attempt <= PROFILE_RETRY_DELAYS.length; attempt++) {
+        try {
+          const [{ data: p, error: pe }, { data: m, error: me }] = await Promise.all([
+            supabase.from('profiles').select('*').eq('id', uid).abortSignal(AbortSignal.timeout(15000)).single(),
+            supabase.from('cohort_members')
+              .select('cohort_id, cohorts(id, name, code, status, start_date, end_date)')
+              .eq('user_id', uid).abortSignal(AbortSignal.timeout(15000)).maybeSingle(),
+          ])
+          if (request.version !== profileVersion.current) return
+          if (pe || me || !p) throw new Error('PROFILE_LOAD_FAILED')
+          if (p.role !== 'super_admin') sessionStorage.removeItem('ax-admin-view')
+          // Publish both together so the dashboard never loads without membership.
+          setCohort(m?.cohorts || null)
+          setProfile(p)
+          return
+        } catch {
+          if (request.version !== profileVersion.current) return
+          if (attempt === PROFILE_RETRY_DELAYS.length) {
+            setProfileError(true)
+            reportClientError('load', 'PROFILE_LOAD_FAILED')
+            return
+          }
+          await new Promise(resolve => setTimeout(resolve, PROFILE_RETRY_DELAYS[attempt]))
+          if (request.version !== profileVersion.current) return
+        }
       }
-    })()
+    })().finally(() => {
+      if (profileRequest.current === request) profileRequest.current = null
+    })
     profileRequest.current = request
     return request.promise
   }, [])
@@ -65,7 +81,12 @@ export function AuthProvider({ children }) {
         window.location.hash = '#/reset'
       }
     })
-    return () => sub.subscription.unsubscribe()
+    return () => {
+      authVersion.current++
+      profileVersion.current++
+      profileRequest.current = null
+      sub.subscription.unsubscribe()
+    }
   }, [loadProfile])
 
   // Record each app entry/account change and return to the tab, independently of counter visibility.
