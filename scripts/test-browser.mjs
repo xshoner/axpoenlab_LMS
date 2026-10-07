@@ -283,14 +283,24 @@ try {
  missingCourse=false;
  console.log('PASS: course failures remain retryable while a missing course is shown as not found');
 
+ let releaseCharts, chartBlocked=true;
+ await page.route('**/assets/DashboardCharts-*.js', async route=>{
+  if(chartBlocked)await new Promise(resolve=>{releaseCharts=resolve});
+  await route.continue();
+ });
  adminMode=true;failAdminDashboard=true;
  await page.evaluate(({userId,cohortId})=>localStorage.setItem(`ax-admin-cohort:${userId}:self`,cohortId),{userId:id,cohortId:cohort});
  await page.goto(base+'/admin.html#/');
  await page.getByText('대시보드를 불러오지 못했습니다',{exact:true}).waitFor();
  await page.evaluate(()=>{window.__retryMarker=2});
  failAdminDashboard=false;
+ const chartChunkRequest=page.waitForRequest(/\/assets\/DashboardCharts-[^/]+\.js/);
  await page.getByRole('button',{name:'다시 시도',exact:true}).click();
  await page.getByRole('heading',{name:'전체 현황'}).waitFor();
+ await chartChunkRequest;
+ await page.getByText('전체 학생 수',{exact:true}).waitFor();
+ assert.equal(await page.getByText('차트 준비 중…',{exact:true}).count(),1,'dashboard KPIs render while chart code is still downloading');
+ chartBlocked=false;releaseCharts();
  assert.equal(await page.evaluate(()=>window.__retryMarker),2,'admin retry does not reload the page');
  failCohortMetrics=true;
  await page.reload();

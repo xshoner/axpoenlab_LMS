@@ -111,7 +111,7 @@ export default function Arcade() {
     <div className="arcade-list">{games.map((g, index) => <article className="arcade-card" key={g.id}>
       <Link to={`/arcade/${g.id}`} onClick={() => setGamePlaying(false)} className={`arcade-thumbnail arcade-tone-${index % 3}`} aria-label={`${g.name} 실행`}>
         <IconDeviceGamepad2 size={62} stroke={1.4} /><span>{g.name}</span><span className="arcade-play">PLAY →</span>
-        <img src={g.url.startsWith('https://jellyrungo.vercel.app/') ? '/arcade-jellyrun.png' : `https://s.wordpress.com/mshots/v1/${encodeURIComponent(g.url)}?w=600&h=375`} alt="" loading="lazy" onError={e => { e.currentTarget.hidden = true }} />
+        <img src={g.url.startsWith('https://jellyrungo.vercel.app/') ? '/arcade-jellyrun.webp' : `https://s.wordpress.com/mshots/v1/${encodeURIComponent(g.url)}?w=600&h=375`} alt="" loading="lazy" onError={e => { e.currentTarget.hidden = true }} />
       </Link>
       <div className="arcade-card-body"><span className="t-micro muted">WEB GAME · {String(index + 1).padStart(2, '0')}</span><h2 className="t-h3"><Link to={`/arcade/${g.id}`} onClick={() => setGamePlaying(false)}>{g.name}</Link></h2><p className="muted">{g.description}</p>{g.developer && <p className="t-muted-sm">개발자 · {g.developer}</p>}<Link className="arcade-start" to={`/arcade/${g.id}`} onClick={() => setGamePlaying(false)}>게임 시작 →</Link>{canManageGame(g) && <div className="arcade-admin-actions"><button className="btn btn-white btn-sm" onClick={() => editGame(g)}>수정</button><button className="btn btn-danger btn-sm" onClick={() => setDeleting(g)}>삭제</button></div>}</div>
     </article>)}</div>

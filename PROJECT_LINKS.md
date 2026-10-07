@@ -1,7 +1,7 @@
 # PROJECT_LINKS.md — AX오픈랩 LMS 필수 연결 정보
 
 > 다른 장소/PC에서 작업할 때 반드시 이 문서를 먼저 확인하세요.
-> 마지막 검증: 2026-08-09 (실제 배포로 전 항목 확인 완료)
+> 배포 연결·프로젝트 설정 확인: 2026-10-07
 
 ## 1. GitHub (소스 저장소)
 
@@ -10,7 +10,7 @@
 | 저장소 | `https://github.com/xshoner/axpoenlab_LMS` |
 | 기본 브랜치 | `main` (배포 기준 브랜치) |
 | 계정 | `xshoner` |
-| CI | GitHub Actions (`.github/workflows/ci.yml`) — push/PR 시 lint + build |
+| CI | GitHub Actions (`.github/workflows/ci.yml`) — push/PR 시 lint, build, 회귀 테스트 |
 
 ```bash
 git clone https://github.com/xshoner/axpoenlab_LMS.git
@@ -53,9 +53,9 @@ npx vercel deploy --prod                        # 프로덕션 배포 (빌드 1~
 | URL | `https://ugelgndotyppgksbubot.supabase.co` |
 | 클라이언트 키 | publishable key — `src/lib/supabase.js`에 기본값 있음 (공개 허용 키) |
 | 대시보드 | `https://supabase.com/dashboard/project/ugelgndotyppgksbubot` |
-| 마이그레이션 | `supabase/migrations/` (17개, 원격과 동기화 상태 — 2026-08-30) |
+| 마이그레이션 | `supabase/migrations/` (현재 저장소에 52개; 원격 적용 상태는 배포 전에 별도 확인) |
 | RLS 테스트 | `supabase/tests/rls_smoke_test.sql` (트랜잭션+롤백, 실데이터 무영향) |
-| Edge Functions | `supabase/functions/` — `signup`, `admin-users` |
+| Edge Functions | `supabase/functions/` — `signup`, `admin-users`, `screen-share`, `distribution-files` |
 
 ⚠️ 주의
 - **service_role key는 절대 코드/저장소에 넣지 않는다.** 권한 작업은 Edge Function에서만.

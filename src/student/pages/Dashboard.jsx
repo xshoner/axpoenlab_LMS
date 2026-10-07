@@ -129,7 +129,7 @@ export default function Dashboard() {
           <span className="dashboard-arcade-content">
             <span className="dashboard-arcade-thumbnail">
               <IconDeviceGamepad2 size={24} />
-              {data.arcade && <img key={data.arcade.url} src={data.arcade.url.startsWith('https://jellyrungo.vercel.app/') ? '/arcade-jellyrun.png' : `https://s.wordpress.com/mshots/v1/${encodeURIComponent(data.arcade.url)}?w=600&h=375`} alt="" loading="lazy" onError={e => { e.currentTarget.hidden = true }} />}
+              {data.arcade && <img key={data.arcade.url} src={data.arcade.url.startsWith('https://jellyrungo.vercel.app/') ? '/arcade-jellyrun.webp' : `https://s.wordpress.com/mshots/v1/${encodeURIComponent(data.arcade.url)}?w=600&h=375`} alt="" loading="lazy" onError={e => { e.currentTarget.hidden = true }} />}
             </span>
             <span className="dashboard-arcade-copy">
               <strong>{data.arcade?.name || '잠깐 쉬어 가세요'}</strong>

@@ -1,9 +1,5 @@
-import { useEffect, useMemo, useState } from 'react'
+import { Component, lazy, Suspense, useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
-import {
-  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
-  LineChart, Line,
-} from 'recharts'
 import { IconPin, IconNotes, IconSpeakerphone, IconTrash, IconMessages } from '@tabler/icons-react'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../shared/auth'
@@ -12,6 +8,19 @@ import { Loading, StatCard, StarRating, useToast } from '../../shared/ui'
 import { LoadError, reportClientError } from '../../shared/errors'
 import { fmtDate, pad2 } from '../../lib/helpers'
 import { AiBookmarks } from '../../shared/bookmarks'
+
+const DashboardCharts = lazy(() => import('./DashboardCharts'))
+
+class ChartBoundary extends Component {
+  state = { failed: false }
+  static getDerivedStateFromError() { return { failed: true } }
+  componentDidCatch() { reportClientError('load', 'ADMIN_CHART_LOAD_FAILED') }
+  render() {
+    return this.state.failed
+      ? <div className="chart-panel" role="alert">차트를 불러오지 못했습니다. <button className="btn btn-white btn-sm" onClick={() => window.location.reload()}>다시 시도</button></div>
+      : this.props.children
+  }
+}
 
 export default function AdminDashboard() {
   const { cohorts, selectedId, selected } = useCohort()
@@ -106,54 +115,10 @@ export default function AdminDashboard() {
           <StatCard label="미답변 문의" value={global_.unanswered.toLocaleString()} />
           <StatCard label="방문자 (오늘/누적)" value={`${global_.visits.today} / ${Number(global_.visits.total).toLocaleString()}`} />
         </div>
-        <div className="grid-2 mb-24">
-          <div className="chart-panel">
-            <h3 className="t-h3 mb-16">기수별 학생 수</h3>
-            <ResponsiveContainer width="100%" height={150}>
-              <BarChart data={perCohort}>
-                <defs>
-                  <linearGradient id="barGradCohort" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor="#3d6db3" />
-                    <stop offset="55%" stopColor="#1a3356" />
-                    <stop offset="100%" stopColor="#152945" />
-                  </linearGradient>
-                </defs>
-                <CartesianGrid vertical={false} stroke="var(--border)" />
-                <XAxis dataKey="name" tick={{ fontSize: 12, fill: 'var(--muted)' }} />
-                <YAxis tick={{ fontSize: 12, fill: 'var(--muted)' }} allowDecimals={false} width={28} />
-                <Tooltip contentStyle={{ borderRadius: 8, border: '1px solid var(--border)', fontSize: 12 }} />
-                <Bar dataKey="학생수" fill="url(#barGradCohort)" radius={[6, 6, 0, 0]} maxBarSize={24}
-                  label={{ position: 'top', fontSize: 11 }} isAnimationActive={false} />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-          <div className="chart-panel">
-            <div className="row mb-16" style={{ gap: 6 }}>
-              <h3 className="t-h3">방문 추이 {visitRange === 'month' ? '(최근 30일)' : '(최근 1년)'}</h3>
-              <div className="row" style={{ gap: 4, marginLeft: 'auto' }}>
-                <button className={`btn btn-sm ${visitRange === 'month' ? 'btn-primary' : 'btn-white'}`}
-                  onClick={() => setVisitRange('month')}>1개월</button>
-                <button className={`btn btn-sm ${visitRange === 'year' ? 'btn-primary' : 'btn-white'}`}
-                  onClick={() => setVisitRange('year')}>연간</button>
-              </div>
-            </div>
-            {visitSeries.length === 0 ? (
-              <div className="empty-state" style={{ padding: 24 }}>아직 방문 기록이 없습니다</div>
-            ) : (
-              <ResponsiveContainer width="100%" height={150}>
-                <LineChart data={visitSeries}>
-                  <CartesianGrid vertical={false} stroke="var(--border)" />
-                  <XAxis dataKey="date" tick={{ fontSize: 11, fill: 'var(--muted)' }} />
-                  <YAxis tick={{ fontSize: 11, fill: 'var(--muted)' }} allowDecimals={false} width={28} />
-                  <Tooltip contentStyle={{ borderRadius: 8, border: '1px solid var(--border)', fontSize: 12 }} />
-                  <Line type="monotone" dataKey="방문" stroke="var(--chart-1)" strokeWidth={2}
-                    dot={visitRange === 'year' ? { r: 3, fill: 'var(--chart-1)', strokeWidth: 0 } : false}
-                    isAnimationActive={false} />
-                </LineChart>
-              </ResponsiveContainer>
-            )}
-          </div>
-        </div>
+        <ChartBoundary><Suspense fallback={<div className="grid-2 mb-24"><div className="chart-panel">차트 준비 중…</div></div>}>
+          <DashboardCharts kind="overview" perCohort={perCohort} visitRange={visitRange}
+            setVisitRange={setVisitRange} visitSeries={visitSeries} />
+        </Suspense></ChartBoundary>
         <div className="mb-24"><AiBookmarks /></div>
         <div className="grid-2">
           <div className="chart-panel">
@@ -204,26 +169,9 @@ export default function AdminDashboard() {
                   </div>
                   {visibleCourseViewRates.length === 0 ? (
                     <div className="empty-state dashboard-course-view-empty">선택한 그룹에 등록된 강좌가 없습니다.</div>
-                  ) : <div className="dashboard-course-view-scroll">
-                  <ResponsiveContainer width="100%" height={Math.max(220, visibleCourseViewRates.length * 34)}>
-                    <BarChart data={visibleCourseViewRates} layout="vertical">
-                      <defs>
-                        {/* 가로 막대 — 두께 방향(위→아래) 그라디언트로 원통형 입체감 */}
-                        <linearGradient id="barGradView" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="0%" stopColor="#3d6db3" />
-                          <stop offset="55%" stopColor="#1a3356" />
-                          <stop offset="100%" stopColor="#152945" />
-                        </linearGradient>
-                      </defs>
-                      <CartesianGrid horizontal={false} stroke="var(--border)" />
-                      <XAxis type="number" domain={[0, 100]} tick={{ fontSize: 12, fill: 'var(--muted)' }} />
-                      <YAxis type="category" dataKey="name" width={150} tick={{ fontSize: 11, fill: 'var(--muted)' }} />
-                      <Tooltip contentStyle={{ borderRadius: 8, border: '1px solid var(--border)', fontSize: 12 }} />
-                      <Bar dataKey="열람률" fill="url(#barGradView)" radius={[0, 6, 6, 0]} maxBarSize={20}
-                        label={{ position: 'right', fontSize: 11, formatter: (v) => `${v}%` }} isAnimationActive={false} />
-                    </BarChart>
-                  </ResponsiveContainer>
-                  </div>}
+                  ) : <ChartBoundary><Suspense fallback={<div className="dashboard-course-view-scroll" style={{ minHeight: 220 }}>차트 준비 중…</div>}>
+                    <DashboardCharts kind="courseViews" courseViewRates={visibleCourseViewRates} />
+                  </Suspense></ChartBoundary>}
                 </div>
                 <div className="stack">
                   <div className="chart-panel">

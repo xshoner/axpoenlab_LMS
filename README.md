@@ -24,8 +24,8 @@ src/
 supabase/
   migrations/                # 전체 스키마·RLS·RPC·Storage 정책 (버전 관리)
   tests/rls_smoke_test.sql   # RLS 권한 경계 스모크 테스트
-  functions/                 # Edge Functions 소스 (signup, admin-users)
-.github/workflows/ci.yml     # lint + build CI
+  functions/                 # Edge Functions 소스
+.github/workflows/ci.yml     # lint + build + 회귀 테스트 CI
 ```
 
 ## 개발
