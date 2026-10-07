@@ -4,6 +4,7 @@ import { IconClipboardText, IconChecklist, IconPencilQuestion, IconDeviceGamepad
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../shared/auth'
 import { Loading, EmptyState } from '../../shared/ui'
+import { LoadError, reportClientError } from '../../shared/errors'
 import { AiBookmarks } from '../../shared/bookmarks'
 import './dashboard.css'
 import { fmtDate, isNew, pad2 } from '../../lib/helpers'
@@ -13,28 +14,34 @@ export default function Dashboard() {
   const nav = useNavigate()
   const [data, setData] = useState(null)
   const [loadError, setLoadError] = useState(false)
+  const [retryKey, setRetryKey] = useState(0)
   const [heatmapGroupId, setHeatmapGroupId] = useState('')
 
   useEffect(() => {
     let alive = true
     setData(null)
     setLoadError(false)
-    supabase.rpc('student_dashboard').then(({ data: snapshot, error }) => {
-      if (!alive) return
-      if (error) { setLoadError(true); return }
-      setData({
-        ...snapshot,
-        viewedSet: new Set(snapshot.views),
-        subSet: new Set(snapshot.submissions),
-        respSet: new Set(snapshot.responses),
-        quizSet: new Set(snapshot.quizSubmissions),
-        arcadeError: false,
-      })
-    })
+    ;(async () => {
+      try {
+        const { data: snapshot, error } = await supabase.rpc('student_dashboard').abortSignal(AbortSignal.timeout(10000))
+        if (!alive) return
+        if (error || !snapshot) throw error || new Error('Empty dashboard')
+        setData({
+          ...snapshot,
+          viewedSet: new Set(snapshot.views),
+          subSet: new Set(snapshot.submissions),
+          respSet: new Set(snapshot.responses),
+          quizSet: new Set(snapshot.quizSubmissions),
+          arcadeError: false,
+        })
+      } catch {
+        if (alive) { setLoadError(true); reportClientError('load', 'DASHBOARD_LOAD_FAILED') }
+      }
+    })()
     return () => { alive = false }
-  }, [profile.id, cohort?.id])
+  }, [profile.id, cohort?.id, retryKey])
 
-  if (loadError) return <EmptyState title="대시보드를 불러오지 못했습니다" action={<button className="btn btn-white" onClick={() => window.location.reload()}>다시 시도</button>} />
+  if (loadError) return <LoadError title="대시보드를 불러오지 못했습니다" retry={() => setRetryKey(key => key + 1)} />
   if (!data) return <Loading />
 
   const {

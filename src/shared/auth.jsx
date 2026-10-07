@@ -4,6 +4,13 @@ import { LoadError, reportClientError } from './errors'
 
 const AuthCtx = createContext({ session: undefined, profile: null, cohort: null })
 const PROFILE_RETRY_DELAYS = [400, 1200]
+const PROFILE_REQUEST_TIMEOUT_MS = 5000
+
+function retryableProfileError(error) {
+  if (error?.code === 'PGRST116') return false
+  const status = Number(error?.status)
+  return !status || status === 408 || status === 425 || status === 429 || status >= 500
+}
 
 export function AuthProvider({ children }) {
   const [session, setSession] = useState(undefined) // undefined = 확인 중
@@ -33,21 +40,28 @@ export function AuthProvider({ children }) {
       for (let attempt = 0; attempt <= PROFILE_RETRY_DELAYS.length; attempt++) {
         try {
           const [{ data: p, error: pe }, { data: m, error: me }] = await Promise.all([
-            supabase.from('profiles').select('*').eq('id', uid).abortSignal(AbortSignal.timeout(15000)).single(),
+            supabase.from('profiles').select('*').eq('id', uid).abortSignal(AbortSignal.timeout(PROFILE_REQUEST_TIMEOUT_MS)).single(),
             supabase.from('cohort_members')
               .select('cohort_id, cohorts(id, name, code, status, start_date, end_date)')
-              .eq('user_id', uid).abortSignal(AbortSignal.timeout(15000)).maybeSingle(),
+              .eq('user_id', uid).abortSignal(AbortSignal.timeout(PROFILE_REQUEST_TIMEOUT_MS)).maybeSingle(),
           ])
           if (request.version !== profileVersion.current) return
-          if (pe || me || !p) throw new Error('PROFILE_LOAD_FAILED')
-          if (p.role !== 'super_admin') sessionStorage.removeItem('ax-admin-view')
+          if (pe || me) throw pe || me
+          if (!p) {
+            const missing = new Error('Profile not found')
+            missing.status = 404
+            throw missing
+          }
+          if (p.role !== 'super_admin') {
+            try { sessionStorage.removeItem('ax-admin-view') } catch { /* Storage access must not block login. */ }
+          }
           // Publish both together so the dashboard never loads without membership.
           setCohort(m?.cohorts || null)
           setProfile(p)
           return
-        } catch {
+        } catch (error) {
           if (request.version !== profileVersion.current) return
-          if (attempt === PROFILE_RETRY_DELAYS.length) {
+          if (attempt === PROFILE_RETRY_DELAYS.length || !retryableProfileError(error)) {
             setProfileError(true)
             reportClientError('load', 'PROFILE_LOAD_FAILED')
             return

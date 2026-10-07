@@ -114,8 +114,18 @@ try {
   await flush()
   assert.equal(harness.pending.length,16,'sign-out cancels scheduled retries')
   assert.equal(harness.states[3],false)
+
+  harness.listener('SIGNED_IN',{user:{id:'student-e'}})
+  await flush()
+  harness.pending[16].resolve({data:null,error:{status:403}})
+  harness.pending[17].resolve({data:{cohorts:{id:'cohort-e'}}})
+  await flush()
+  assert.equal(harness.states[3],true,'a permanent permission failure displays the error immediately')
+  assert.equal(harness.timers.length,0,'a permanent failure is not retried')
+  assert.equal(harness.pending.length,18)
+  assert.deepEqual(harness.reports,[['load','PROFILE_LOAD_FAILED'],['load','PROFILE_LOAD_FAILED']])
   cleanup()
-  console.log('PASS: auth loading retries transient failures, reports final failures once and ignores signed-out responses')
+  console.log('PASS: auth loading retries transient failures, stops on permanent failures and ignores signed-out responses')
 } finally {
   globalThis.setTimeout=realSetTimeout
   delete globalThis.authLoadingTest

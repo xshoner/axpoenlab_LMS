@@ -8,14 +8,18 @@ import { IconPin, IconNotes, IconSpeakerphone, IconTrash, IconMessages } from '@
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../shared/auth'
 import { useCohort } from '../cohortContext'
-import { Loading, EmptyState, StatCard, StarRating, useToast } from '../../shared/ui'
+import { Loading, StatCard, StarRating, useToast } from '../../shared/ui'
+import { LoadError, reportClientError } from '../../shared/errors'
 import { fmtDate, pad2 } from '../../lib/helpers'
 import { AiBookmarks } from '../../shared/bookmarks'
 
 export default function AdminDashboard() {
   const { cohorts, selectedId, selected } = useCohort()
   const { profile } = useAuth()
-  const [loadError, setLoadError] = useState(false)
+  const [globalError, setGlobalError] = useState(false)
+  const [cohortError, setCohortError] = useState(null)
+  const [globalRetryKey, setGlobalRetryKey] = useState(0)
+  const [cohortRetryKey, setCohortRetryKey] = useState(0)
   const [global_, setGlobal] = useState(null)
   const [cohortStats, setCohortStats] = useState(null)
   const [courseGroupId, setCourseGroupId] = useState('')
@@ -25,14 +29,19 @@ export default function AdminDashboard() {
   useEffect(() => {
     let alive = true
     setGlobal(null)
-    setLoadError(false)
-    supabase.rpc('admin_dashboard_overview').then(({ data, error }) => {
-      if (!alive) return
-      if (error) { setLoadError(true); return }
-      setGlobal(data)
-    })
+    setGlobalError(false)
+    ;(async () => {
+      try {
+        const { data, error } = await supabase.rpc('admin_dashboard_overview').abortSignal(AbortSignal.timeout(10000))
+        if (!alive) return
+        if (error || !data) throw error || new Error('Empty dashboard')
+        setGlobal(data)
+      } catch {
+        if (alive) { setGlobalError(true); reportClientError('load', 'ADMIN_DASHBOARD_LOAD_FAILED') }
+      }
+    })()
     return () => { alive = false }
-  }, [profile.id])
+  }, [profile.id, globalRetryKey])
 
   const perCohort = useMemo(() => {
     const counts = new Map((global_?.memberCounts || []).map((m) => [m.cohort_id, Number(m.count)]))
@@ -41,20 +50,25 @@ export default function AdminDashboard() {
 
   // 선택 기수 통계
   useEffect(() => {
-    if (!selectedId) { setCohortStats(null); return }
+    if (!selectedId) { setCohortStats(null); setCohortError(null); return }
     let alive = true
     ;(async () => {
       setCohortStats(undefined)
-      const { data, error } = await supabase.rpc('admin_cohort_metrics', { p_cohort: selectedId })
-      if (!alive) return
-      if (error || !data) { setLoadError(true); return }
-      const groups = data.courseGroups
-      const defaultCourseGroupId = groups.find(g => g.is_default)?.id || groups[0]?.id || ''
-      setCourseGroupId(current => groups.some(g => g.id === current) ? current : defaultCourseGroupId)
-      setCohortStats({ ...data, defaultCourseGroupId })
+      setCohortError(null)
+      try {
+        const { data, error } = await supabase.rpc('admin_cohort_metrics', { p_cohort: selectedId }).abortSignal(AbortSignal.timeout(10000))
+        if (!alive) return
+        if (error || !data?.courseGroups) throw error || new Error('Empty cohort metrics')
+        const groups = data.courseGroups
+        const defaultCourseGroupId = groups.find(g => g.is_default)?.id || groups[0]?.id || ''
+        setCourseGroupId(current => groups.some(g => g.id === current) ? current : defaultCourseGroupId)
+        setCohortStats({ ...data, cohortId: selectedId, defaultCourseGroupId })
+      } catch {
+        if (alive) { setCohortError(selectedId); reportClientError('load', 'COHORT_METRICS_LOAD_FAILED') }
+      }
     })()
     return () => { alive = false }
-  }, [selectedId])
+  }, [selectedId, cohortRetryKey])
 
   // 방문 추이: 최근 30일은 일별, 최근 1년은 월별로 집계해 표시
   const visitSeries = useMemo(() => {
@@ -74,11 +88,11 @@ export default function AdminDashboard() {
   }, [global_, visitRange])
 
   const visibleCourseViewRates = useMemo(() => {
-    if (!cohortStats) return []
+    if (!cohortStats || cohortStats.cohortId !== selectedId) return []
     return cohortStats.courseViewRates.filter((course) => course.groupId === courseGroupId)
-  }, [cohortStats, courseGroupId])
+  }, [cohortStats, courseGroupId, selectedId])
 
-  if (loadError) return <EmptyState title="대시보드를 불러오지 못했습니다" action={<button className="btn btn-white" onClick={() => window.location.reload()}>다시 시도</button>} />
+  if (globalError) return <LoadError title="대시보드를 불러오지 못했습니다" retry={() => setGlobalRetryKey(key => key + 1)} />
   if (!global_) return <Loading />
 
   return (
@@ -167,7 +181,8 @@ export default function AdminDashboard() {
       {selectedId && (
         <section>
           <h2 className="t-h2 mb-16">{selected?.name} 현황</h2>
-          {cohortStats === undefined ? <Loading /> : cohortStats && (
+          {cohortError === selectedId ? <LoadError title="기수 통계를 불러오지 못했습니다" retry={() => setCohortRetryKey(key => key + 1)} />
+            : cohortStats === undefined || cohortStats?.cohortId !== selectedId ? <Loading /> : cohortStats && (
             <>
               <div className="kpi-row mb-24">
                 <StatCard label="학생 수 (활성/전체)" value={`${cohortStats.active} / ${cohortStats.students}`} />

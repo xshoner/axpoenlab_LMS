@@ -4,6 +4,7 @@ import { IconDownload, IconExternalLink, IconChevronLeft, IconChevronRight, Icon
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../shared/auth'
 import { Loading, EmptyState, StatusPill, StarRating, useToast } from '../../shared/ui'
+import { LoadError, reportClientError } from '../../shared/errors'
 import { pad2, fmtBytes, fmtDate, downloadFile } from '../../lib/helpers'
 import RichBody from '../../shared/RichBody'
 
@@ -19,39 +20,58 @@ export default function CourseDetail() {
   const [myRating, setMyRating] = useState(0)
   const [ratingStats, setRatingStats] = useState(null)
   const [ratingBusy, setRatingBusy] = useState(false)
+  const [loadError, setLoadError] = useState(false)
+  const [retryKey, setRetryKey] = useState(0)
+
+  useEffect(() => {
+    // A manual read retry must not increment the lesson view count again.
+    void Promise.resolve(supabase.rpc('record_course_view', { p_course_id: id })).catch(() => {})
+  }, [id, profile.id])
 
   useEffect(() => {
     let alive = true
     setCourse(null)
+    setLoadError(false)
     setSiblings([])
     setSurveyStates([])
     setQuizStates([])
     setMyRating(0)
     setRatingStats(null)
     ;(async () => {
-      // 열람 판정: 페이지 진입 즉시 (Q6)
-      supabase.rpc('record_course_view', { p_course_id: id }).then(() => {})
-      const cQ = await supabase.from('cohort_courses')
+      let cQ
+      try {
+        cQ = await supabase.from('cohort_courses')
           .select('*, cohort_attachments(*), surveys(id, title, status, allow_edit), quizzes(id, title, status, reveal_answers)')
-          .eq('id', id).single()
+          .eq('id', id).abortSignal(AbortSignal.timeout(10000)).single()
+      } catch {
+        if (alive) { setLoadError(true); reportClientError('load', 'COURSE_LOAD_FAILED') }
+        return
+      }
       if (!alive) return
+      if (cQ.error && cQ.error.code !== 'PGRST116') {
+        setLoadError(true)
+        reportClientError('load', 'COURSE_LOAD_FAILED')
+        return
+      }
       if (!cQ.data) { setCourse(false); return }
       // Render the lesson immediately; navigation/ratings must not hold up its body.
       setCourse(cQ.data)
       const openSurveys = (cQ.data.surveys || []).filter((s) => s.status !== 'draft')
       const openQuizzes = (cQ.data.quizzes || []).filter((q) => q.status !== 'draft')
-      const [allQ, surveyQ, quizQ] = await Promise.all([
-        supabase.from('cohort_courses').select('id, course_no')
-          .eq('group_id', cQ.data.group_id).order('course_no'),
-        openSurveys.length ? supabase.from('survey_responses').select('survey_id').eq('user_id', profile.id)
-          .in('survey_id', openSurveys.map((s) => s.id)) : Promise.resolve({ data: [] }),
-        openQuizzes.length ? supabase.from('quiz_submissions').select('quiz_id, graded').eq('user_id', profile.id)
-          .in('quiz_id', openQuizzes.map((q) => q.id)) : Promise.resolve({ data: [] }),
-      ])
-      if (!alive) return
-      setSiblings(allQ.data || [])
-      setSurveyStates((surveyQ.data || []).map((x) => x.survey_id))
-      setQuizStates(quizQ.data || [])
+      try {
+        const [allQ, surveyQ, quizQ] = await Promise.all([
+          supabase.from('cohort_courses').select('id, course_no')
+            .eq('group_id', cQ.data.group_id).order('course_no'),
+          openSurveys.length ? supabase.from('survey_responses').select('survey_id').eq('user_id', profile.id)
+            .in('survey_id', openSurveys.map((s) => s.id)) : Promise.resolve({ data: [] }),
+          openQuizzes.length ? supabase.from('quiz_submissions').select('quiz_id, graded').eq('user_id', profile.id)
+            .in('quiz_id', openQuizzes.map((q) => q.id)) : Promise.resolve({ data: [] }),
+        ])
+        if (!alive) return
+        setSiblings(allQ.data || [])
+        setSurveyStates((surveyQ.data || []).map((x) => x.survey_id))
+        setQuizStates(quizQ.data || [])
+      } catch { /* The lesson remains readable if its navigation fails. */ }
     })()
     Promise.all([
       supabase.from('course_ratings').select('rating').eq('cohort_course_id', id).eq('user_id', profile.id).maybeSingle(),
@@ -60,10 +80,11 @@ export default function CourseDetail() {
       if (!alive) return
       setMyRating(rQ.data?.rating || 0)
       setRatingStats(rsQ.data || null)
-    })
+    }).catch(() => { /* Ratings do not block the lesson. */ })
     return () => { alive = false }
-  }, [id, profile.id])
+  }, [id, profile.id, retryKey])
 
+  if (loadError) return <LoadError title="강좌를 불러오지 못했습니다" retry={() => setRetryKey(key => key + 1)} />
   if (course === null) return <Loading />
   if (course === false) return <EmptyState title="강좌를 찾을 수 없습니다" />
 

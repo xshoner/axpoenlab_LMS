@@ -10,6 +10,7 @@ try {
  const context=await browser.newContext();
  let failProfile=false, profileFailuresRemaining=0, mockShare=false, fileAvailable=false, fileSeen=false, fileReceived=false, downloadRequests=0, statsRequests=0, detailRequests=0;
  let adminMode=false, failHistory=false, sends=0;
+ let failCourse=false, missingCourse=false, courseViews=0, failStudentDashboard=false, failAdminDashboard=false, failCohortMetrics=false;
  let uploadMode=false, draftAttempts=0, uploadAttempts=0, fileSendAttempts=0, deleteAttempts=0, draftId=null, uploadedPath=null;
  let adminReceiptRequests=0;
  let shareTtl=4000;
@@ -23,7 +24,29 @@ try {
   }
   if(table==='profiles')data={id,name:'Mock',role:adminMode?'super_admin':'student',status:'active'};
   else if(table==='cohorts')data=[{id:cohort,name:'Mock cohort',status:'active'}];
-  else if(table==='cohort_members')data=u.searchParams.get('select')?.includes('profiles!inner')?[{user_id:id,profiles:{id,name:'Mock student',status:'active',role:'student'}}]:{cohort_id:cohort,cohorts:{id:cohort,name:'Mock cohort',status:'active'}};
+  else if(table==='cohort_members')data=u.searchParams.get('select')?.includes('profiles!inner')?[{user_id:id,profiles:{id,name:'Mock student',status:'active',role:'student'}}]
+    :u.searchParams.get('select')==='user_id'?[{user_id:id}]
+      :{cohort_id:cohort,cohorts:{id:cohort,name:'Mock cohort',status:'active'}};
+  else if(table==='cohort_courses'){
+   if(u.searchParams.get('select')?.includes('cohort_attachments(')){
+    if(failCourse){await route.fulfill({status:503,contentType:'application/json',body:JSON.stringify({code:'TEST_OFFLINE'})});return;}
+    if(missingCourse){await route.fulfill({status:406,contentType:'application/json',body:JSON.stringify({code:'PGRST116',message:'No rows'})});return;}
+    data={id:first,group_id:cohort,course_no:1,title:'Mock lesson',cohort_attachments:[],surveys:[],quizzes:[]};
+   }
+  }
+  else if(table==='record_course_view'){courseViews++;data=null;}
+  else if(table==='student_dashboard'){
+   if(failStudentDashboard){await route.fulfill({status:503,contentType:'application/json',body:JSON.stringify({code:'TEST_OFFLINE'})});return;}
+   data={courses:[],groups:[],views:[],submissions:[],surveys:[],quizzes:[],responses:[],quizSubmissions:[],notices:[],boardPosts:[],arcade:null};
+  }
+  else if(table==='admin_dashboard_overview'){
+   if(failAdminDashboard){await route.fulfill({status:503,contentType:'application/json',body:JSON.stringify({code:'TEST_OFFLINE'})});return;}
+   data={memberCounts:[],totalStudents:0,totalCourses:0,totalSubmissions:0,unanswered:0,visits:{today:0,total:0},visitSeriesRaw:[],notices:[],boardPosts:[]};
+  }
+  else if(table==='admin_cohort_metrics'){
+   if(failCohortMetrics){await route.fulfill({status:503,contentType:'application/json',body:JSON.stringify({code:'TEST_OFFLINE'})});return;}
+   data={active:0,students:0,submitRate:0,surveyRate:0,quizRate:0,avgScore:0,courseGroups:[],courseViewRates:[],topRated:[],inquiries:[]};
+  }
   else if(table==='screen_share_current')data=mockShare?{id:first,cohort_id:cohort,teacher_id:second,state:'live',lease_remaining_ms:shareTtl}:null;
   else if(table==='screen-share')data={room:'https://example.invalid',token:'MOCK_ONLY'};
   else if(table==='my_help_position'||table==='record_visit')data=null;
@@ -233,6 +256,51 @@ try {
  await page.getByText('관리자가 삭제한 첨부파일',{exact:true}).waitFor();
  assert.equal(await page.getByRole('button',{name:'다운로드',exact:true}).count(),0);
  console.log('PASS: deleted attachment keeps message and history visible without a student download button');
+
+ fileAvailable=false;failStudentDashboard=true;
+ await page.goto(base+'/#/');
+ await page.reload();
+ await page.getByText('대시보드를 불러오지 못했습니다',{exact:true}).waitFor();
+ await page.evaluate(()=>{window.__retryMarker=1});
+ failStudentDashboard=false;
+ await page.getByRole('button',{name:'다시 시도',exact:true}).click();
+ await page.getByRole('heading',{name:'Mock님, 안녕하세요.'}).waitFor();
+ assert.equal(await page.evaluate(()=>window.__retryMarker),1,'student retry does not reload the page');
+ console.log('PASS: student dashboard recovers in place after a failed read');
+
+ failCourse=true;
+ await page.goto(base+'/#/courses/'+first);
+ await page.getByText('강좌를 불러오지 못했습니다',{exact:true}).waitFor();
+ assert.equal(await page.getByText('강좌를 찾을 수 없습니다',{exact:true}).count(),0);
+ const viewsBeforeRetry=courseViews;
+ failCourse=false;
+ await page.getByRole('button',{name:'다시 시도',exact:true}).click();
+ await page.getByRole('heading',{name:'Mock lesson',exact:true}).waitFor();
+ assert.equal(courseViews,viewsBeforeRetry,'retrying a read does not record another course view');
+ missingCourse=true;
+ await page.goto(base+'/#/courses/'+second);
+ await page.getByText('강좌를 찾을 수 없습니다',{exact:true}).waitFor();
+ missingCourse=false;
+ console.log('PASS: course failures remain retryable while a missing course is shown as not found');
+
+ adminMode=true;failAdminDashboard=true;
+ await page.evaluate(({userId,cohortId})=>localStorage.setItem(`ax-admin-cohort:${userId}:self`,cohortId),{userId:id,cohortId:cohort});
+ await page.goto(base+'/admin.html#/');
+ await page.getByText('대시보드를 불러오지 못했습니다',{exact:true}).waitFor();
+ await page.evaluate(()=>{window.__retryMarker=2});
+ failAdminDashboard=false;
+ await page.getByRole('button',{name:'다시 시도',exact:true}).click();
+ await page.getByRole('heading',{name:'전체 현황'}).waitFor();
+ assert.equal(await page.evaluate(()=>window.__retryMarker),2,'admin retry does not reload the page');
+ failCohortMetrics=true;
+ await page.reload();
+ await page.getByText('기수 통계를 불러오지 못했습니다',{exact:true}).waitFor();
+ await page.getByRole('heading',{name:'전체 현황'}).waitFor();
+ failCohortMetrics=false;
+ await page.getByRole('button',{name:'다시 시도',exact:true}).click();
+ await page.getByText('학생 수 (활성/전체)',{exact:true}).waitFor();
+ console.log('PASS: admin global and cohort metrics recover independently without a reload');
+
  assert.deepEqual(errors,[]);
  console.log('Browser runtime errors: '+JSON.stringify(errors));
  await context.close();

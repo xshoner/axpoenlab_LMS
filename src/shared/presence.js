@@ -1,26 +1,43 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
 
+const STUDENT_STATS_REFRESH_MS = 60000
+
 export function useStudentPresenceTrack(userId) {
-  const [stats, setStats] = useState(null)
+  const [stats, setStats] = useState({ userId: null, data: null })
   useEffect(() => {
     if (!userId) return
-    let alive = true, pending = false
+    let alive = true, pending = false, lastStatsAt = 0
     async function poll() {
-      if (pending) return
+      if (document.visibilityState !== 'visible' || pending) return
       pending = true
       try {
         await supabase.rpc('heartbeat').abortSignal(AbortSignal.timeout(10000))
-        const { data, error } = await supabase.rpc('student_service_stats').abortSignal(AbortSignal.timeout(10000))
-        if (alive && !error) setStats(data)
+        if (!alive || document.visibilityState !== 'visible') return
+        if (Date.now() - lastStatsAt >= STUDENT_STATS_REFRESH_MS) {
+          const { data, error } = await supabase.rpc('student_service_stats').abortSignal(AbortSignal.timeout(10000))
+          if (alive && !error && data) {
+            lastStatsAt = Date.now()
+            setStats({ userId, data })
+          }
+        }
       } catch { /* retain the last counter on a transient failure */ }
       finally { pending = false }
     }
-    poll()
+    void poll()
     const timer = setInterval(poll, 30000)
-    return () => { alive = false; clearInterval(timer) }
+    const resume = () => { if (document.visibilityState === 'visible') void poll() }
+    document.addEventListener('visibilitychange', resume)
+    window.addEventListener('focus', resume)
+    window.addEventListener('online', resume)
+    return () => {
+      alive = false; clearInterval(timer)
+      document.removeEventListener('visibilitychange', resume)
+      window.removeEventListener('focus', resume)
+      window.removeEventListener('online', resume)
+    }
   }, [userId])
-  return userId ? stats : null
+  return userId === stats.userId ? stats.data : null
 }
 
 export function useOnlineStudentCount(cohortId = null) {
