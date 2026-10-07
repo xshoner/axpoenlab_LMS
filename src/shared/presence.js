@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
 
 const STUDENT_STATS_REFRESH_MS = 60000
+const ADMIN_ONLINE_REFRESH_MS = 60000
 
 export function useStudentPresenceTrack(userId) {
   const [stats, setStats] = useState({ userId: null, data: null })
@@ -41,18 +42,37 @@ export function useStudentPresenceTrack(userId) {
 }
 
 export function useOnlineStudentCount(cohortId = null) {
-  const [count, setCount] = useState(0)
+  const [result, setResult] = useState({ cohortId: null, count: 0 })
   useEffect(() => {
-    let alive = true
+    let alive = true, pending = false, lastResumeAt = Date.now()
     async function poll() {
-      const { data } = await supabase.rpc('online_student_count', { p_cohort_id: cohortId })
-      if (alive) setCount(data || 0)
+      if (document.visibilityState !== 'visible' || pending) return
+      pending = true
+      try {
+        const { data, error } = await supabase.rpc('online_student_count', { p_cohort_id: cohortId })
+          .abortSignal(AbortSignal.timeout(10000))
+        if (alive && !error) setResult({ cohortId, count: Number(data) || 0 })
+      } catch { /* keep the last count until the connection recovers */ }
+      finally { pending = false }
     }
-    poll()
-    const timer = setInterval(poll, 30000)
-    return () => { alive = false; clearInterval(timer) }
+    void poll()
+    const timer = setInterval(poll, ADMIN_ONLINE_REFRESH_MS)
+    const resume = () => {
+      if (document.visibilityState !== 'visible' || Date.now() - lastResumeAt < 1000) return
+      lastResumeAt = Date.now()
+      void poll()
+    }
+    document.addEventListener('visibilitychange', resume)
+    window.addEventListener('focus', resume)
+    window.addEventListener('online', resume)
+    return () => {
+      alive = false; clearInterval(timer)
+      document.removeEventListener('visibilitychange', resume)
+      window.removeEventListener('focus', resume)
+      window.removeEventListener('online', resume)
+    }
   }, [cohortId])
-  return count
+  return result.cohortId === cohortId ? result.count : 0
 }
 
 /** 관리자 화면: 미답변(open) 문의 건수를 실시간으로 반환한다. cohortId를 주면 해당 기수 학생의 문의만 센다. */

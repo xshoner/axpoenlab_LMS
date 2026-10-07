@@ -7,6 +7,8 @@ import { createDownloadUrl, fmtBytes, fmtDate } from '../lib/helpers'
 import { PushBody, LegacyAction } from './push'
 const FileSenderDialog = lazy(() => import('./FileSenderDialog'))
 const BUCKET = 'student-deliveries'
+const INBOX_CONNECTED_REFRESH_MS = 120000
+const INBOX_DISCONNECTED_REFRESH_MS = 30000
 export function checked(result) {
   if (result.error) throw result.error
   return result.data
@@ -86,7 +88,8 @@ export function StudentDistributionInbox({ floating = false }) {
 
   useEffect(() => {
     if (!profile?.id) return
-    let alive = true, running = false, pending = false
+    let alive = true, running = false, pending = false, connected = false
+    let lastFallbackAt = Date.now(), lastResumeAt = Date.now()
     async function load() {
       if (running) { pending = true; return }
       running = true
@@ -135,16 +138,34 @@ export function StudentDistributionInbox({ floating = false }) {
         if (page) setPage(0)
         else void load()
       })
-      .subscribe(status => { if (status === 'SUBSCRIBED') void load() })
-    const refresh = () => { if (!document.hidden) void load() }
-    const timer = setInterval(refresh, 30000)
-    window.addEventListener('focus', refresh)
-    window.addEventListener('online', refresh)
-    document.addEventListener('visibilitychange', refresh)
+      .subscribe(status => {
+        connected = status === 'SUBSCRIBED'
+        if (connected) { lastFallbackAt = Date.now(); lastResumeAt = lastFallbackAt; void load() }
+      })
+    const fallback = () => {
+      if (document.hidden) return
+      const now = Date.now()
+      const interval = connected ? INBOX_CONNECTED_REFRESH_MS : INBOX_DISCONNECTED_REFRESH_MS
+      if (now - lastFallbackAt < interval) return
+      lastFallbackAt = now
+      void load()
+    }
+    const resume = () => {
+      if (document.hidden) return
+      const now = Date.now()
+      if (now - lastResumeAt < 1000) return
+      lastResumeAt = now
+      lastFallbackAt = now
+      void load()
+    }
+    const timer = setInterval(fallback, INBOX_DISCONNECTED_REFRESH_MS)
+    window.addEventListener('focus', resume)
+    window.addEventListener('online', resume)
+    document.addEventListener('visibilitychange', resume)
     return () => {
       alive = false; clearInterval(timer); supabase.removeChannel(channel)
-      window.removeEventListener('focus', refresh); window.removeEventListener('online', refresh)
-      document.removeEventListener('visibilitychange', refresh)
+      window.removeEventListener('focus', resume); window.removeEventListener('online', resume)
+      document.removeEventListener('visibilitychange', resume)
     }
   }, [profile?.id, page])
 

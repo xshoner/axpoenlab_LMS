@@ -3,7 +3,7 @@ import {
   IconPlus, IconTrash, IconCopy, IconArrowUp, IconArrowDown, IconChartBar,
   IconPencil, IconFileSpreadsheet, IconEye,
 } from '@tabler/icons-react'
-import { PieChart, Pie, Cell, Tooltip as RTooltip, ResponsiveContainer } from 'recharts'
+import { ChoicePieChart } from '../../shared/SimpleCharts'
 import { supabase, getAdminView } from '../../lib/supabase'
 import { useAuth } from '../../shared/auth'
 import { useCohort } from '../cohortContext'
@@ -588,44 +588,11 @@ function SurveyStats({ surveyId, cohortId, onBack }) {
 }
 
 /* ============ 단일 선택 선다형 원형 그래프 ============ */
-const RAD = Math.PI / 180
-
-// 조각 밝기에 따라 안쪽 % 라벨 잉크 색 선택
-function sliceInk(hex) {
-  const n = parseInt(hex.slice(1), 16)
-  const yiq = (((n >> 16) & 255) * 299 + (((n >> 8) & 255)) * 587 + (n & 255) * 114) / 1000
-  return yiq >= 150 ? '#0f1419' : '#ffffff'
-}
-
 function ChoicePie({ items, total }) {
-  const data = items.filter((it) => it.count > 0)
-  const renderLabel = ({ cx, cy, midAngle, innerRadius, outerRadius, percent, index }) => {
-    if (percent < 0.05) return null // 좁은 조각은 라벨 생략 — 범례·툴팁이 대신한다
-    const r = innerRadius + (outerRadius - innerRadius) * 0.6
-    const x = cx + r * Math.cos(-midAngle * RAD)
-    const y = cy + r * Math.sin(-midAngle * RAD)
-    return (
-      <text x={x} y={y} fill={sliceInk(data[index].color)} textAnchor="middle" dominantBaseline="central"
-        style={{ fontSize: 13, fontWeight: 700 }}>
-        {Math.round(percent * 100)}%
-      </text>
-    )
-  }
   return (
     <div className="row" style={{ gap: 24, flexWrap: 'wrap', alignItems: 'center' }}>
       <div style={{ width: 240, height: 240, flexShrink: 0 }}>
-        <ResponsiveContainer width="100%" height="100%">
-          <PieChart>
-            <Pie data={data} dataKey="count" nameKey="label" cx="50%" cy="50%" outerRadius={112}
-              labelLine={false} label={renderLabel} isAnimationActive={false}
-              stroke="var(--background)" strokeWidth={2}>
-              {data.map((it, x) => <Cell key={x} fill={it.color} />)}
-            </Pie>
-            <RTooltip
-              formatter={(v, name) => [`${v}명 (${total ? Math.round((v / total) * 100) : 0}%)`, name]}
-              contentStyle={{ borderRadius: 8, border: '1px solid var(--border)', fontSize: 12, maxWidth: 320, whiteSpace: 'normal' }} />
-          </PieChart>
-        </ResponsiveContainer>
+        <ChoicePieChart data={items} total={total} />
       </div>
       <div className="stack" style={{ gap: 8, flex: 1, minWidth: 240 }}>
         {items.map((it, x) => (

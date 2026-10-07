@@ -3,7 +3,7 @@ import {
   IconPlus, IconTrash, IconCopy, IconArrowUp, IconArrowDown, IconChartBar,
   IconPencil, IconFileSpreadsheet, IconLock, IconRefresh,
 } from '@tabler/icons-react'
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts'
+import { VerticalBars } from '../../shared/SimpleCharts'
 import { supabase, getAdminView } from '../../lib/supabase'
 import { useAuth } from '../../shared/auth'
 import { useCohort } from '../cohortContext'
@@ -514,21 +514,9 @@ function QuizStats({ quizId, cohortId, onBack, onRegrade }) {
       {quiz.status === 'closed' && scores.length > 0 && (
         <div className="chart-panel">
           <h3 className="t-h3 mb-16">점수 분포 <span className="t-caption muted-soft">(득점률 구간, %)</span></h3>
-          <ResponsiveContainer width="100%" height={240}>
-            <BarChart data={buckets}>
-              <CartesianGrid vertical={false} stroke="var(--border)" />
-              <XAxis dataKey="name" tick={{ fontSize: 11, fill: 'var(--muted)' }} />
-              <YAxis tick={{ fontSize: 12, fill: 'var(--muted)' }} allowDecimals={false} />
-              <Tooltip contentStyle={{ borderRadius: 8, border: '1px solid var(--border)', fontSize: 12 }} />
-              {totalPoints > 0 && (
-                <ReferenceLine x={buckets[Math.min(9, Math.floor((avg / totalPoints) * 10))].name}
-                  stroke="var(--accent)" strokeDasharray="4 4" strokeWidth={2}
-                  label={{ value: `평균 ${avg.toFixed(1)}점`, fontSize: 11, fill: 'var(--accent-deep)', position: 'top' }} />
-              )}
-              <Bar dataKey="인원" fill="var(--chart-1)" radius={[6, 6, 0, 0]} maxBarSize={28}
-                label={{ position: 'top', fontSize: 11 }} isAnimationActive={false} />
-            </BarChart>
-          </ResponsiveContainer>
+          <VerticalBars data={buckets} valueKey="인원" height={240} ariaLabel="퀴즈 점수 분포"
+            referenceIndex={totalPoints > 0 ? Math.min(9, Math.floor((avg / totalPoints) * 10)) : -1}
+            referenceLabel={`평균 ${avg.toFixed(1)}점`} />
         </div>
       )}
 

@@ -41,11 +41,11 @@ try {
   }
   else if(table==='admin_dashboard_overview'){
    if(failAdminDashboard){await route.fulfill({status:503,contentType:'application/json',body:JSON.stringify({code:'TEST_OFFLINE'})});return;}
-   data={memberCounts:[],totalStudents:0,totalCourses:0,totalSubmissions:0,unanswered:0,visits:{today:0,total:0},visitSeriesRaw:[],notices:[],boardPosts:[]};
+   data={memberCounts:[{cohort_id:cohort,count:3}],totalStudents:3,totalCourses:0,totalSubmissions:0,unanswered:0,visits:{today:3,total:3},visitSeriesRaw:[{d:new Date().toISOString().slice(0,10),cnt:3}],notices:[],boardPosts:[]};
   }
   else if(table==='admin_cohort_metrics'){
    if(failCohortMetrics){await route.fulfill({status:503,contentType:'application/json',body:JSON.stringify({code:'TEST_OFFLINE'})});return;}
-   data={active:0,students:0,submitRate:0,surveyRate:0,quizRate:0,avgScore:0,courseGroups:[],courseViewRates:[],topRated:[],inquiries:[]};
+   data={active:0,students:0,submitRate:0,surveyRate:0,quizRate:0,avgScore:0,courseGroups:[{id:cohort,name:'Mock group',is_default:true}],courseViewRates:[{name:'Mock course',groupId:cohort,열람률:75}],topRated:[],inquiries:[]};
   }
   else if(table==='screen_share_current')data=mockShare?{id:first,cohort_id:cohort,teacher_id:second,state:'live',lease_remaining_ms:shareTtl}:null;
   else if(table==='screen-share')data={room:'https://example.invalid',token:'MOCK_ONLY'};
@@ -299,8 +299,15 @@ try {
  await page.getByRole('heading',{name:'전체 현황'}).waitFor();
  await chartChunkRequest;
  await page.getByText('전체 학생 수',{exact:true}).waitFor();
- assert.equal(await page.getByText('차트 준비 중…',{exact:true}).count(),1,'dashboard KPIs render while chart code is still downloading');
+ assert.ok(await page.getByText('차트 준비 중…',{exact:true}).count()>=1,'dashboard KPIs render while chart code is still downloading');
  chartBlocked=false;releaseCharts();
+ await page.getByRole('img',{name:'기수별 학생 수'}).waitFor();
+ await page.getByRole('img',{name:'방문 추이'}).waitFor();
+ await page.getByRole('button',{name:'연간'}).click();
+ await page.getByRole('heading',{name:'방문 추이 (최근 1년)'}).waitFor();
+ await page.setViewportSize({width:390,height:780});
+ await page.waitForFunction(()=>document.querySelector('svg[aria-label="기수별 학생 수"]')?.viewBox.baseVal.width<390);
+ await page.setViewportSize({width:1280,height:720});
  assert.equal(await page.evaluate(()=>window.__retryMarker),2,'admin retry does not reload the page');
  failCohortMetrics=true;
  await page.reload();
@@ -309,6 +316,7 @@ try {
  failCohortMetrics=false;
  await page.getByRole('button',{name:'다시 시도',exact:true}).click();
  await page.getByText('학생 수 (활성/전체)',{exact:true}).waitFor();
+ await page.getByRole('img',{name:'강좌별 열람률'}).waitFor();
  console.log('PASS: admin global and cohort metrics recover independently without a reload');
 
  assert.deepEqual(errors,[]);

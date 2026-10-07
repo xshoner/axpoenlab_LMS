@@ -8,7 +8,7 @@
 |---|---|
 | 프론트엔드 | React 18 + Vite (멀티페이지: `index.html` 학습자 / `admin.html` 관리자) |
 | 백엔드/DB/인증/스토리지 | Supabase (PostgreSQL + RLS, Auth, Storage, Edge Functions) |
-| 차트 | Recharts |
+| 차트 | React + 경량 SVG 컴포넌트 |
 | 배포 | Vercel (정적 빌드) + GitHub Actions CI |
 
 ## 구조

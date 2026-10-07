@@ -50,14 +50,16 @@ try {
         b.onLoad({ filter: /.*/, namespace: 'adapter' }, () => ({ contents: `
           export const supabase = { rpc(name) {
             const h = globalThis.presencePollingTest; h.calls.push(name);
-            return { abortSignal() { return Promise.resolve({ data: name === 'student_service_stats'
-              ? { today: 23, total: 456, online: 7 } : null, error: null }) } };
+            return { abortSignal() { return Promise.resolve(name === 'online_student_count' && h.failOnline
+              ? { data: null, error: new Error('offline') }
+              : { data: name === 'student_service_stats' ? { today: 23, total: 456, online: 7 }
+                : name === 'online_student_count' ? 5 : null, error: null }) } };
           } };
         ` }))
       },
     }],
   })
-  const { useStudentPresenceTrack } = await import(pathToFileURL(output))
+  const { useStudentPresenceTrack, useOnlineStudentCount } = await import(pathToFileURL(output))
   assert.equal(useStudentPresenceTrack('student-a'), null)
   const cleanup = harness.effects[0]()
   const flush = async () => { for (let n = 0; n < 8; n++) await Promise.resolve() }
@@ -89,7 +91,32 @@ try {
   cleanup()
   assert.equal(harness.interval, null)
   assert.equal(harness.listeners.size, 0)
-  console.log('PASS: presence keeps 30-second heartbeats, halves full counts, pauses hidden tabs and refreshes on return')
+  harness.effects = []; harness.states = []; harness.calls = []
+  assert.equal(useOnlineStudentCount('cohort-a'), 0)
+  const cleanupAdmin = harness.effects[0]()
+  await flush()
+  assert.deepEqual(harness.calls, ['online_student_count'])
+  assert.equal(harness.states[0].count, 5)
+  assert.equal(harness.intervalDelay, 60000)
+  globalThis.document.visibilityState = 'hidden'
+  harness.now += 60000
+  harness.interval()
+  await flush()
+  assert.equal(harness.calls.length, 1, 'hidden administrator tabs do not count online students')
+  globalThis.document.visibilityState = 'visible'
+  harness.failOnline = true
+  harness.listeners.get('document:visibilitychange')()
+  await flush()
+  assert.equal(harness.calls.length, 2)
+  assert.equal(harness.states[0].count, 5, 'a failed refresh retains the last online count')
+  harness.failOnline = false
+  harness.listeners.get('window:online')()
+  await flush()
+  assert.equal(harness.calls.length, 2, 'paired resume events share one online-count read')
+  assert.equal(harness.states[0].count, 5)
+  cleanupAdmin()
+  assert.equal(harness.listeners.size, 0)
+  console.log('PASS: student heartbeat remains 30 seconds; admin online count pauses hidden tabs, polls every 60 seconds and resumes safely')
 } finally {
   Date.now = original.now
   globalThis.document = original.document

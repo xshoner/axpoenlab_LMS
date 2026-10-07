@@ -8,7 +8,7 @@
     "build": "vite build",
     "preview": "vite preview",
     "lint": "eslint .",
-    "test:stability": "node --test scripts/test-stability.mjs && node scripts/test-distribution-files.mjs && node scripts/test-presence-polling.mjs",
+    "test:stability": "node --test scripts/test-stability.mjs && node scripts/test-distribution-files.mjs && node scripts/test-presence-polling.mjs && node scripts/test-inbox-polling.mjs && node scripts/test-charts.mjs",
     "test:screen-share": "node --test scripts/test-screen-share-client.mjs && node scripts/test-screen-share-edge.mjs",
     "test:tenancy": "node scripts/test-tenancy.mjs && node scripts/test-edge-functions.mjs && node scripts/test-course-tabs.mjs && node scripts/test-cohort-assignment-groups.mjs && node scripts/test-auth-loading.mjs"
   },
@@ -20,8 +20,7 @@
     "qrcode": "^1.5.4",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
-    "react-router-dom": "^7.18.4",
-    "recharts": "^2.12.7"
+    "react-router-dom": "^7.18.4"
   },
   "devDependencies": {
     "@electric-sql/pglite": "^0.5.8",
